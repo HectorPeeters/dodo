@@ -1,0 +1,22 @@
+<number> = [0-9]+
+
+<type> = u8 | u16 | u32
+
+<unop> = -
+<binop> = + | - | * | /
+
+<expression> = 	<number>
+		<expression> <binop> <expression>
+		<unop> <expression>
+		<identifier> ( <expression>* )
+		(<type>) <expression>
+
+<identifier> = [a-z][a-z_]*
+
+<typedef> = <identifier> : <type>
+
+<statement> = 	{ <statement>* }
+		let <identifier> : <type>;
+		<identifier> = <expression>;
+		<expression>;
+		fn <identifier> (<typedef>*) <statement>
