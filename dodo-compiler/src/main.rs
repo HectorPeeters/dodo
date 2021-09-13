@@ -16,5 +16,9 @@ fn main() {
 
     println!("{:?}", generator.instruction_stream);
 
-    let code = Assembler::assemble::<X86>(generator.instruction_stream);
+    let new_instructionstream = Assembler::allocate_registers::<X86>(&generator.instruction_stream);
+
+    let code = Assembler::assemble::<X86>(new_instructionstream);
+
+    println!("{:?}", code);
 }

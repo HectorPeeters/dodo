@@ -43,6 +43,32 @@ impl<R, C> InstructionStream<R, C> {
     }
 }
 
+impl<usize, C> InstructionStream<usize, C> {
+    fn get_max_register(&self) -> usize {
+        let mut registers: Vec<usize> = vec![];
+
+        for instr in &self.instructions {
+            use Instruction::*;
+
+            match instr {
+                MovImm(r, _) => registers.push(*r),
+                JmpEq(_, r, _) => registers.push(*r),
+                JmpNe(_, r, _) => registers.push(*r),
+                Add(a, b, c) => registers.append(&mut vec![*a, *b, *c]),
+                _ => {}
+            }
+        }
+
+        let mut largest: usize = 0;
+        for reg in registers {
+            if reg > largest {
+                largest = reg;
+            }
+        }
+        reg
+    }
+}
+
 impl<R, C> Iterator for InstructionStream<R, C> {
     type Item = Instruction<R, C>;
 

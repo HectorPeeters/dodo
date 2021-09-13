@@ -4,7 +4,12 @@ use crate::instructionstream::InstructionStream;
 pub struct Assembler {}
 
 impl Assembler {
-    pub fn 
+    pub fn allocate_registers<A: Architecture>(
+        stream: &InstructionStream<usize, A::Constant>,
+    ) -> InstructionStream<A::OutputRegister, A::Constant> {
+        InstructionStream::new()
+    }
+
     pub fn assemble<A: Architecture>(
         stream: InstructionStream<A::OutputRegister, A::Constant>,
     ) -> Vec<u8> {
