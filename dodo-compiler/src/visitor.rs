@@ -15,7 +15,7 @@ pub trait StatementVisitor<T> {
             Assignment(assignment) => self.visit_assignment(assignment),
             Return(ret) => self.visit_return(ret),
             Function(function) => self.visit_function(function),
-            Expression(expression) => todo!(),
+            Expression(_expression) => todo!(),
         }
     }
 }

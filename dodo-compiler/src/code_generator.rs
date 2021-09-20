@@ -1,10 +1,8 @@
 use crate::ast::*;
 use crate::visitor::{ExpressionVisitor, StatementVisitor};
-use dodo_assembler::{
-    architecture::Architecture, instruction::Instruction, instructionstream::InstructionStream,
-};
+use dodo_assembler::{instruction::Instruction, instructionstream::InstructionStream};
 
-type Register = usize;
+type Register = u32;
 type Constant = u32;
 
 #[derive(Debug)]
@@ -25,6 +23,12 @@ impl CodeGenerator {
         let reg = self.next_register;
         self.next_register += 1;
         reg
+    }
+}
+
+impl Default for CodeGenerator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -54,24 +58,24 @@ impl ExpressionVisitor<Register> for CodeGenerator {
 }
 
 impl StatementVisitor<()> for CodeGenerator {
-    fn visit_block(&mut self, _block: &BlockStatement) -> () {
+    fn visit_block(&mut self, _block: &BlockStatement) {
         todo!()
     }
 
-    fn visit_declaration(&mut self, _declaration: &DeclarationStatement) -> () {
+    fn visit_declaration(&mut self, _declaration: &DeclarationStatement) {
         todo!()
     }
 
-    fn visit_assignment(&mut self, _assignment: &AssignmentStatement) -> () {
+    fn visit_assignment(&mut self, _assignment: &AssignmentStatement) {
         todo!()
     }
 
-    fn visit_return(&mut self, ret: &ReturnStatement) -> () {
+    fn visit_return(&mut self, ret: &ReturnStatement) {
         let reg = self.visit_expression(&ret.value);
         self.instruction_stream.instr(Instruction::Ret(reg));
     }
 
-    fn visit_function(&mut self, _function: &FunctionStatement) -> () {
+    fn visit_function(&mut self, _function: &FunctionStatement) {
         todo!()
     }
 }

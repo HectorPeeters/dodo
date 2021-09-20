@@ -43,9 +43,9 @@ impl<R, C> InstructionStream<R, C> {
     }
 }
 
-impl<usize, C> InstructionStream<usize, C> {
-    fn get_max_register(&self) -> usize {
-        let mut registers: Vec<usize> = vec![];
+impl<C> InstructionStream<u32, C> {
+    pub fn get_max_registers(&self) -> u32 {
+        let mut registers = vec![];
 
         for instr in &self.instructions {
             use Instruction::*;
@@ -59,13 +59,7 @@ impl<usize, C> InstructionStream<usize, C> {
             }
         }
 
-        let mut largest: usize = 0;
-        for reg in registers {
-            if reg > largest {
-                largest = reg;
-            }
-        }
-        reg
+        registers.into_iter().max().unwrap_or(0)
     }
 }
 
@@ -86,20 +80,20 @@ mod tests {
 
     #[test]
     fn generator_new() {
-        let stream = InstructionStream::<usize, u32>::new();
+        let stream = InstructionStream::<u32, u32>::new();
         assert_eq!(stream.instructions.len(), 0);
     }
 
     #[test]
     fn generator_single_instruction() {
-        let mut stream = InstructionStream::<usize, u32>::new();
+        let mut stream = InstructionStream::<u32, u32>::new();
         stream.instr(Instruction::MovImm(0, 12));
         assert_eq!(stream.instructions.len(), 1);
     }
 
     #[test]
     fn generator_label() {
-        let mut stream = InstructionStream::<usize, u32>::new();
+        let mut stream = InstructionStream::<u32, u32>::new();
         let label1 = stream.label();
         stream.instr(Instruction::MovImm(0, 12));
         let label2 = stream.label();
@@ -113,7 +107,7 @@ mod tests {
 
     #[test]
     fn generator_shift_labels() {
-        let mut stream = InstructionStream::<usize, u32>::new();
+        let mut stream = InstructionStream::<u32, u32>::new();
         let label1 = stream.label();
         stream.instr(Instruction::MovImm(0, 12));
         let label2 = stream.label();

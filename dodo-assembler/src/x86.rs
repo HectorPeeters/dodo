@@ -19,6 +19,18 @@ impl X86Register {
     pub fn as_byte(&self) -> u8 {
         *self as u8
     }
+
+    pub fn from_index(i: u32) -> Self {
+        use X86Register::*;
+
+        match i {
+            0 => Eax,
+            1 => Ecx,
+            2 => Edx,
+            3 => Ebx,
+            _ => todo!(),
+        }
+    }
 }
 
 impl Architecture for X86 {
@@ -29,12 +41,17 @@ impl Architecture for X86 {
         use Instruction::*;
         match instr {
             MovImm(r, c) => {
-                let mut result = vec![0xb8 + r.as_byte()];
-                result.extend(c.to_le_bytes().to_vec());
-                result
+                //let mut result = vec![0xb8 + r.as_byte()];
+                //result.extend(c.to_le_bytes().to_vec());
+                //result
+                vec![]
             }
             Ret(r) => {
-                vec![0x89, 0xc0 + r.as_byte(), 0xc3]
+                vec![
+                    0xb8, 0x00, 0x00, 0x00, 0x00, 0xbf, 0x0c, 0x00, 0x00, 0x00, 0x0f, 0x05,
+                ]
+                //     vec![0x89, 0xc0 + r.as_byte(), 0xcd, 0x80]
+                //                vec![0x89, 0xc0 + r.as_byte(), 0xc3]
             }
             _ => todo!(),
         }

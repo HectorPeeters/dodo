@@ -1,13 +1,31 @@
 use crate::architecture::Architecture;
+use crate::instruction::Instruction;
 use crate::instructionstream::InstructionStream;
+use crate::x86::X86Register;
 
 pub struct Assembler {}
 
 impl Assembler {
-    pub fn allocate_registers<A: Architecture>(
-        stream: &InstructionStream<usize, A::Constant>,
-    ) -> InstructionStream<A::OutputRegister, A::Constant> {
-        InstructionStream::new()
+    pub fn allocate_registers(
+        stream: InstructionStream<u32, u32>,
+    ) -> InstructionStream<X86Register, u32> {
+        assert!(stream.get_max_registers() <= 4);
+
+        let mut new_stream = InstructionStream::new();
+
+        for instruction in stream {
+            use Instruction::*;
+
+            match instruction {
+                MovImm(r, c) => {
+                    new_stream.instr(Instruction::MovImm(X86Register::from_index(r), c))
+                }
+                Ret(r) => new_stream.instr(Instruction::Ret(X86Register::from_index(r))),
+                _ => todo!(),
+            }
+        }
+
+        new_stream
     }
 
     pub fn assemble<A: Architecture>(

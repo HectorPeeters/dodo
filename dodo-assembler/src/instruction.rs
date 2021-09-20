@@ -5,8 +5,8 @@ pub enum Instruction<R, C> {
     MovImm(R, C),
 
     Jmp(Label),
-    JmpEq(Label, R, C),
-    JmpNe(Label, R, C),
+    JmpEq(Label, R, R),
+    JmpNe(Label, R, R),
 
     Add(R, R, R),
     Sub(R, R, R),
