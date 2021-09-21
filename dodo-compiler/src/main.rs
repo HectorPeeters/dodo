@@ -1,8 +1,7 @@
+use crate::visitor::*;
 use dodo_assembler::{
     assembler::Assembler,
     elf::{ElfFile, ElfSymbol, ElfSymbolBindings, ElfSymbolType},
-    instruction::Instruction,
-    instructionstream::InstructionStream,
     x86::X86,
 };
 
@@ -12,11 +11,12 @@ pub mod parser;
 pub mod visitor;
 
 fn main() {
-    let mut instr_stream = InstructionStream::new();
-    instr_stream.instr(Instruction::MovImm(0, 9));
-    instr_stream.instr(Instruction::Ret(0));
+    let ast = parser::parse_statement::<()>("return 9;").unwrap().1;
 
-    let instr_stream = Assembler::allocate_registers(instr_stream);
+    let mut codegen = code_generator::CodeGenerator::new();
+    codegen.visit_statement(&ast);
+
+    let instr_stream = Assembler::allocate_registers(codegen.instruction_stream);
     let code = Assembler::assemble::<X86>(instr_stream);
 
     let mut elf_file = ElfFile::new();
