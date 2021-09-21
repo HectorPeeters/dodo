@@ -1,4 +1,10 @@
-use dodo_assembler::elf::{ElfFile, ElfSymbol, ElfSymbolBindings, ElfSymbolType};
+use dodo_assembler::{
+    assembler::Assembler,
+    elf::{ElfFile, ElfSymbol, ElfSymbolBindings, ElfSymbolType},
+    instruction::Instruction,
+    instructionstream::InstructionStream,
+    x86::X86,
+};
 
 pub mod ast;
 pub mod code_generator;
@@ -6,11 +12,14 @@ pub mod parser;
 pub mod visitor;
 
 fn main() {
-    let mut elf_file = ElfFile::new();
+    let mut instr_stream = InstructionStream::new();
+    instr_stream.instr(Instruction::MovImm(0, 9));
+    instr_stream.instr(Instruction::Ret(0));
 
-    let code = vec![
-        0xb8, 0x3c, 0x0, 0x0, 0x0, 0xbf, 0x09, 0x0, 0x0, 0x0, 0x0f, 0x05,
-    ];
+    let instr_stream = Assembler::allocate_registers(instr_stream);
+    let code = Assembler::assemble::<X86>(instr_stream);
+
+    let mut elf_file = ElfFile::new();
 
     let start_string = elf_file.add_string("_start");
 

@@ -47,10 +47,16 @@ impl Architecture for X86 {
             }
             Ret(r) => {
                 vec![
-                    0xb8, 0x00, 0x00, 0x00, 0x00, 0xbf, 0x0c, 0x00, 0x00, 0x00, 0x0f, 0x05,
+                    0x89,
+                    0xc7 + r.as_byte(), // mov %reg, %edi
+                    0xb8,
+                    0x3c,
+                    0x00,
+                    0x00,
+                    0x00, // mov $60, %eax
+                    0x0f,
+                    0x05, // syscall
                 ]
-                //     vec![0x89, 0xc0 + r.as_byte(), 0xcd, 0x80]
-                //                vec![0x89, 0xc0 + r.as_byte(), 0xc3]
             }
             _ => todo!(),
         }
