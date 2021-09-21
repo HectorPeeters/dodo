@@ -7,4 +7,3 @@ version = "0.1.0"
 dodo-core = { path = "../dodo-core" }
 dodo-assembler = { path = "../dodo-assembler" }
 nom = "7.0.0"
-object = { version = "0.26.2", features = ["write", "write_core", "elf"] }

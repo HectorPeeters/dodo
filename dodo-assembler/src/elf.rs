@@ -76,19 +76,19 @@ pub fn write_elf_header(header: &ElfHeader) -> Vec<u8> {
     ];
     buff.append(&mut vec![0; 7]);
 
-    buff.extend_from_slice(&mut (header.kind as u16).to_le_bytes());
-    buff.extend_from_slice(&mut header.machine.to_le_bytes());
-    buff.extend_from_slice(&mut header.version.to_le_bytes());
-    buff.extend_from_slice(&mut header.entry.to_le_bytes());
-    buff.extend_from_slice(&mut header.phoff.to_le_bytes());
-    buff.extend_from_slice(&mut header.shoff.to_le_bytes());
-    buff.extend_from_slice(&mut header.flags.to_le_bytes());
-    buff.extend_from_slice(&mut header.ehsize.to_le_bytes());
-    buff.extend_from_slice(&mut header.phentsize.to_le_bytes());
-    buff.extend_from_slice(&mut header.phnum.to_le_bytes());
-    buff.extend_from_slice(&mut header.shentsize.to_le_bytes());
-    buff.extend_from_slice(&mut header.shnum.to_le_bytes());
-    buff.extend_from_slice(&mut header.shstrndx.to_le_bytes());
+    buff.extend_from_slice(&(header.kind as u16).to_le_bytes());
+    buff.extend_from_slice(&header.machine.to_le_bytes());
+    buff.extend_from_slice(&header.version.to_le_bytes());
+    buff.extend_from_slice(&header.entry.to_le_bytes());
+    buff.extend_from_slice(&header.phoff.to_le_bytes());
+    buff.extend_from_slice(&header.shoff.to_le_bytes());
+    buff.extend_from_slice(&header.flags.to_le_bytes());
+    buff.extend_from_slice(&header.ehsize.to_le_bytes());
+    buff.extend_from_slice(&header.phentsize.to_le_bytes());
+    buff.extend_from_slice(&header.phnum.to_le_bytes());
+    buff.extend_from_slice(&header.shentsize.to_le_bytes());
+    buff.extend_from_slice(&header.shnum.to_le_bytes());
+    buff.extend_from_slice(&header.shstrndx.to_le_bytes());
 
     assert_eq!(buff.len(), 64);
 
@@ -116,6 +116,7 @@ pub enum ElfSectionType {
 }
 
 #[derive(Clone, Copy)]
+#[repr(u64)]
 pub enum ElfSectionFlags {
     Write = 0x1,
     Alloc = 0x2,
@@ -207,6 +208,7 @@ pub fn write_symbol(symbol: &ElfSymbol) -> Vec<u8> {
     res
 }
 
+#[derive(Copy, Clone)]
 pub enum ElfProgramHeaderType {
     Null = 0,
     Load = 1,
@@ -221,6 +223,8 @@ pub enum ElfProgramHeaderType {
     HiProc = 0x7FFFFFFF,
 }
 
+#[derive(Copy, Clone)]
+#[repr(u32)]
 pub enum ElfProgramHeaderFlags {
     X = 0x1,
     W = 0x2,

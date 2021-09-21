@@ -43,6 +43,12 @@ impl<R, C> InstructionStream<R, C> {
     }
 }
 
+impl<R, C> Default for InstructionStream<R, C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C> InstructionStream<u32, C> {
     pub fn get_max_registers(&self) -> u32 {
         let mut registers = vec![];
