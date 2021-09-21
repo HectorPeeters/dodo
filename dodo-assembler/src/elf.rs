@@ -7,7 +7,184 @@ pub type Elf64SWord = i32;
 pub type Elf64XWord = u64;
 pub type Elf64SXWord = i64;
 
-pub struct ElfFile {}
+pub struct ElfFile {
+    strings: Vec<u8>,
+
+    sections: Vec<ElfSectionHeaderEntry>,
+    section_data: Vec<Vec<u8>>,
+
+    symbols: Vec<ElfSymbol>,
+
+    string_table_index: u16,
+    text_string: u32,
+    shrtrtab_string: u32,
+    symtab_string: u32,
+}
+
+impl ElfFile {
+    pub fn new() -> Self {
+        let mut file = Self {
+            strings: vec![0x00],
+            sections: vec![],
+            section_data: vec![],
+            symbols: vec![],
+            string_table_index: 0,
+            text_string: 0,
+            shrtrtab_string: 0,
+            symtab_string: 0,
+        };
+
+        file.text_string = file.add_string(".text");
+        file.shrtrtab_string = file.add_string(".shrtrtab");
+        file.symtab_string = file.add_string(".symtab");
+
+        let null_section = ElfSectionHeaderEntry {
+            name: 0,
+            kind: ElfSectionType::Null,
+            flags: 0,
+            addr: 0,
+            off: 0,
+            size: 0,
+            link: 0,
+            info: 0,
+            address_align: 0,
+            entry_size: 0,
+        };
+
+        file.sections.push(null_section);
+        file.section_data.push(vec![]);
+
+        let null_symbol = ElfSymbol {
+            name: 0,
+            info_binding: ElfSymbolBindings::Local,
+            info_type: ElfSymbolType::NoType,
+            other: 0,
+            shndx: 0,
+            value: 0,
+            size: 0,
+        };
+
+        file.symbols.push(null_symbol);
+
+        file
+    }
+
+    pub fn add_string(&mut self, string: &str) -> u32 {
+        let index = self.strings.len();
+        self.strings.extend_from_slice(string.as_bytes());
+        self.strings.push(0);
+        index as u32
+    }
+
+    pub fn add_code_section(&mut self, code: &[u8]) -> u16 {
+        let header = ElfSectionHeaderEntry {
+            name: self.text_string,
+            kind: ElfSectionType::ProgBits,
+            flags: ElfSectionFlags::ExecInstr as u64 | ElfSectionFlags::Alloc as u64,
+            addr: 0,
+            off: 0,
+            size: code.len() as Elf64XWord,
+            link: 0,
+            info: 0,
+            address_align: 16,
+            entry_size: 0,
+        };
+
+        self.sections.push(header);
+        self.section_data.push(code.to_vec());
+
+        self.sections.len() as u16 - 1
+    }
+
+    pub fn add_shrtrtab_section(&mut self) {
+        let header = ElfSectionHeaderEntry {
+            name: self.shrtrtab_string,
+            kind: ElfSectionType::StrTab,
+            flags: ElfSectionFlags::Alloc as u64,
+            addr: 0,
+            off: 0,
+            size: self.strings.len() as Elf64XWord,
+            link: 0,
+            info: 0,
+            address_align: 0,
+            entry_size: 0,
+        };
+
+        self.sections.push(header);
+        // TODO: lots of cloning which should get removed
+        self.section_data.push(self.strings.clone());
+
+        self.string_table_index = self.sections.len() as u16 - 1;
+    }
+
+    pub fn add_symtab_section(&mut self) {
+        let header = ElfSectionHeaderEntry {
+            name: self.symtab_string,
+            kind: ElfSectionType::SymTab,
+            flags: 0,
+            addr: 0,
+            off: 0,
+            size: self.symbols.len() as Elf64XWord * 24,
+            link: 2,
+            info: 1,
+            address_align: 0,
+            entry_size: 24,
+        };
+        self.sections.push(header);
+
+        let mut data = vec![];
+        for symbol in &self.symbols {
+            data.extend_from_slice(&write_symbol(symbol));
+        }
+        self.section_data.push(data);
+    }
+
+    pub fn add_symbol(&mut self, symbol: ElfSymbol) {
+        self.symbols.push(symbol);
+    }
+
+    pub fn write_elf_file(&mut self) -> Vec<u8> {
+        // header
+        let header = ElfHeader {
+            ident_class: ElfClass::ElfClass64,
+            ident_data: ElfData::ElfData2Lsb,
+            ident_version: 1,
+            ident_osabi: ElfOsAbi::ElfOsAbiSysv,
+            ident_abi_version: 0,
+            kind: ElfType::Rel,
+            machine: 0x3E,
+            version: 0x1,
+            entry: 0,
+            phoff: 0,
+            shoff: 64,
+            flags: 0,
+            ehsize: 64,
+            phentsize: 0,
+            phnum: 0,
+            shentsize: 64,
+            shnum: self.sections.len() as u16,
+            shstrndx: self.string_table_index,
+        };
+
+        let mut result = vec![];
+        result.extend_from_slice(&write_elf_header(&header));
+
+        let mut current_offset: u64 = 64 + self.sections.len() as u64 * 64;
+
+        // section headers
+        for section in &mut self.sections {
+            section.off = current_offset;
+            current_offset += section.size;
+            result.extend_from_slice(&write_section_header(&section));
+        }
+
+        for data in &self.section_data {
+            result.extend_from_slice(data);
+        }
+
+        result
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum ElfClass {
@@ -271,10 +448,32 @@ mod tests {
             shstrndx: 2,
         };
         let result = write_elf_header(&header);
-        use std::io::Write;
-        std::fs::File::create("a2.o")
-            .unwrap()
-            .write(&result)
-            .unwrap();
+
+        assert_eq!(result.len(), 64);
+        assert_eq!(
+            result,
+            vec![
+                127, 69, 76, 70, // Magic
+                2,  // Class
+                1,  // Data
+                1,  // Version
+                0,  // OsAbi
+                0,  // Abi Version
+                0, 0, 0, 0, 0, 0, 0, // Padding
+                1, 0, // Type
+                62, 0, // Machine
+                1, 0, 0, 0, // Version
+                0, 0, 0, 0, 0, 0, 0, 0, // Entry
+                0, 0, 0, 0, 0, 0, 0, 0, // Ph Offset
+                64, 0, 0, 0, 0, 0, 0, 0, // Sh Offset
+                0, 0, 0, 0, // Flags
+                64, 0, // Elf Header Size
+                0, 0, // Program Header Entry Size
+                0, 0, // Program Header Num
+                64, 0, // Section Header Entry Size
+                5, 0, // Section Header Num
+                2, 0 // String Table Index
+            ]
+        );
     }
 }
