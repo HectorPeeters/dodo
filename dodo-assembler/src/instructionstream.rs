@@ -26,6 +26,7 @@ impl<R, C> InstructionStream<R, C> {
         label
     }
 
+    #[allow(dead_code)]
     fn shift_labels_up(&mut self, offset: usize, range: Range<usize>) {
         for (key, value) in &mut self.labels {
             if range.contains(key) {
@@ -34,6 +35,7 @@ impl<R, C> InstructionStream<R, C> {
         }
     }
 
+    #[allow(dead_code)]
     fn shift_labels_down(&mut self, offset: usize, range: Range<usize>) {
         for (key, value) in &mut self.labels {
             if range.contains(key) {

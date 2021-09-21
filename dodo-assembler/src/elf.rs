@@ -175,7 +175,7 @@ impl ElfFile {
         for section in &mut self.sections {
             section.off = current_offset;
             current_offset += section.size;
-            result.extend_from_slice(&write_section_header(&section));
+            result.extend_from_slice(&write_section_header(section));
         }
 
         for data in &self.section_data {
@@ -183,6 +183,12 @@ impl ElfFile {
         }
 
         result
+    }
+}
+
+impl Default for ElfFile {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
