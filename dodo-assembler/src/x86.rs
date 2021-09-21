@@ -41,10 +41,9 @@ impl Architecture for X86 {
         use Instruction::*;
         match instr {
             MovImm(r, c) => {
-                //let mut result = vec![0xb8 + r.as_byte()];
-                //result.extend(c.to_le_bytes().to_vec());
-                //result
-                vec![]
+                let mut result = vec![0xb8 + r.as_byte()];
+                result.extend(c.to_le_bytes().to_vec());
+                result
             }
             Ret(r) => {
                 vec![
