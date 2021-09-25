@@ -271,11 +271,15 @@ mod tests {
 
     #[test]
     fn parse_return_statement() -> Result<()> {
-        let stmts = parse_statements("return 9;")?;
+        let stmts = parse_statements("return 456 - 123;")?;
 
         assert_eq!(
             stmts[0],
-            Statement::Return(Expression::Constant(9, Type::UInt8()))
+            Statement::Return(Expression::BinaryOperator(
+                BinaryOperatorType::Subtract,
+                Box::new(Expression::Constant(456, Type::UInt8())),
+                Box::new(Expression::Constant(123, Type::UInt8()))
+            ))
         );
 
         Ok(())

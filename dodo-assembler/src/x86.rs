@@ -48,7 +48,6 @@ impl Architecture for X86 {
     type Constant = u32;
 
     fn emit_instruction(instr: Instruction<Self::OutputRegister, Self::Constant>) -> Vec<u8> {
-        println!("{:?}", instr);
         use Instruction::*;
         match instr {
             MovImm(r, c) => {
@@ -105,7 +104,7 @@ mod tests {
 
     #[test]
     fn x86_add_reg() {
-        let registers_from = [
+        let registers_to = [
             X86Register::Eax,
             X86Register::Ecx,
             X86Register::Edx,
@@ -115,12 +114,12 @@ mod tests {
             X86Register::Esi,
             X86Register::Edi,
         ];
-        let registers_to = [X86Register::Eax, X86Register::Ecx];
+        let registers_from = [X86Register::Eax, X86Register::Ecx];
 
         let mut result = vec![];
 
-        for to in registers_to {
-            for from in registers_from {
+        for from in registers_from {
+            for to in registers_to {
                 result.extend_from_slice(&X86::gen_add_reg_reg(&from, &to));
             }
         }

@@ -14,7 +14,7 @@ pub mod tokenizer;
 pub mod visitor;
 
 fn main() -> Result<()> {
-    let input = "return 9 + 2;";
+    let input = "return 9 + 9;";
     let tokens = tokenizer::tokenize(input)?;
     let mut parser = Parser::<<X86 as Architecture>::Constant>::new(&tokens);
 
@@ -25,8 +25,6 @@ fn main() -> Result<()> {
 
     let instr_stream = Assembler::allocate_registers(codegen.instruction_stream);
     let code = Assembler::assemble::<X86>(instr_stream);
-
-    println!("{:02x?}", code);
 
     let mut elf_file = ElfFile::new();
 
