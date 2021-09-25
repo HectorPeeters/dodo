@@ -1,17 +1,17 @@
 use crate::ast::*;
 use crate::visitor::{ExpressionVisitor, StatementVisitor};
+use dodo_assembler::architecture::Architecture;
 use dodo_assembler::{instruction::Instruction, instructionstream::InstructionStream};
 
 type Register = u32;
-type Constant = u32;
 
 #[derive(Debug)]
-pub struct CodeGenerator {
-    pub instruction_stream: InstructionStream<Register, Constant>,
+pub struct CodeGenerator<A: Architecture> {
+    pub instruction_stream: InstructionStream<Register, A::Constant>,
     next_register: Register,
 }
 
-impl CodeGenerator {
+impl<A: Architecture> CodeGenerator<A> {
     pub fn new() -> Self {
         Self {
             instruction_stream: InstructionStream::new(),
@@ -26,56 +26,34 @@ impl CodeGenerator {
     }
 }
 
-impl Default for CodeGenerator {
+impl<A: Architecture> Default for CodeGenerator<A> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ExpressionVisitor<Register> for CodeGenerator {
-    fn visit_binary_operator(&mut self, _binary: &BinaryOperatorExpression) -> Register {
-        unreachable!()
-    }
-
-    fn visit_unary_operator(&mut self, _unary: &UnaryOperatorExpression) -> Register {
-        unreachable!()
-    }
-
-    fn visit_function_call(&mut self, _function: &FunctionCallExpression) -> Register {
-        unreachable!()
-    }
-
-    fn visit_cast(&mut self, _cast: &CastExpression) -> Register {
-        unreachable!()
-    }
-
-    fn visit_constant(&mut self, constant: &ConstantExpression) -> Register {
-        let reg = self.new_reg();
-        self.instruction_stream
-            .instr(Instruction::MovImm(reg, constant.value));
-        reg
+impl<A: Architecture> ExpressionVisitor<Register, A::Constant> for CodeGenerator<A> {
+    fn visit_expression(&mut self, expr: &Expression<A::Constant>) -> Register {
+        match expr {
+            Expression::Constant(value, _value_type) => {
+                let reg = self.new_reg();
+                self.instruction_stream
+                    .instr(Instruction::MovImm(reg, *value));
+                reg
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
-impl StatementVisitor<()> for CodeGenerator {
-    fn visit_block(&mut self, _block: &BlockStatement) {
-        todo!()
-    }
-
-    fn visit_declaration(&mut self, _declaration: &DeclarationStatement) {
-        todo!()
-    }
-
-    fn visit_assignment(&mut self, _assignment: &AssignmentStatement) {
-        todo!()
-    }
-
-    fn visit_return(&mut self, ret: &ReturnStatement) {
-        let reg = self.visit_expression(&ret.value);
-        self.instruction_stream.instr(Instruction::Ret(reg));
-    }
-
-    fn visit_function(&mut self, _function: &FunctionStatement) {
-        todo!()
+impl<A: Architecture> StatementVisitor<(), A::Constant> for CodeGenerator<A> {
+    fn visit_statement(&mut self, stmt: &Statement<A::Constant>) {
+        match stmt {
+            Statement::Return(expr) => {
+                let reg = self.visit_expression(expr);
+                self.instruction_stream.instr(Instruction::Ret(reg));
+            }
+            _ => unreachable!(),
+        }
     }
 }

@@ -1,7 +1,7 @@
 pub type Label = usize;
 
 #[derive(Debug)]
-pub enum Instruction<R, C> {
+pub enum Instruction<R, C: Copy> {
     MovImm(R, C),
 
     Jmp(Label),

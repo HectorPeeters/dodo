@@ -6,9 +6,9 @@ use crate::x86::X86Register;
 pub struct Assembler {}
 
 impl Assembler {
-    pub fn allocate_registers(
-        stream: InstructionStream<u32, u32>,
-    ) -> InstructionStream<X86Register, u32> {
+    pub fn allocate_registers<C: Copy>(
+        stream: InstructionStream<u32, C>,
+    ) -> InstructionStream<X86Register, C> {
         assert!(stream.get_max_registers() <= 4);
 
         let mut new_stream = InstructionStream::new();

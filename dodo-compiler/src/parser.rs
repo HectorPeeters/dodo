@@ -1,415 +1,279 @@
-use dodo_core::Type;
-use nom::{
-    branch::alt,
-    bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, char, multispace0, one_of},
-    combinator::{map, recognize, value},
-    error::ParseError,
-    multi::{many0, many1},
-    sequence::{delimited, pair, terminated, tuple},
-    IResult,
+use std::collections::HashMap;
+use std::str::FromStr;
+
+use crate::{
+    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
+    tokenizer::{Token, TokenType},
 };
+use dodo_core::{Error, Result, Type};
 
-use crate::ast::{
-    BinaryOperatorExpression, BinaryOperatorType, BlockStatement, ConstantExpression,
-    DeclarationStatement, Expression, ReturnStatement, Statement, UnaryOperatorExpression,
-    UnaryOperatorType,
-};
+type PrefixParseFn<'a, C> = fn(&mut Parser<'a, C>) -> Result<Expression<C>>;
+type InfixParseFn<'a, C> =
+    fn(&mut Parser<'a, C>, left: Expression<C>, precedence: usize) -> Result<Expression<C>>;
 
-macro_rules! ws {
-    ($x: expr) => {
-        delimited(multispace0, $x, multispace0)
-    };
+pub struct Parser<'a, C> {
+    tokens: &'a [Token],
+    index: usize,
+    prefix_fns: HashMap<TokenType, PrefixParseFn<'a, C>>,
+    infix_fns: HashMap<TokenType, (InfixParseFn<'a, C>, usize)>,
 }
 
-fn parse_type<'a, E>(input: &'a str) -> IResult<&'a str, Type, E>
-where
-    E: ParseError<&'a str>,
-{
-    alt((
-        value(Type::Nil(), tag("nil")),
-        value(Type::UInt8(), tag("u8")),
-        value(Type::UInt16(), tag("u16")),
-        value(Type::UInt32(), tag("u32")),
-    ))(input)
-}
+impl<'a, C: FromStr> Parser<'a, C> {
+    pub fn new(tokens: &'a [Token]) -> Self {
+        let mut prefix_fns: HashMap<_, PrefixParseFn<'a, C>> = HashMap::new();
+        prefix_fns.insert(TokenType::Identifier, Self::parse_identifier);
+        prefix_fns.insert(TokenType::Minus, Self::parse_prefix_expression);
+        prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
 
-fn parse_unary_operator_type<'a, E>(input: &'a str) -> IResult<&'a str, UnaryOperatorType, E>
-where
-    E: ParseError<&'a str>,
-{
-    alt((
-        value(UnaryOperatorType::Negate, tag("-")),
-        value(UnaryOperatorType::Ref, tag("&")),
-        value(UnaryOperatorType::Deref, tag("*")),
-    ))(input)
-}
+        let mut infix_fns: HashMap<_, (InfixParseFn<'a, C>, usize)> = HashMap::new();
+        infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 3));
+        infix_fns.insert(TokenType::Minus, (Self::parse_binary_operator, 3));
+        infix_fns.insert(TokenType::Asterix, (Self::parse_binary_operator, 4));
+        infix_fns.insert(TokenType::Slash, (Self::parse_binary_operator, 4));
 
-fn parse_binary_operator_type<'a, E>(input: &'a str) -> IResult<&'a str, BinaryOperatorType, E>
-where
-    E: ParseError<&'a str>,
-{
-    alt((
-        value(BinaryOperatorType::Add, tag("+")),
-        value(BinaryOperatorType::Subtract, tag("-")),
-        value(BinaryOperatorType::Multiply, tag("*")),
-        value(BinaryOperatorType::Divide, tag("/")),
-    ))(input)
-}
+        Self {
+            tokens,
+            index: 0,
+            prefix_fns,
+            infix_fns,
+        }
+    }
 
-fn parse_identifier<'a, E>(input: &'a str) -> IResult<&'a str, String, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        recognize(pair(
-            alt((alpha1, tag("_"))),
-            many0(alt((alphanumeric1, tag("_")))),
-        )),
-        |x: &str| x.to_string(),
-    )(input)
-}
+    pub fn eof(&self) -> bool {
+        self.index >= self.tokens.len()
+    }
 
-pub fn parse_statement<'a, E>(input: &'a str) -> IResult<&'a str, Statement, E>
-where
-    E: ParseError<&'a str>,
-{
-    alt((
-        map(parse_block, Statement::Block),
-        map(parse_return, Statement::Return),
-        map(parse_declaration, Statement::Declaration),
-    ))(input)
-}
+    fn peek(&self) -> Result<&'a Token> {
+        if self.eof() {
+            Err(Error::TokenStreamOutOfBounds())
+        } else {
+            Ok(&self.tokens[self.index])
+        }
+    }
 
-fn parse_block<'a, E>(input: &'a str) -> IResult<&'a str, BlockStatement, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        delimited(char('{'), ws!(many0(parse_statement)), char('}')),
-        |x| BlockStatement { children: x },
-    )(input)
-}
+    fn consume(&mut self) -> Result<&'a Token> {
+        let token = self.peek()?;
+        self.index += 1;
+        Ok(token)
+    }
 
-fn parse_return<'a, E>(input: &'a str) -> IResult<&'a str, ReturnStatement, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        delimited(tag("return"), ws!(parse_expression), char(';')),
-        |x| ReturnStatement { value: x },
-    )(input)
-}
+    fn consume_assert(&mut self, token_type: TokenType) -> Result<&'a Token> {
+        let token = self.consume()?;
+        assert_eq!(token.token_type, token_type);
+        Ok(token)
+    }
 
-fn parse_declaration<'a, E>(input: &'a str) -> IResult<&'a str, DeclarationStatement, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        tuple((
-            tag("let"),
-            ws!(parse_identifier),
-            ws!(char(':')),
-            parse_type,
-            ws!(char(';')),
-        )),
-        |x| DeclarationStatement {
-            name: x.1,
-            variable_type: x.3,
-        },
-    )(input)
-}
+    fn parse_identifier(&mut self) -> Result<Expression<C>> {
+        let token = self.consume_assert(TokenType::Identifier)?;
+        Ok(Expression::VariableRef(token.value.clone()))
+    }
 
-fn parse_expression<'a, E>(input: &'a str) -> IResult<&'a str, Expression, E>
-where
-    E: ParseError<&'a str>,
-{
-    alt((
-        map(parse_unary_operator, Expression::UnaryOperator),
-        map(parse_constant, Expression::Constant),
-        map(parse_binary_operator, Expression::BinaryOperator),
-    ))(input)
-}
+    fn parse_prefix_expression(&mut self) -> Result<Expression<C>> {
+        let token = self.consume()?;
+        let unop_type = UnaryOperatorType::from_token_type(token.token_type);
+        let expression = self.parse_expression(0)?;
+        Ok(Expression::UnaryOperator(unop_type, Box::new(expression)))
+    }
 
-fn parse_constant<'a, E>(input: &'a str) -> IResult<&'a str, ConstantExpression, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        recognize(many1(terminated(one_of("0123456789"), many0(char('_'))))),
-        |x: &str| {
-            ConstantExpression::new(
-                x.parse()
-                    .unwrap_or_else(|_| panic!("Failed to parse int {}", x)),
-                Type::UInt32(),
-            )
-        },
-    )(input)
-}
+    fn parse_constant(&mut self) -> Result<Expression<C>> {
+        let token = self.consume_assert(TokenType::IntegerLiteral)?;
 
-fn parse_unary_operator<'a, E>(input: &'a str) -> IResult<&'a str, UnaryOperatorExpression, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        pair(parse_unary_operator_type, ws!(parse_expression)),
-        |x| UnaryOperatorExpression::new(x.0, Box::new(x.1)),
-    )(input)
-}
+        match token.value.parse::<C>() {
+            Ok(value) => Ok(Expression::Constant(value, Type::UInt8())),
+            Err(_) => Err(Error::ParserError(format!(
+                "Failed to parse {} to int",
+                token.value
+            ))),
+        }
+    }
 
-fn parse_binary_operator<'a, E>(input: &'a str) -> IResult<&'a str, BinaryOperatorExpression, E>
-where
-    E: ParseError<&'a str>,
-{
-    map(
-        tuple((
-            parse_expression,
-            ws!(parse_binary_operator_type),
-            parse_expression,
-        )),
-        |x| BinaryOperatorExpression::new(x.1, Box::new(x.0), Box::new(x.2)),
-    )(input)
+    fn parse_binary_operator(
+        &mut self,
+        left: Expression<C>,
+        precedence: usize,
+    ) -> Result<Expression<C>> {
+        let operator = self.consume()?;
+
+        let op_type = BinaryOperatorType::from_token_type(operator.token_type);
+        let right = self.parse_expression(precedence)?;
+        Ok(Expression::BinaryOperator(
+            op_type,
+            Box::new(left),
+            Box::new(right),
+        ))
+    }
+
+    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression<C>> {
+        let exit_tokens = vec![TokenType::SemiColon, TokenType::RightParen];
+
+        let token_type = self.peek()?.token_type;
+
+        let mut left = match self.prefix_fns.get(&token_type) {
+            Some(func) => func(self),
+            None => Err(Error::ParserError(format!(
+                "Did not expect token: {:?} while parsing prefix expression",
+                token_type
+            ))),
+        }?;
+
+        if self.eof() || exit_tokens.contains(&self.peek()?.token_type) {
+            return Ok(left);
+        }
+
+        while !self.eof() {
+            let token_type = self.peek()?.token_type;
+
+            if exit_tokens.contains(&token_type) {
+                break;
+            }
+
+            left = match self.infix_fns.get(&token_type) {
+                Some((func, prec)) => {
+                    let prec = *prec;
+                    if precedence >= prec {
+                        break;
+                    }
+                    func(self, left, prec)
+                }
+                None => Err(Error::ParserError(format!(
+                    "Did not expect token: {:?} while parsing infix expression",
+                    token_type
+                ))),
+            }?;
+        }
+
+        Ok(left)
+    }
+
+    pub fn parse_statement(&mut self) -> Result<Statement<C>> {
+        assert_eq!(self.consume()?.token_type, TokenType::Return);
+
+        let expr = self.parse_expression(0)?;
+
+        assert_eq!(self.consume()?.token_type, TokenType::SemiColon);
+
+        Ok(Statement::Return(expr))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Type::*;
+    use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
 
-    #[test]
-    fn parser_type() {
-        assert_eq!(parse_type::<()>("nil"), Ok(("", Nil())));
-        assert_eq!(parse_type::<()>("u8"), Ok(("", UInt8())));
-        assert_eq!(parse_type::<()>("u16"), Ok(("", UInt16())));
-        assert_eq!(parse_type::<()>("u32"), Ok(("", UInt32())));
+    fn parse_statements(input: &str) -> Result<Vec<Statement<u64>>> {
+        let tokens = tokenize(input)?;
 
-        assert_eq!(parse_type::<()>("u8 tust"), Ok((" tust", UInt8())));
+        let mut parser = Parser::new(&tokens);
+        let mut result = vec![];
+        while !parser.eof() {
+            result.push(parser.parse_statement()?);
+        }
+
+        Ok(result)
+    }
+
+    fn parse_expressions(input: &str) -> Result<Vec<Expression<u64>>> {
+        let tokens = tokenize(input)?;
+
+        let mut parser = Parser::new(&tokens);
+        let mut result = vec![];
+        while !parser.eof() {
+            result.push(parser.parse_expression(0)?);
+        }
+
+        Ok(result)
     }
 
     #[test]
-    fn parser_unop() {
-        assert_eq!(
-            parse_unary_operator_type::<()>("-"),
-            Ok(("", UnaryOperatorType::Negate))
-        );
-        assert_eq!(
-            parse_unary_operator_type::<()>("&"),
-            Ok(("", UnaryOperatorType::Ref))
-        );
-        assert_eq!(
-            parse_unary_operator_type::<()>("*"),
-            Ok(("", UnaryOperatorType::Deref))
-        );
+    fn parse_constant() -> Result<()> {
+        let exprs = parse_expressions("123")?;
+
+        assert_eq!(exprs[0], Expression::Constant(123, Type::UInt8()));
+
+        Ok(())
     }
 
     #[test]
-    fn parser_binop() {
+    fn parse_unary_op() -> Result<()> {
+        let exprs = parse_expressions("-123")?;
+
         assert_eq!(
-            parse_binary_operator_type::<()>("+"),
-            Ok(("", BinaryOperatorType::Add))
+            exprs[0],
+            Expression::UnaryOperator(
+                UnaryOperatorType::Negate,
+                Box::new(Expression::Constant(123, Type::UInt8()))
+            )
         );
-        assert_eq!(
-            parse_binary_operator_type::<()>("-"),
-            Ok(("", BinaryOperatorType::Subtract))
-        );
-        assert_eq!(
-            parse_binary_operator_type::<()>("*"),
-            Ok(("", BinaryOperatorType::Multiply))
-        );
-        assert_eq!(
-            parse_binary_operator_type::<()>("/"),
-            Ok(("", BinaryOperatorType::Divide))
-        );
+
+        Ok(())
     }
 
     #[test]
-    fn parser_identifier() {
-        assert_eq!(parse_identifier::<()>("test"), Ok(("", "test".to_string())));
-        assert_eq!(parse_identifier::<()>("t"), Ok(("", "t".to_string())));
+    fn parse_binary_op() -> Result<()> {
+        let exprs = parse_expressions("456 - 123")?;
+
+        assert_eq!(
+            exprs[0],
+            Expression::BinaryOperator(
+                BinaryOperatorType::Subtract,
+                Box::new(Expression::Constant(456, Type::UInt8())),
+                Box::new(Expression::Constant(123, Type::UInt8()))
+            )
+        );
+
+        Ok(())
     }
 
     #[test]
-    fn parser_block() {
-        assert_eq!(
-            parse_block::<()>("{}"),
-            Ok(("", BlockStatement::new(vec![])))
-        );
-        assert_eq!(
-            parse_block::<()>("{ }"),
-            Ok(("", BlockStatement::new(vec![])))
-        );
-        assert_eq!(
-            parse_block::<()>("{{}}"),
-            Ok((
-                "",
-                BlockStatement::new(vec![Statement::Block(BlockStatement::new(vec![]))])
-            ))
-        );
-        assert_eq!(
-            parse_block::<()>("{ { }  }"),
-            Ok((
-                "",
-                BlockStatement::new(vec![Statement::Block(BlockStatement::new(vec![]))])
-            ))
-        );
-    }
-
-    #[test]
-    fn parser_declaration() {
-        assert_eq!(
-            parse_declaration::<()>("let x: u32;"),
-            Ok(("", DeclarationStatement::new("x".to_string(), UInt32())))
-        );
-        assert_eq!(
-            parse_declaration::<()>("let x:u32;"),
-            Ok(("", DeclarationStatement::new("x".to_string(), UInt32())))
-        );
-        assert_eq!(
-            parse_declaration::<()>("let x : u32;"),
-            Ok(("", DeclarationStatement::new("x".to_string(), UInt32())))
-        );
-    }
-
-    #[test]
-    fn parser_statement() {
-        assert_eq!(
-            parse_statement::<()>("{ let x: u32; }"),
-            Ok((
-                "",
-                Statement::Block(BlockStatement::new(vec![Statement::Declaration(
-                    DeclarationStatement::new("x".to_string(), UInt32())
-                )]))
-            ))
-        );
-        assert_eq!(
-            parse_statement::<()>("{ let x: u32;\nlet y: u8; }"),
-            Ok((
-                "",
-                Statement::Block(BlockStatement::new(vec![
-                    Statement::Declaration(DeclarationStatement::new("x".to_string(), UInt32())),
-                    Statement::Declaration(DeclarationStatement::new("y".to_string(), UInt8()))
-                ]))
-            ))
-        );
-    }
-
-    #[test]
-    fn parser_constant() {
-        assert_eq!(
-            parse_constant::<()>("12345"),
-            Ok(("", ConstantExpression::new(12345, UInt32())))
-        );
-        assert_eq!(
-            parse_constant::<()>("0"),
-            Ok(("", ConstantExpression::new(0, UInt32())))
-        );
-    }
-
-    #[test]
-    fn parser_unary_operator() {
-        assert_eq!(
-            parse_unary_operator::<()>("-12"),
-            Ok((
-                "",
-                UnaryOperatorExpression::new(
-                    UnaryOperatorType::Negate,
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
-        assert_eq!(
-            parse_unary_operator::<()>("- 12"),
-            Ok((
-                "",
-                UnaryOperatorExpression::new(
-                    UnaryOperatorType::Negate,
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
-        assert_eq!(
-            parse_unary_operator::<()>("--12"),
-            Ok((
-                "",
-                UnaryOperatorExpression::new(
-                    UnaryOperatorType::Negate,
-                    Box::new(Expression::UnaryOperator(UnaryOperatorExpression::new(
-                        UnaryOperatorType::Negate,
-                        Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                    )))
-                )
-            ))
-        );
-        assert_eq!(
-            parse_unary_operator::<()>("&12"),
-            Ok((
-                "",
-                UnaryOperatorExpression::new(
-                    UnaryOperatorType::Ref,
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
-        assert_eq!(
-            parse_unary_operator::<()>("*12"),
-            Ok((
-                "",
-                UnaryOperatorExpression::new(
-                    UnaryOperatorType::Deref,
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
-    }
-
-    #[test]
-    fn parser_binary_operator() {
-        assert_eq!(
-            parse_binary_operator::<()>("1+12"),
-            Ok((
-                "",
-                BinaryOperatorExpression::new(
-                    BinaryOperatorType::Add,
-                    Box::new(Expression::Constant(ConstantExpression::new(1, UInt32()))),
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
+    fn parse_binop_precedence_1() -> Result<()> {
+        let exprs = parse_expressions("456 - 123 * 789")?;
 
         assert_eq!(
-            parse_binary_operator::<()>("1 -12"),
-            Ok((
-                "",
-                BinaryOperatorExpression::new(
-                    BinaryOperatorType::Subtract,
-                    Box::new(Expression::Constant(ConstantExpression::new(1, UInt32()))),
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
-        );
-
-        assert_eq!(
-            parse_binary_operator::<()>("1* 12"),
-            Ok((
-                "",
-                BinaryOperatorExpression::new(
+            exprs[0],
+            Expression::BinaryOperator(
+                BinaryOperatorType::Subtract,
+                Box::new(Expression::Constant(456, Type::UInt8())),
+                Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Constant(ConstantExpression::new(1, UInt32()))),
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
+                    Box::new(Expression::Constant(123, Type::UInt8())),
+                    Box::new(Expression::Constant(789, Type::UInt8()))
+                ))
+            )
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn parse_binop_precedence_2() -> Result<()> {
+        let exprs = parse_expressions("456 * 123 - 789")?;
+
         assert_eq!(
-            parse_binary_operator::<()>("1 / 12"),
-            Ok((
-                "",
-                BinaryOperatorExpression::new(
-                    BinaryOperatorType::Divide,
-                    Box::new(Expression::Constant(ConstantExpression::new(1, UInt32()))),
-                    Box::new(Expression::Constant(ConstantExpression::new(12, UInt32())))
-                )
-            ))
+            exprs[0],
+            Expression::BinaryOperator(
+                BinaryOperatorType::Subtract,
+                Box::new(Expression::BinaryOperator(
+                    BinaryOperatorType::Multiply,
+                    Box::new(Expression::Constant(456, Type::UInt8())),
+                    Box::new(Expression::Constant(123, Type::UInt8()))
+                )),
+                Box::new(Expression::Constant(789, Type::UInt8())),
+            )
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_return_statement() -> Result<()> {
+        let stmts = parse_statements("return 9;")?;
+
+        assert_eq!(
+            stmts[0],
+            Statement::Return(Expression::Constant(9, Type::UInt8()))
+        );
+
+        Ok(())
     }
 }

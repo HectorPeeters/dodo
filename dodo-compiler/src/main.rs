@@ -1,19 +1,26 @@
-use crate::visitor::*;
+use crate::{parser::Parser, visitor::*};
 use dodo_assembler::{
+    architecture::Architecture,
     assembler::Assembler,
     elf::{ElfFile, ElfSymbol, ElfSymbolBindings, ElfSymbolType},
     x86::X86,
 };
+use dodo_core::Result;
 
 pub mod ast;
 pub mod code_generator;
 pub mod parser;
+pub mod tokenizer;
 pub mod visitor;
 
-fn main() {
-    let ast = parser::parse_statement::<()>("return 9;").unwrap().1;
+fn main() -> Result<()> {
+    let input = "return 9;";
+    let tokens = tokenizer::tokenize(input)?;
+    let mut parser = Parser::<<X86 as Architecture>::Constant>::new(&tokens);
 
-    let mut codegen = code_generator::CodeGenerator::new();
+    let ast = parser.parse_statement()?;
+
+    let mut codegen = code_generator::CodeGenerator::<X86>::new();
     codegen.visit_statement(&ast);
 
     let instr_stream = Assembler::allocate_registers(codegen.instruction_stream);
@@ -42,4 +49,6 @@ fn main() {
         .unwrap()
         .write_all(&elf_file.write_elf_file())
         .unwrap();
+
+    Ok(())
 }

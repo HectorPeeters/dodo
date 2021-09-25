@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 #[derive(Debug)]
-pub struct InstructionStream<R, C> {
+pub struct InstructionStream<R, C: Copy> {
     instructions: Vec<Instruction<R, C>>,
     labels: HashMap<usize, usize>,
 }
 
-impl<R, C> InstructionStream<R, C> {
+impl<R, C: Copy> InstructionStream<R, C> {
     pub fn new() -> Self {
         Self {
             instructions: vec![],
@@ -45,13 +45,13 @@ impl<R, C> InstructionStream<R, C> {
     }
 }
 
-impl<R, C> Default for InstructionStream<R, C> {
+impl<R, C: Copy> Default for InstructionStream<R, C> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<C> InstructionStream<u32, C> {
+impl<C: Copy> InstructionStream<u32, C> {
     pub fn get_max_registers(&self) -> u32 {
         let mut registers = vec![];
 
@@ -71,7 +71,7 @@ impl<C> InstructionStream<u32, C> {
     }
 }
 
-impl<R, C> Iterator for InstructionStream<R, C> {
+impl<R, C: Copy> Iterator for InstructionStream<R, C> {
     type Item = Instruction<R, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
