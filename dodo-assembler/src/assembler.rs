@@ -9,28 +9,20 @@ impl Assembler {
     pub fn allocate_registers<C: Copy>(
         stream: InstructionStream<u32, C>,
     ) -> InstructionStream<X86Register, C> {
+        use Instruction::*;
+
         assert!(stream.get_max_registers() <= 4);
 
-        let mut new_stream = InstructionStream::new();
-
-        for instruction in stream {
-            use Instruction::*;
-
-            match instruction {
-                MovImm(r, c) => {
-                    new_stream.instr(Instruction::MovImm(X86Register::from_index(r), c))
-                }
-                Ret(r) => new_stream.instr(Instruction::Ret(X86Register::from_index(r))),
-                Add(a, b, c) => new_stream.instr(Instruction::Add(
-                    X86Register::from_index(a),
-                    X86Register::from_index(b),
-                    X86Register::from_index(c),
-                )),
-                _ => todo!(),
-            }
-        }
-
-        new_stream
+        stream.map(|instruction| match instruction {
+            MovImm(r, c) => Instruction::MovImm(X86Register::from_index(r), c),
+            Ret(r) => Instruction::Ret(X86Register::from_index(r)),
+            Add(a, b, c) => Instruction::Add(
+                X86Register::from_index(a),
+                X86Register::from_index(b),
+                X86Register::from_index(c),
+            ),
+            _ => todo!(),
+        })
     }
 
     pub fn assemble<A: Architecture>(

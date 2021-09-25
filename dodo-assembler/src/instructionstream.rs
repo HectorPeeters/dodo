@@ -16,6 +16,13 @@ impl<R, C: Copy> InstructionStream<R, C> {
         }
     }
 
+    fn new_internal(instructions: Vec<Instruction<R, C>>, labels: HashMap<usize, usize>) -> Self {
+        Self {
+            instructions,
+            labels,
+        }
+    }
+
     pub fn instr(&mut self, instr: Instruction<R, C>) {
         self.instructions.push(instr);
     }
@@ -42,6 +49,17 @@ impl<R, C: Copy> InstructionStream<R, C> {
                 *value -= offset;
             }
         }
+    }
+
+    pub fn map<L, K, F>(self, func: F) -> InstructionStream<L, K>
+    where
+        K: Copy,
+        F: Fn(Instruction<R, C>) -> Instruction<L, K>,
+    {
+        InstructionStream::new_internal(
+            self.instructions.into_iter().map(|x| func(x)).collect(),
+            self.labels,
+        )
     }
 }
 
