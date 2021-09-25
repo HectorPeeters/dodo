@@ -21,6 +21,11 @@ impl Assembler {
                     new_stream.instr(Instruction::MovImm(X86Register::from_index(r), c))
                 }
                 Ret(r) => new_stream.instr(Instruction::Ret(X86Register::from_index(r))),
+                Add(a, b, c) => new_stream.instr(Instruction::Add(
+                    X86Register::from_index(a),
+                    X86Register::from_index(b),
+                    X86Register::from_index(c),
+                )),
                 _ => todo!(),
             }
         }

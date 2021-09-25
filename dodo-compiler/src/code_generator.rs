@@ -41,6 +41,17 @@ impl<A: Architecture> ExpressionVisitor<Register, A::Constant> for CodeGenerator
                     .instr(Instruction::MovImm(reg, *value));
                 reg
             }
+            Expression::BinaryOperator(op, left, right) => {
+                let left_reg = self.visit_expression(left);
+                let right_reg = self.visit_expression(right);
+                let output_reg = self.new_reg();
+                let instruction = match op {
+                    BinaryOperatorType::Add => Instruction::Add(left_reg, right_reg, output_reg),
+                    _ => unreachable!(),
+                };
+                self.instruction_stream.instr(instruction);
+                output_reg
+            }
             _ => unreachable!(),
         }
     }

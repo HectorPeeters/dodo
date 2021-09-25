@@ -145,14 +145,18 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(left)
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement<C>> {
-        assert_eq!(self.consume()?.token_type, TokenType::Return);
-
+    fn parse_return_statement(&mut self) -> Result<Statement<C>> {
         let expr = self.parse_expression(0)?;
-
-        assert_eq!(self.consume()?.token_type, TokenType::SemiColon);
-
+        self.consume_assert(TokenType::SemiColon)?;
         Ok(Statement::Return(expr))
+    }
+
+    pub fn parse_statement(&mut self) -> Result<Statement<C>> {
+        let token = self.consume()?;
+        match token.token_type {
+            TokenType::Return => self.parse_return_statement(),
+            _ => unreachable!(),
+        }
     }
 }
 
