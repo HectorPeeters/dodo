@@ -1,4 +1,3 @@
-use crate::{parser::Parser, visitor::*};
 use dodo_assembler::{
     architecture::Architecture,
     assembler::Assembler,
@@ -6,11 +5,11 @@ use dodo_assembler::{
     x86::X86,
 };
 use dodo_core::Result;
+use dodo_parser::{parser::Parser, tokenizer};
 
-pub mod ast;
+use crate::visitor::StatementVisitor;
+
 pub mod code_generator;
-pub mod parser;
-pub mod tokenizer;
 pub mod visitor;
 
 fn main() -> Result<()> {

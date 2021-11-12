@@ -1,7 +1,7 @@
-use crate::ast::*;
 use crate::visitor::{ExpressionVisitor, StatementVisitor};
 use dodo_assembler::architecture::Architecture;
 use dodo_assembler::{instruction::Instruction, instructionstream::InstructionStream};
+use dodo_parser::ast::{BinaryOperatorType, Expression, Statement};
 
 type Register = u32;
 

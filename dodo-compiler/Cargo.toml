@@ -6,4 +6,4 @@ version = "0.1.0"
 [dependencies]
 dodo-core = { path = "../dodo-core" }
 dodo-assembler = { path = "../dodo-assembler" }
-regex = { version = "1.5.4", default-features = false, features = ["std"] }
+dodo-parser = { path = "../dodo-parser" }

@@ -1,4 +1,4 @@
-use crate::ast::*;
+use dodo_parser::ast::{Expression, Statement};
 
 pub trait StatementVisitor<T, C> {
     fn visit_statement(&mut self, stmt: &Statement<C>) -> T;

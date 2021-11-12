@@ -8,7 +8,7 @@ version = "0.1.0"
 dependencies = [
  "dodo-assembler",
  "dodo-core",
- "regex",
+ "dodo-parser",
 ]
 
 [[package]]
@@ -18,6 +18,14 @@ version = "0.1.0"
 [[package]]
 name = "dodo-core"
 version = "0.1.0"
+
+[[package]]
+name = "dodo-parser"
+version = "0.1.0"
+dependencies = [
+ "dodo-core",
+ "regex",
+]
 
 [[package]]
 name = "regex"

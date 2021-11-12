@@ -1,0 +1,8 @@
+[package]
+name = "dodo-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dodo-core = { path = "../dodo-core" }
+regex = { version = "1.5.4", default-features = false, features = ["std"] }
