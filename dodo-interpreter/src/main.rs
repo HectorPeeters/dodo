@@ -21,7 +21,7 @@ fn evaluate_expression(expr: &Expression<u32>) -> Result<Value> {
             }
         }
         Expression::Constant(value, typ) => match typ {
-            Type::Nil() | Type::Ref(_) => todo!(),
+            Type::Ref(_) => todo!(),
             _ => Ok(Value::Integer(*value)),
         },
         _ => todo!(),

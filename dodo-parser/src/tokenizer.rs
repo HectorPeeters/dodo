@@ -7,11 +7,11 @@ pub enum TokenType {
     Whitespace,
 
     Return,
+    Fn,
 
     UInt8,
     UInt16,
     UInt32,
-    UInt64,
     Bool,
 
     Identifier,
@@ -99,10 +99,10 @@ impl<'a> Lexer<'a> {
         let rules = vec![
             (r"[ \t\n\f]+", Whitespace),
             (r"return", Return),
+            (r"fn", Fn),
             (r"u8", UInt8),
             (r"u16", UInt16),
             (r"u32", UInt32),
-            (r"u64", UInt64),
             (r"bool", Bool),
             (r"[a-zA-Z][_a-zA-Z]*", Identifier),
             (r"[0-9]+", IntegerLiteral),
@@ -192,31 +192,30 @@ mod tests {
     }
 
     #[test]
-    fn tokenizeer_empty() {
+    fn tokenizer_empty() {
         let tokens = get_tokens("");
         assert_eq!(tokens.len(), 0);
     }
 
     #[test]
-    fn tokenizeer_types() {
-        let tokens = get_tokens("u8 u16 u32 u64 bool");
+    fn tokenizer_types() {
+        let tokens = get_tokens("u8 u16 u32 bool");
 
         assert_eq!(tokens[0].token_type, UInt8);
         assert_eq!(tokens[1].token_type, UInt16);
         assert_eq!(tokens[2].token_type, UInt32);
-        assert_eq!(tokens[3].token_type, UInt64);
-        assert_eq!(tokens[4].token_type, Bool);
+        assert_eq!(tokens[3].token_type, Bool);
     }
 
     #[test]
-    fn tokenizeer_keywords() {
+    fn tokenizer_keywords() {
         let tokens = get_tokens("return");
 
         assert_eq!(tokens[0].token_type, Return);
     }
 
     #[test]
-    fn tokenizeer_integer_literal() {
+    fn tokenizer_integer_literal() {
         let tokens = get_tokens("12 0 439394474 123");
 
         assert_eq!(tokens[0], Token::new(IntegerLiteral, "12"));
@@ -226,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenizeer_binary_operators() {
+    fn tokenizer_binary_operators() {
         let tokens = get_tokens("+-*/");
 
         assert_eq!(tokens[0].token_type, Plus);
@@ -236,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenizeer_test_comparison_operators() {
+    fn tokenizer_test_comparison_operators() {
         let tokens = get_tokens("== != < <= > >=");
 
         assert_eq!(tokens[0].token_type, DoubleEqual);
@@ -248,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenizeer_identifier() {
+    fn tokenizer_identifier() {
         let tokens = get_tokens("test test_with_underscore");
 
         assert_eq!(tokens[0], Token::new(Identifier, "test"));
@@ -256,14 +255,14 @@ mod tests {
     }
 
     #[test]
-    fn tokenizeer_identifier_error() {
+    fn tokenizer_identifier_error() {
         let tokens = tokenize("_identifier");
 
         assert!(tokens.is_err());
     }
 
     #[test]
-    fn tokenizeer_test_error() {
+    fn tokenizer_test_error() {
         let tokens = tokenize("return &;");
 
         assert!(tokens.is_err());

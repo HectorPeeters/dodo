@@ -1,10 +1,10 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Nil(),
     UInt8(),
     UInt16(),
     UInt32(),
     Ref(Box<Type>),
+    Void(),
 }
 
 impl Type {
@@ -15,11 +15,11 @@ impl Type {
         use Type::*;
 
         match self {
-            Nil() => unreachable!("We should never get the size of Nil"),
             UInt8() => 8,
             UInt16() => 16,
             UInt32() => 32,
             Ref(_) => 32,
+            Void() => unreachable!(),
         }
     }
 }
@@ -33,6 +33,6 @@ mod tests {
         assert_eq!(Type::UInt8().size(), 8);
         assert_eq!(Type::UInt16().size(), 16);
         assert_eq!(Type::UInt32().size(), 32);
-        assert_eq!(Type::Ref(Box::new(Type::Nil())).size(), 32);
+        assert_eq!(Type::Ref(Box::new(Type::UInt8())).size(), 32);
     }
 }

@@ -63,6 +63,16 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(token)
     }
 
+    fn parse_type(&mut self) -> Result<Type> {
+        let token = self.consume()?;
+        match token.token_type {
+            TokenType::UInt8 => Ok(Type::UInt8()),
+            TokenType::UInt16 => Ok(Type::UInt16()),
+            TokenType::UInt32 => Ok(Type::UInt32()),
+            _ => unreachable!(),
+        }
+    }
+
     fn parse_identifier(&mut self) -> Result<Expression<C>> {
         let token = self.consume_assert(TokenType::Identifier)?;
         Ok(Expression::VariableRef(token.value.clone()))
@@ -151,10 +161,42 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(Statement::Return(expr))
     }
 
+    pub fn parse_function(&mut self) -> Result<Statement<C>> {
+        self.consume_assert(TokenType::Fn)?;
+        let identifier = self.consume_assert(TokenType::Identifier)?;
+        self.consume_assert(TokenType::LeftParen)?;
+        self.consume_assert(TokenType::RightParen)?;
+
+        let mut return_type = Type::Void();
+
+        if self.peek()?.token_type == TokenType::Colon {
+            self.consume_assert(TokenType::Colon)?;
+            return_type = self.parse_type()?;
+        }
+
+        let body = self.parse_statement()?;
+        Ok(Statement::Function(
+            identifier.value.clone(),
+            vec![],
+            return_type,
+            Box::new(body),
+        ))
+    }
+
     pub fn parse_statement(&mut self) -> Result<Statement<C>> {
         let token = self.consume()?;
         match token.token_type {
             TokenType::Return => self.parse_return_statement(),
+            TokenType::LeftBrace => {
+                let mut statements = vec![];
+                while self.peek()?.token_type != TokenType::RightBrace {
+                    statements.push(self.parse_statement()?);
+                }
+
+                self.consume_assert(TokenType::RightBrace)?;
+
+                Ok(Statement::Block(statements))
+            }
             _ => unreachable!(),
         }
     }
@@ -187,6 +229,13 @@ mod tests {
         }
 
         Ok(result)
+    }
+
+    fn parse_function(input: &str) -> Result<Statement<u64>> {
+        let tokens = tokenize(input)?;
+
+        let mut parser = Parser::new(&tokens);
+        parser.parse_function()
     }
 
     #[test]
@@ -282,6 +331,61 @@ mod tests {
             ))
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn parse_empty_block() -> Result<()> {
+        let stmts = parse_statements("{}")?;
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0], Statement::Block(vec![]));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_nested_block() -> Result<()> {
+        let stmts = parse_statements("{{{}}}")?;
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(
+            stmts[0],
+            Statement::Block(vec![Statement::Block(vec![Statement::Block(vec![])])])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_simple_function() -> Result<()> {
+        let func = parse_function("fn test() { return 12; }")?;
+        assert_eq!(
+            func,
+            Statement::Function(
+                "test".to_string(),
+                vec![],
+                Type::Void(),
+                Box::new(Statement::Block(vec![Statement::Return(Expression::Constant(
+                    12,
+                    Type::UInt8()
+                ))]))
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_function_return_type() -> Result<()> {
+        let func = parse_function("fn test(): u8 { return 12; }")?;
+        assert_eq!(
+            func,
+            Statement::Function(
+                "test".to_string(),
+                vec![],
+                Type::UInt8(),
+                Box::new(Statement::Block(vec![Statement::Return(Expression::Constant(
+                    12,
+                    Type::UInt8()
+                ))]))
+            )
+        );
         Ok(())
     }
 }
