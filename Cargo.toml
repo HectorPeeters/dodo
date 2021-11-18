@@ -1,2 +1,2 @@
 [workspace]
-members = ["dodo-core", "dodo-assembler", "dodo-compiler", "dodo-parser"]
+members = ["dodo-core", "dodo-assembler", "dodo-compiler", "dodo-parser", "dodo-interpreter"]
