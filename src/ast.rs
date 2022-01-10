@@ -11,7 +11,7 @@ pub enum Statement<C> {
     While(Expression<C>, Box<Statement<C>>),
     If(Expression<C>, Box<Statement<C>>),
     Return(Expression<C>),
-    Function(String, Vec<Type>, Type, Box<Statement<C>>),
+    Function(String, Vec<(String, Type)>, Type, Box<Statement<C>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

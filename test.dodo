@@ -1,19 +1,21 @@
-fn main() {
+fn fib(n) {
     let prevprev;
     let prev;
     prev = 0;
     let curr;
     curr = 1;
 
-    let count;
-    count = 46;
-    while count {
+    while n {
         print(curr);
 
         prevprev = prev;
         prev = curr;
         curr = prev + prevprev;
 
-        count = count - 1;
+        n = n - 1;
     }
+}
+
+fn main() {
+    fib(10);
 }

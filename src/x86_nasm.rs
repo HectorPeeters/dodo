@@ -1,15 +1,91 @@
-use std::collections::HashMap;
-use std::io::Write;
+use std::{fmt, io::Write};
 
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement},
     error::Result,
+    scope::Scope,
 };
+
+#[derive(Debug, Clone, Copy)]
+pub enum Register {
+    Rax = 0,
+    Rcx,
+    Rbx,
+    Rsi,
+    Rdi,
+    Rsp,
+    Rbp,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+}
+
+impl From<usize> for Register {
+    fn from(x: usize) -> Self {
+        use Register::*;
+        match x {
+            0 => Rax,
+            1 => Rcx,
+            2 => Rbx,
+            3 => Rsi,
+            4 => Rdi,
+            5 => Rsp,
+            6 => Rbp,
+            7 => R8,
+            8 => R9,
+            9 => R10,
+            10 => R11,
+            11 => R12,
+            12 => R13,
+            13 => R14,
+            14 => R15,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Register::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                Rax => "rax",
+                Rcx => "rcx",
+                Rbx => "rbx",
+                Rsi => "rsi",
+                Rdi => "rdi",
+                Rsp => "rsp",
+                Rbp => "rbp",
+                R8 => "r8",
+                R9 => "r9",
+                R10 => "r10",
+                R11 => "r11",
+                R12 => "r12",
+                R13 => "r13",
+                R14 => "r14",
+                R15 => "r15",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ScopeLocation {
+    Reg(Register),
+    Stack(usize),
+}
 
 pub struct X86NasmGenerator<'a, T: Write> {
     writer: &'a mut T,
     label_index: usize,
-    current_variables: HashMap<String, usize>,
+    scope: Scope<ScopeLocation>,
     allocated_registers: [bool; 8],
 }
 
@@ -23,38 +99,24 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         Self {
             writer,
             label_index: 0,
-            current_variables: HashMap::new(),
+            scope: Scope::new(),
             allocated_registers: [false; 8],
         }
     }
 
-    fn get_next_register(&mut self) -> usize {
+    fn get_next_register(&mut self) -> Register {
         match self.allocated_registers.iter().position(|x| !x) {
             Some(reg) => {
                 self.allocated_registers[reg] = true;
-                reg
+                Register::from(reg + 8)
             }
             None => unreachable!(),
         }
     }
 
-    fn free_register(&mut self, reg: usize) {
-        assert!(self.allocated_registers[reg]);
-        self.allocated_registers[reg] = false;
-    }
-
-    fn get_register_name(index: usize) -> &'static str {
-        match index {
-            0 => "r8",
-            1 => "r9",
-            2 => "r10",
-            3 => "r11",
-            4 => "r12",
-            5 => "r13",
-            6 => "r14",
-            7 => "r15",
-            _ => unreachable!(),
-        }
+    fn free_register(&mut self, reg: Register) {
+        assert!(self.allocated_registers[reg as usize - 8]);
+        self.allocated_registers[reg as usize - 8] = false;
     }
 
     fn get_new_label(&mut self) -> usize {
@@ -78,29 +140,26 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
     pub fn generate_statement(&mut self, ast: &Statement<u64>) -> Result<()> {
         match ast {
             Statement::Declaration(name, _type) => {
-                self.current_variables
-                    .insert(name.clone(), self.current_variables.len());
+                self.scope
+                    .insert(name, ScopeLocation::Stack(self.scope.len()?))?;
                 writeln!(self.writer, "\tsub rsp, 16").unwrap();
             }
             Statement::Assignment(name, value) => {
-                let offset = self.current_variables[name];
+                let scope_entry = self.scope.find(name)?;
                 let value_reg = self.generate_expression(value).unwrap();
 
-                if offset == 0 {
-                    writeln!(
-                        self.writer,
-                        "\tmov [rbp], {}",
-                        Self::get_register_name(value_reg)
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(
-                        self.writer,
-                        "\tmov [rbp - {}], {}",
-                        offset * 16,
-                        Self::get_register_name(value_reg)
-                    )
-                    .unwrap();
+                match scope_entry {
+                    ScopeLocation::Stack(offset) => {
+                        if offset == 0 {
+                            writeln!(self.writer, "\tmov [rbp], {}", value_reg).unwrap();
+                        } else {
+                            writeln!(self.writer, "\tmov [rbp - {}], {}", offset * 16, value_reg)
+                                .unwrap();
+                        }
+                    }
+                    ScopeLocation::Reg(reg) => {
+                        writeln!(self.writer, "\tmov {}, {}", reg, value_reg).unwrap();
+                    }
                 }
 
                 self.free_register(value_reg);
@@ -109,7 +168,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
                 writeln!(self.writer, "L{}:", start_label).unwrap();
-                let register = Self::get_register_name(self.generate_expression(cond)?);
+                let register = self.generate_expression(cond)?;
                 writeln!(self.writer, "\ttest {}, {}", register, register).unwrap();
                 writeln!(self.writer, "\tjz L{}", end_label).unwrap();
                 self.generate_statement(stmt)?;
@@ -118,7 +177,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             }
             Statement::If(cond, stmt) => {
                 let end_label = self.get_new_label();
-                let register = Self::get_register_name(self.generate_expression(cond)?);
+                let register = self.generate_expression(cond)?;
                 writeln!(self.writer, "\ttest {}, {}", register, register).unwrap();
                 writeln!(self.writer, "\tjz L{}", end_label).unwrap();
                 self.generate_statement(stmt)?;
@@ -127,16 +186,18 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             Statement::Return(expr) => {
                 let value_reg = self.generate_expression(expr).unwrap();
 
-                writeln!(
-                    self.writer,
-                    "\tmov rax, {}",
-                    Self::get_register_name(value_reg)
-                )
-                .unwrap();
-
+                writeln!(self.writer, "\tmov rax, {}", value_reg).unwrap();
                 self.free_register(value_reg);
             }
-            Statement::Function(name, _arg_types, _ret_type, body) => {
+            Statement::Function(name, args, _ret_type, body) => {
+                self.scope.push();
+                assert!(args.len() <= 1);
+
+                if args.len() == 1 {
+                    self.scope
+                        .insert(&args[0].0, ScopeLocation::Reg(Register::Rdi))?;
+                }
+
                 writeln!(
                     self.writer,
                     "{}:",
@@ -152,6 +213,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 } else {
                     writeln!(self.writer, "\tret").unwrap();
                 }
+                self.scope.pop()?;
             }
             Statement::Block(stmts) => {
                 for stmt in stmts {
@@ -165,17 +227,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         Ok(())
     }
 
-    pub fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<usize> {
+    pub fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<Register> {
         match ast {
             Expression::Constant(value, _type) => {
                 let register = self.get_next_register();
-                writeln!(
-                    self.writer,
-                    "\tmov {}, {}",
-                    Self::get_register_name(register),
-                    value
-                )
-                .unwrap();
+                writeln!(self.writer, "\tmov {}, {}", register, value).unwrap();
                 Ok(register)
             }
             Expression::BinaryOperator(op, left, right) => {
@@ -183,24 +239,12 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 let right_reg = self.generate_expression(right)?;
                 match op {
                     BinaryOperatorType::Add => {
-                        writeln!(
-                            self.writer,
-                            "\tadd {}, {}",
-                            Self::get_register_name(left_reg),
-                            Self::get_register_name(right_reg)
-                        )
-                        .unwrap();
+                        writeln!(self.writer, "\tadd {}, {}", left_reg, right_reg).unwrap();
                         self.free_register(right_reg);
                         Ok(left_reg)
                     }
                     BinaryOperatorType::Subtract => {
-                        writeln!(
-                            self.writer,
-                            "\tsub {}, {}",
-                            Self::get_register_name(left_reg),
-                            Self::get_register_name(right_reg)
-                        )
-                        .unwrap();
+                        writeln!(self.writer, "\tsub {}, {}", left_reg, right_reg).unwrap();
                         self.free_register(right_reg);
                         Ok(left_reg)
                     }
@@ -208,23 +252,21 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 }
             }
             Expression::VariableRef(name) => {
-                let offset = self.current_variables[name];
+                let scope_location = self.scope.find(name)?;
                 let register = self.get_next_register();
-                if offset == 0 {
-                    writeln!(
-                        self.writer,
-                        "\tmov {}, [rbp]",
-                        Self::get_register_name(register),
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(
-                        self.writer,
-                        "\tmov {}, [rbp - {}]",
-                        Self::get_register_name(register),
-                        offset * 16,
-                    )
-                    .unwrap();
+
+                match scope_location {
+                    ScopeLocation::Stack(offset) => {
+                        if offset == 0 {
+                            writeln!(self.writer, "\tmov {}, [rbp]", register,).unwrap();
+                        } else {
+                            writeln!(self.writer, "\tmov {}, [rbp - {}]", register, offset * 16,)
+                                .unwrap();
+                        }
+                    }
+                    ScopeLocation::Reg(reg) => {
+                        writeln!(self.writer, "\tmov {}, {}", register, reg).unwrap();
+                    }
                 }
                 Ok(register)
             }
@@ -237,29 +279,24 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     let arg_register = self.generate_expression(&args[0])?;
                     writeln!(
                         self.writer,
-                        "\tmov rax, 0\n\tmov rdi, fmt\n\tmov rsi, {}\n\tcall printf",
-                        Self::get_register_name(arg_register)
+                        "\tmov rax, 0\n\tpush rdi\n\tmov rdi, fmt\n\tmov rsi, {}\n\tcall printf\n\tpop rdi", 
+                        arg_register
                     )
                     .unwrap();
                     self.free_register(arg_register);
                 } else {
                     if args.len() == 1 {
                         let arg_register = self.generate_expression(&args[0])?;
-                        writeln!(
-                            self.writer,
-                            "\tmov rdi, {}",
-                            Self::get_register_name(arg_register)
-                        )
-                        .unwrap();
+                        writeln!(self.writer, "\tpush rdi").unwrap();
+                        writeln!(self.writer, "\tmov rdi, {}", arg_register).unwrap();
                     }
 
                     writeln!(self.writer, "\tcall {}", name).unwrap();
-                    writeln!(
-                        self.writer,
-                        "\tmov {}, rax",
-                        Self::get_register_name(result_register)
-                    )
-                    .unwrap();
+                    writeln!(self.writer, "\tmov {}, rax", result_register).unwrap();
+
+                    if args.len() == 1 {
+                        writeln!(self.writer, "\tpop rdi").unwrap();
+                    }
                 }
                 Ok(result_register)
             }

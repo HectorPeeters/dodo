@@ -231,6 +231,11 @@ impl<'a, C: FromStr> Parser<'a, C> {
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
         self.consume_assert(TokenType::LeftParen)?;
+        let mut args = vec![];
+        if self.peek()?.token_type != TokenType::RightParen {
+            let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+            args.push((name, Type::UInt64()));
+        }
         self.consume_assert(TokenType::RightParen)?;
 
         let mut return_type = Type::Void();
@@ -243,7 +248,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         let body = self.parse_statement()?;
         Ok(Statement::Function(
             identifier.value.clone(),
-            vec![],
+            args,
             return_type,
             Box::new(body),
         ))

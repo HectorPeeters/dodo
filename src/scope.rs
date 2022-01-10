@@ -18,7 +18,7 @@ impl<T: Copy> Scope<T> {
                         "Identifier already defined in scope".to_string(),
                     ))
                 } else {
-                    last_scope.insert(name.to_owned(), data).unwrap();
+                    last_scope.insert(name.to_owned(), data);
                     Ok(())
                 }
             }
@@ -44,7 +44,17 @@ impl<T: Copy> Scope<T> {
     pub fn find(&self, name: &str) -> Result<T> {
         self.items
             .iter()
+            .rev()
             .find_map(|x| x.get(name).map(|x| *x))
-            .ok_or(Error::ScopeError("".to_string()))
+            .ok_or(Error::ScopeError(format!("{} not found in scope", name)))
+    }
+
+    pub fn len(&self) -> Result<usize> {
+        self.items
+            .last()
+            .ok_or(Error::ScopeError(
+                "Trying to get length of empty scope".to_string(),
+            ))
+            .map(|x| x.len())
     }
 }
