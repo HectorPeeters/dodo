@@ -3,9 +3,10 @@ use std::str::FromStr;
 
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
+    error::{Error, Result},
     tokenizer::{Token, TokenType},
+    types::Type,
 };
-use dodo_core::{Error, Result, Type};
 
 type PrefixParseFn<'a, C> = fn(&mut Parser<'a, C>) -> Result<Expression<C>>;
 type InfixParseFn<'a, C> =
@@ -21,7 +22,10 @@ pub struct Parser<'a, C> {
 impl<'a, C: FromStr> Parser<'a, C> {
     pub fn new(tokens: &'a [Token]) -> Self {
         let mut prefix_fns: HashMap<_, PrefixParseFn<'a, C>> = HashMap::new();
-        prefix_fns.insert(TokenType::Identifier, Self::parse_identifier);
+        prefix_fns.insert(
+            TokenType::Identifier,
+            Self::parse_identifier_or_function_call,
+        );
         prefix_fns.insert(TokenType::Minus, Self::parse_prefix_expression);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
 
@@ -51,6 +55,14 @@ impl<'a, C: FromStr> Parser<'a, C> {
         }
     }
 
+    fn peeks(&self, i: usize) -> Result<&'a Token> {
+        if self.index + i >= self.tokens.len() {
+            Err(Error::TokenStreamOutOfBounds())
+        } else {
+            Ok(&self.tokens[self.index + i])
+        }
+    }
+
     fn consume(&mut self) -> Result<&'a Token> {
         let token = self.peek()?;
         self.index += 1;
@@ -73,9 +85,26 @@ impl<'a, C: FromStr> Parser<'a, C> {
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<Expression<C>> {
-        let token = self.consume_assert(TokenType::Identifier)?;
-        Ok(Expression::VariableRef(token.value.clone()))
+    fn parse_function_call(&mut self) -> Result<Expression<C>> {
+        let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+        self.consume_assert(TokenType::LeftParen)?;
+
+        let mut args = vec![];
+        if self.peek()?.token_type != TokenType::RightParen {
+            args.push(self.parse_expression(0)?);
+        }
+
+        self.consume_assert(TokenType::RightParen)?;
+        Ok(Expression::FunctionCall(name, args))
+    }
+
+    fn parse_identifier_or_function_call(&mut self) -> Result<Expression<C>> {
+        if self.peeks(1)?.token_type == TokenType::LeftParen {
+            self.parse_function_call()
+        } else {
+            let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+            Ok(Expression::VariableRef(name))
+        }
     }
 
     fn parse_prefix_expression(&mut self) -> Result<Expression<C>> {
@@ -156,9 +185,28 @@ impl<'a, C: FromStr> Parser<'a, C> {
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement<C>> {
+        self.consume_assert(TokenType::Return)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
         Ok(Statement::Return(expr))
+    }
+
+    fn parse_let_statement(&mut self) -> Result<Statement<C>> {
+        self.consume_assert(TokenType::Let)?;
+        let variable_name = self.consume_assert(TokenType::Identifier)?;
+        self.consume_assert(TokenType::SemiColon)?;
+        Ok(Statement::Declaration(
+            variable_name.value.clone(),
+            Type::UInt64(),
+        ))
+    }
+
+    fn parse_assignment_statement(&mut self) -> Result<Statement<C>> {
+        let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+        self.consume_assert(TokenType::Equals)?;
+        let expr = self.parse_expression(0)?;
+        self.consume_assert(TokenType::SemiColon)?;
+        Ok(Statement::Assignment(name, expr))
     }
 
     pub fn parse_function(&mut self) -> Result<Statement<C>> {
@@ -184,10 +232,11 @@ impl<'a, C: FromStr> Parser<'a, C> {
     }
 
     pub fn parse_statement(&mut self) -> Result<Statement<C>> {
-        let token = self.consume()?;
+        let token = self.peek()?;
         match token.token_type {
             TokenType::Return => self.parse_return_statement(),
             TokenType::LeftBrace => {
+                self.consume_assert(TokenType::LeftBrace)?;
                 let mut statements = vec![];
                 while self.peek()?.token_type != TokenType::RightBrace {
                     statements.push(self.parse_statement()?);
@@ -197,6 +246,16 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
                 Ok(Statement::Block(statements))
             }
+            TokenType::Let => self.parse_let_statement(),
+            TokenType::Identifier => match self.peeks(1)?.token_type {
+                TokenType::Equals => self.parse_assignment_statement(),
+                TokenType::LeftParen => {
+                    let result = Statement::Expression(self.parse_expression(0)?);
+                    self.consume_assert(TokenType::SemiColon)?;
+                    Ok(result)
+                }
+                _ => panic!("{:?}", self.peek()?),
+            },
             _ => unreachable!(),
         }
     }
@@ -362,10 +421,9 @@ mod tests {
                 "test".to_string(),
                 vec![],
                 Type::Void(),
-                Box::new(Statement::Block(vec![Statement::Return(Expression::Constant(
-                    12,
-                    Type::UInt8()
-                ))]))
+                Box::new(Statement::Block(vec![Statement::Return(
+                    Expression::Constant(12, Type::UInt8())
+                )]))
             )
         );
         Ok(())
@@ -380,11 +438,43 @@ mod tests {
                 "test".to_string(),
                 vec![],
                 Type::UInt8(),
-                Box::new(Statement::Block(vec![Statement::Return(Expression::Constant(
-                    12,
-                    Type::UInt8()
-                ))]))
+                Box::new(Statement::Block(vec![Statement::Return(
+                    Expression::Constant(12, Type::UInt8())
+                )]))
             )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_function_call_expr() -> Result<()> {
+        let call = parse_expressions("test()")?;
+        assert_eq!(
+            call[0],
+            Expression::FunctionCall("test".to_string(), vec![])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_function_call_stmt() -> Result<()> {
+        let call = parse_statements("test();")?;
+        assert_eq!(
+            call[0],
+            Statement::Expression(Expression::FunctionCall("test".to_string(), vec![]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_function_call_stmt_with_arg() -> Result<()> {
+        let call = parse_statements("test(x);")?;
+        assert_eq!(
+            call[0],
+            Statement::Expression(Expression::FunctionCall(
+                "test".to_string(),
+                vec![Expression::VariableRef("x".to_string())]
+            ))
         );
         Ok(())
     }

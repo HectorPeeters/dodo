@@ -1,4 +1,4 @@
-use dodo_core::Type;
+use crate::types::Type;
 
 use crate::tokenizer::TokenType;
 

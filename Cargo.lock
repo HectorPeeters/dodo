@@ -6,32 +6,6 @@ version = 3
 name = "dodo"
 version = "0.1.0"
 dependencies = [
- "dodo-assembler",
- "dodo-core",
- "dodo-parser",
-]
-
-[[package]]
-name = "dodo-assembler"
-version = "0.1.0"
-
-[[package]]
-name = "dodo-core"
-version = "0.1.0"
-
-[[package]]
-name = "dodo-interpreter"
-version = "0.1.0"
-dependencies = [
- "dodo-core",
- "dodo-parser",
-]
-
-[[package]]
-name = "dodo-parser"
-version = "0.1.0"
-dependencies = [
- "dodo-core",
  "regex",
 ]
 

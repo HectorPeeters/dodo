@@ -1,2 +1,7 @@
-[workspace]
-members = ["dodo-core", "dodo-assembler", "dodo-compiler", "dodo-parser", "dodo-interpreter"]
+[package]
+name = "dodo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = { version = "1.5.4", default-features = false, features = ["std"] }

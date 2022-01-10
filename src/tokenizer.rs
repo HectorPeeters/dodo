@@ -1,4 +1,4 @@
-use dodo_core::{Error, Result};
+use crate::error::{Error, Result};
 use regex::Regex;
 use std::ops::Range;
 
@@ -8,6 +8,7 @@ pub enum TokenType {
 
     Return,
     Fn,
+    Let,
 
     UInt8,
     UInt16,
@@ -99,12 +100,13 @@ impl<'a> Lexer<'a> {
         let rules = vec![
             (r"[ \t\n\f]+", Whitespace),
             (r"return", Return),
+            (r"let", Let),
             (r"fn", Fn),
             (r"u8", UInt8),
             (r"u16", UInt16),
             (r"u32", UInt32),
             (r"bool", Bool),
-            (r"[a-zA-Z][_a-zA-Z]*", Identifier),
+            (r"[a-zA-Z][_0-9a-zA-Z]*", Identifier),
             (r"[0-9]+", IntegerLiteral),
             (r"\+", Plus),
             (r"-", Minus),

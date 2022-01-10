@@ -1,8 +1,0 @@
-[package]
-name = "dodo-interpreter"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-dodo-core = { path = "../dodo-core" }
-dodo-parser = { path = "../dodo-parser" }

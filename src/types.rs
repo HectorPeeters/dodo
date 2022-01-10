@@ -3,6 +3,7 @@ pub enum Type {
     UInt8(),
     UInt16(),
     UInt32(),
+    UInt64(),
     Ref(Box<Type>),
     Void(),
 }
@@ -18,7 +19,8 @@ impl Type {
             UInt8() => 8,
             UInt16() => 16,
             UInt32() => 32,
-            Ref(_) => 32,
+            UInt64() => 64,
+            Ref(_) => 64,
             Void() => unreachable!(),
         }
     }
@@ -33,6 +35,7 @@ mod tests {
         assert_eq!(Type::UInt8().size(), 8);
         assert_eq!(Type::UInt16().size(), 16);
         assert_eq!(Type::UInt32().size(), 32);
-        assert_eq!(Type::Ref(Box::new(Type::UInt8())).size(), 32);
+        assert_eq!(Type::UInt64().size(), 64);
+        assert_eq!(Type::Ref(Box::new(Type::UInt8())).size(), 64);
     }
 }

@@ -1,9 +1,0 @@
-[package]
-edition = "2018"
-name = "dodo"
-version = "0.1.0"
-
-[dependencies]
-dodo-core = { path = "../dodo-core" }
-dodo-assembler = { path = "../dodo-assembler" }
-dodo-parser = { path = "../dodo-parser" }
