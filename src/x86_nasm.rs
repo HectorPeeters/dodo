@@ -8,6 +8,7 @@ use crate::{
 
 pub struct X86NasmGenerator<'a, T: Write> {
     writer: &'a mut T,
+    label_index: usize,
     current_variables: HashMap<String, usize>,
     allocated_registers: [bool; 8],
 }
@@ -16,11 +17,12 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
     pub fn new(writer: &'a mut T) -> Self {
         writeln!(
             writer,
-            "extern printf\nextern exit\nsection .data\n\tfmt: db \"%d\", 10, 0\n\nsection .text\n\tglobal _start"
+            "extern printf\nextern exit\nsection .data\n\tfmt: db \"%u\", 10, 0\n\nsection .text\n\tglobal _start"
         )
         .unwrap();
         Self {
             writer,
+            label_index: 0,
             current_variables: HashMap::new(),
             allocated_registers: [false; 8],
         }
@@ -55,6 +57,12 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         }
     }
 
+    fn get_new_label(&mut self) -> usize {
+        let result = self.label_index;
+        self.label_index += 1;
+        result
+    }
+
     fn write_prologue(&mut self) {
         writeln!(self.writer, "\tpush rbp").unwrap();
         writeln!(self.writer, "\tpush rbp").unwrap();
@@ -78,15 +86,35 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 let offset = self.current_variables[name];
                 let value_reg = self.generate_expression(value).unwrap();
 
-                writeln!(
-                    self.writer,
-                    "\tmov [rbp - {}], {}",
-                    offset * 16,
-                    Self::get_register_name(value_reg)
-                )
-                .unwrap();
+                if offset == 0 {
+                    writeln!(
+                        self.writer,
+                        "\tmov [rbp], {}",
+                        Self::get_register_name(value_reg)
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        self.writer,
+                        "\tmov [rbp - {}], {}",
+                        offset * 16,
+                        Self::get_register_name(value_reg)
+                    )
+                    .unwrap();
+                }
 
                 self.free_register(value_reg);
+            }
+            Statement::While(cond, stmt) => {
+                let start_label = self.get_new_label();
+                let end_label = self.get_new_label();
+                writeln!(self.writer, "L{}:", start_label).unwrap();
+                let register = Self::get_register_name(self.generate_expression(cond)?);
+                writeln!(self.writer, "\ttest {}, {}", register, register).unwrap();
+                writeln!(self.writer, "\tjz L{}", end_label).unwrap();
+                self.generate_statement(stmt)?;
+                writeln!(self.writer, "\tjmp L{}", start_label).unwrap();
+                writeln!(self.writer, "L{}:", end_label).unwrap();
             }
             Statement::Return(expr) => {
                 let value_reg = self.generate_expression(expr).unwrap();
@@ -174,13 +202,22 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             Expression::VariableRef(name) => {
                 let offset = self.current_variables[name];
                 let register = self.get_next_register();
-                writeln!(
-                    self.writer,
-                    "\tmov {}, [rbp - {}]",
-                    Self::get_register_name(register),
-                    offset * 16,
-                )
-                .unwrap();
+                if offset == 0 {
+                    writeln!(
+                        self.writer,
+                        "\tmov {}, [rbp]",
+                        Self::get_register_name(register),
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        self.writer,
+                        "\tmov {}, [rbp - {}]",
+                        Self::get_register_name(register),
+                        offset * 16,
+                    )
+                    .unwrap();
+                }
                 Ok(register)
             }
             Expression::FunctionCall(name, args) => {

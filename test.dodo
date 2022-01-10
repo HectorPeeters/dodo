@@ -1,0 +1,19 @@
+fn main() {
+    let prevprev;
+    let prev;
+    prev = 0;
+    let curr;
+    curr = 1;
+
+    let count;
+    count = 46;
+    while count {
+        print(curr);
+
+        prevprev = prev;
+        prev = curr;
+        curr = prev + prevprev;
+
+        count = count - 1;
+    }
+}

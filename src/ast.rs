@@ -8,6 +8,7 @@ pub enum Statement<C> {
     Declaration(String, Type),
     Assignment(String, Expression<C>),
     Expression(Expression<C>),
+    While(Expression<C>, Box<Statement<C>>),
     Return(Expression<C>),
     Function(String, Vec<Type>, Type, Box<Statement<C>>),
 }

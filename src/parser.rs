@@ -143,7 +143,11 @@ impl<'a, C: FromStr> Parser<'a, C> {
     }
 
     pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression<C>> {
-        let exit_tokens = vec![TokenType::SemiColon, TokenType::RightParen];
+        let exit_tokens = vec![
+            TokenType::SemiColon,
+            TokenType::RightParen,
+            TokenType::LeftBrace,
+        ];
 
         let token_type = self.peek()?.token_type;
 
@@ -209,6 +213,13 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(Statement::Assignment(name, expr))
     }
 
+    fn parse_while_statement(&mut self) -> Result<Statement<C>> {
+        self.consume_assert(TokenType::While)?;
+        let expr = self.parse_expression(0)?;
+        let statement = self.parse_statement()?;
+        Ok(Statement::While(expr, Box::new(statement)))
+    }
+
     pub fn parse_function(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -247,6 +258,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
                 Ok(Statement::Block(statements))
             }
             TokenType::Let => self.parse_let_statement(),
+            TokenType::While => self.parse_while_statement(),
             TokenType::Identifier => match self.peeks(1)?.token_type {
                 TokenType::Equals => self.parse_assignment_statement(),
                 TokenType::LeftParen => {

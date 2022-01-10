@@ -13,7 +13,7 @@ mod types;
 mod x86_nasm;
 
 fn main() -> Result<()> {
-    let code = "fn main() { test(); } fn test() { print(12); } ";
+    let code = include_str!("../test.dodo");
 
     let tokens = tokenize(code)?;
     let mut parser = Parser::<u64>::new(&tokens);
