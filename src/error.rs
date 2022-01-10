@@ -7,6 +7,7 @@ pub enum Error {
     LexerError(String),
     TokenStreamOutOfBounds(),
     ParserError(String),
+    ScopeError(String),
 }
 
 impl fmt::Display for Error {
