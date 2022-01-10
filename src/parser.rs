@@ -220,6 +220,13 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(Statement::While(expr, Box::new(statement)))
     }
 
+    fn parse_if_statement(&mut self) -> Result<Statement<C>> {
+        self.consume_assert(TokenType::If)?;
+        let expr = self.parse_expression(0)?;
+        let statement = self.parse_statement()?;
+        Ok(Statement::If(expr, Box::new(statement)))
+    }
+
     pub fn parse_function(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -259,6 +266,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
             }
             TokenType::Let => self.parse_let_statement(),
             TokenType::While => self.parse_while_statement(),
+            TokenType::If => self.parse_if_statement(),
             TokenType::Identifier => match self.peeks(1)?.token_type {
                 TokenType::Equals => self.parse_assignment_statement(),
                 TokenType::LeftParen => {

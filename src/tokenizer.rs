@@ -10,6 +10,7 @@ pub enum TokenType {
     Fn,
     Let,
     While,
+    If,
 
     UInt8,
     UInt16,
@@ -103,6 +104,7 @@ impl<'a> Lexer<'a> {
             (r"return", Return),
             (r"let", Let),
             (r"while", While),
+            (r"if", If),
             (r"fn", Fn),
             (r"u8", UInt8),
             (r"u16", UInt16),

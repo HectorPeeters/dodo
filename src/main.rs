@@ -8,6 +8,7 @@ use x86_nasm::X86NasmGenerator;
 mod ast;
 mod error;
 mod parser;
+mod scope;
 mod tokenizer;
 mod types;
 mod x86_nasm;

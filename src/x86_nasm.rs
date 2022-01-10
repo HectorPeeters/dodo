@@ -116,6 +116,14 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 writeln!(self.writer, "\tjmp L{}", start_label).unwrap();
                 writeln!(self.writer, "L{}:", end_label).unwrap();
             }
+            Statement::If(cond, stmt) => {
+                let end_label = self.get_new_label();
+                let register = Self::get_register_name(self.generate_expression(cond)?);
+                writeln!(self.writer, "\ttest {}, {}", register, register).unwrap();
+                writeln!(self.writer, "\tjz L{}", end_label).unwrap();
+                self.generate_statement(stmt)?;
+                writeln!(self.writer, "L{}:", end_label).unwrap();
+            }
             Statement::Return(expr) => {
                 let value_reg = self.generate_expression(expr).unwrap();
 
