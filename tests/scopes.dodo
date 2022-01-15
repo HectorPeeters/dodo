@@ -1,0 +1,15 @@
+fn main() {
+    let x;
+    x = 12;
+
+    print(x);
+
+    {
+        let x;
+        x = 13;
+
+        print(x);
+    }
+
+    print(x);
+}
