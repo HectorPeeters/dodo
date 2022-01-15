@@ -239,9 +239,28 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     self.instr(Pop(Reg(Rdi)));
 
                     self.free_register(arg_register);
+                } else if name.starts_with("syscall") {
+                    let syscall_num = args.get(0).unwrap();
+                    let syscall_num_reg = self.generate_expression(syscall_num)?;
+
+                    for arg in args.iter().skip(1).zip(&ARGUMENT_REGISTERS) {
+                        let arg_register = self.generate_expression(arg.0)?;
+                        self.instr(Push(Reg(*arg.1)));
+                        self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
+                        self.free_register(arg_register);
+                    }
+
+                    self.instr(Mov(Reg(Rax), Reg(syscall_num_reg)));
+                    self.instr(Syscall());
+
+                    self.free_register(syscall_num_reg);
+
+                    for i in (0..args.len()).rev() {
+                        self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                    }
                 } else {
                     for arg in args.iter().zip(&ARGUMENT_REGISTERS) {
-                        let arg_register = self.generate_expression(&arg.0)?;
+                        let arg_register = self.generate_expression(arg.0)?;
                         self.instr(Push(Reg(*arg.1)));
                         self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
                         self.free_register(arg_register);

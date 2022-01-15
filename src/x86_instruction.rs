@@ -104,6 +104,7 @@ pub enum X86Instruction {
     Jmp(X86Operand),
     Call(X86Operand),
     Ret(),
+    Syscall(),
     Label(usize),
     Func(String),
 }
@@ -122,6 +123,7 @@ impl fmt::Display for X86Instruction {
             Jmp(x) => write!(f, "jmp {x}"),
             Call(x) => write!(f, "call {x}"),
             Ret() => write!(f, "ret"),
+            Syscall() => write!(f, "syscall"),
             Label(l) => write!(f, "L{l}:"),
             Func(x) => write!(f, "{x}:"),
         }
@@ -130,19 +132,6 @@ impl fmt::Display for X86Instruction {
 
 impl X86Instruction {
     pub fn should_indent(&self) -> bool {
-        match self {
-            X86Instruction::Push(_) => true,
-            X86Instruction::Pop(_) => true,
-            X86Instruction::Mov(_, _) => true,
-            X86Instruction::Add(_, _) => true,
-            X86Instruction::Sub(_, _) => true,
-            X86Instruction::Test(_, _) => true,
-            X86Instruction::Jz(_) => true,
-            X86Instruction::Jmp(_) => true,
-            X86Instruction::Call(_) => true,
-            X86Instruction::Ret() => true,
-            X86Instruction::Label(_) => false,
-            X86Instruction::Func(_) => false,
-        }
+        !matches!(self, X86Instruction::Label(_) | X86Instruction::Func(_))
     }
 }

@@ -1,0 +1,7 @@
+fn exit(code) {
+    syscall(60, code);
+}
+
+fn main() {
+    exit(123);
+}
