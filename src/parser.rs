@@ -119,7 +119,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
         match token.value.parse::<C>() {
             Ok(value) => Ok(Expression::Constant(value, Type::UInt8())),
-            Err(_) => Err(Error::ParserError(format!(
+            Err(_) => Err(Error::Parser(format!(
                 "Failed to parse {} to int",
                 token.value
             ))),
@@ -153,7 +153,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
         let mut left = match self.prefix_fns.get(&token_type) {
             Some(func) => func(self),
-            None => Err(Error::ParserError(format!(
+            None => Err(Error::Parser(format!(
                 "Did not expect token: {:?} while parsing prefix expression",
                 token_type
             ))),
@@ -178,7 +178,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
                     }
                     func(self, left, prec)
                 }
-                None => Err(Error::ParserError(format!(
+                None => Err(Error::Parser(format!(
                     "Did not expect token: {:?} while parsing infix expression",
                     token_type
                 ))),

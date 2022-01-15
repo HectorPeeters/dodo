@@ -164,7 +164,7 @@ impl<'a> Lexer<'a> {
             }
 
             if matches.is_empty() {
-                return Err(Error::LexerError("Unable to tokenize".to_string()));
+                return Err(Error::Lexer("Unable to tokenize".to_string()));
             }
 
             matches.sort_by(|a, b| (b.span.end - b.span.start).cmp(&(a.span.end - a.span.start)));

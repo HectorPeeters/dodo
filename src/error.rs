@@ -4,10 +4,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
-    LexerError(String),
+    Lexer(String),
     TokenStreamOutOfBounds(),
-    ParserError(String),
-    ScopeError(String),
+    Parser(String),
+    Scope(String),
 }
 
 impl fmt::Display for Error {

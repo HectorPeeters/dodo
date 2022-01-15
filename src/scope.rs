@@ -14,7 +14,7 @@ impl<T: Copy> Scope<T> {
         match self.items.last_mut() {
             Some(last_scope) => {
                 if last_scope.contains_key(name) {
-                    Err(Error::ScopeError(
+                    Err(Error::Scope(
                         "Identifier already defined in scope".to_string(),
                     ))
                 } else {
@@ -22,7 +22,7 @@ impl<T: Copy> Scope<T> {
                     Ok(())
                 }
             }
-            None => Err(Error::ScopeError(
+            None => Err(Error::Scope(
                 "Trying to insert into empty scope".to_string(),
             )),
         }
@@ -35,9 +35,7 @@ impl<T: Copy> Scope<T> {
     pub fn pop(&mut self) -> Result<()> {
         self.items
             .pop()
-            .ok_or(Error::ScopeError(
-                "Tried popping while scope stack was empty".to_string(),
-            ))
+            .ok_or_else(|| Error::Scope("Tried popping while scope stack was empty".to_string()))
             .map(|_| ())
     }
 
@@ -45,16 +43,14 @@ impl<T: Copy> Scope<T> {
         self.items
             .iter()
             .rev()
-            .find_map(|x| x.get(name).map(|x| *x))
-            .ok_or(Error::ScopeError(format!("{} not found in scope", name)))
+            .find_map(|x| x.get(name).copied())
+            .ok_or_else(|| Error::Scope(format!("{} not found in scope", name)))
     }
 
     pub fn len(&self) -> Result<usize> {
         self.items
             .last()
-            .ok_or(Error::ScopeError(
-                "Trying to get length of empty scope".to_string(),
-            ))
+            .ok_or_else(|| Error::Scope("Trying to get length of empty scope".to_string()))
             .map(|x| x.len())
     }
 }
