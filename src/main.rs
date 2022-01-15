@@ -11,6 +11,7 @@ mod parser;
 mod scope;
 mod tokenizer;
 mod types;
+mod x86_instruction;
 mod x86_nasm;
 
 fn main() -> Result<()> {
