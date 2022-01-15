@@ -48,9 +48,47 @@ impl<T: Copy> Scope<T> {
     }
 
     pub fn len(&self) -> Result<usize> {
-        self.items
-            .last()
-            .ok_or_else(|| Error::Scope("Trying to get length of empty scope".to_string()))
-            .map(|x| x.len())
+        Ok(self.items.iter().map(|x| x.len()).sum())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scope_simple() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new();
+        scope.push();
+        scope.insert("test", 12)?;
+        assert_eq!(scope.find("test")?, 12);
+        scope.pop()?;
+        Ok(())
+    }
+
+    #[test]
+    fn scope_multiple() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new();
+        scope.push();
+        scope.insert("test", 12)?;
+        scope.insert("tast", 13)?;
+        assert_eq!(scope.find("test")?, 12);
+        assert_eq!(scope.find("tast")?, 13);
+        scope.pop()?;
+        Ok(())
+    }
+
+    #[test]
+    fn scope_nested() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new();
+        scope.push();
+        scope.insert("test", 12)?;
+        scope.push();
+        scope.insert("test", 13)?;
+        assert_eq!(scope.find("test")?, 13);
+        scope.pop()?;
+        assert_eq!(scope.find("test")?, 12);
+        scope.pop()?;
+        Ok(())
     }
 }

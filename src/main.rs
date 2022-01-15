@@ -23,10 +23,14 @@ fn main() -> Result<()> {
     let mut output = File::create("output.asm").unwrap();
     let mut generator = X86NasmGenerator::new(&mut output);
 
+    generator.prepare();
+
     while !parser.eof() {
         let statement = parser.parse_function()?;
         generator.generate_statement(&statement)?;
     }
+
+    generator.finish();
 
     Ok(())
 }

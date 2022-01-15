@@ -19,6 +19,7 @@ pub enum ScopeLocation {
 
 pub struct X86NasmGenerator<'a, T: Write> {
     writer: &'a mut T,
+    instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; 8],
@@ -26,13 +27,9 @@ pub struct X86NasmGenerator<'a, T: Write> {
 
 impl<'a, T: Write> X86NasmGenerator<'a, T> {
     pub fn new(writer: &'a mut T) -> Self {
-        writeln!(
-            writer,
-            "extern printf\nextern exit\nsection .data\n\tfmt: db \"%u\", 10, 0\n\nsection .text\n\tglobal _start"
-        )
-        .unwrap();
         Self {
             writer,
+            instructions: vec![],
             label_index: 0,
             scope: Scope::new(),
             allocated_registers: [false; 8],
@@ -61,13 +58,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
     }
 
     fn instr(&mut self, instr: X86Instruction) {
-        writeln!(
-            self.writer,
-            "{}{}",
-            if instr.should_indent() { "\t" } else { "" },
-            instr
-        )
-        .unwrap();
+        self.instructions.push(instr);
     }
 
     fn write_prologue(&mut self) {
@@ -164,9 +155,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.scope.pop()?;
             }
             Statement::Block(stmts) => {
+                self.scope.push();
                 for stmt in stmts {
                     self.generate_statement(stmt)?;
                 }
+                self.scope.pop()?;
             }
             Statement::Expression(expr) => {
                 self.generate_expression(expr)?;
@@ -175,7 +168,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         Ok(())
     }
 
-    pub fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<X86Register> {
+    fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<X86Register> {
         match ast {
             Expression::Constant(value, _type) => {
                 let register = self.get_next_register();
@@ -250,5 +243,33 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn prepare(&mut self) {
+        writeln!(
+            self.writer,
+            r#"extern printf
+extern exit
+section .data
+    fmt: db "%u", 10, 0
+
+section .text
+    global _start
+"#
+        )
+        .unwrap();
+    }
+
+    pub fn finish(&mut self) {
+        writeln!(
+            self.writer,
+            "{}",
+            self.instructions
+                .iter()
+                .map(|instr| format!("{}{}", if instr.should_indent() { "\t" } else { "" }, instr))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .unwrap();
     }
 }
