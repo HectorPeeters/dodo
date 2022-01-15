@@ -1,0 +1,34 @@
+fn test1(a) {
+    print(a);
+}
+
+fn test2(a, b) {
+    print(a + b);
+}
+
+fn test3(a, b, c) {
+    print(a + b + c);
+}
+
+fn test4(a, b, c, d) {
+    print(a + b + c + d);
+}
+
+fn test5(a, b, c, d, e) {
+    print(a + b + c + d + e);
+}
+
+fn test6(a, b, c, d, e, f) {
+    print(a + b + c + d + e + f);
+}
+
+fn main() {
+    test1(1);
+    test2(1, 1);
+    test3(1, 1, 1);
+    test4(1, 1, 1, 1);
+    test5(1, 1, 1, 1, 1);
+    test6(1, 1, 1, 1, 1, 1);
+
+    exit(0);
+}

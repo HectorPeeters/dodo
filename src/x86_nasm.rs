@@ -11,6 +11,8 @@ use X86Instruction::*;
 use X86Operand::*;
 use X86Register::*;
 
+const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
+
 #[derive(Debug, Clone, Copy)]
 pub enum ScopeLocation {
     Reg(X86Register),
@@ -46,7 +48,18 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         }
     }
 
+    fn occupy_register(&mut self, reg: X86Register) {
+        if (reg as usize) < 8 {
+            return;
+        }
+        assert!(!self.allocated_registers[reg as usize - 8]);
+        self.allocated_registers[reg as usize - 8] = true;
+    }
+
     fn free_register(&mut self, reg: X86Register) {
+        if (reg as usize) < 8 {
+            return;
+        }
         assert!(self.allocated_registers[reg as usize - 8]);
         self.allocated_registers[reg as usize - 8] = false;
     }
@@ -110,12 +123,16 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
 
                 self.instr(Jmp(OpLabel(start_label)));
                 self.instr(Label(end_label));
+
+                self.free_register(register);
             }
             Statement::If(cond, stmt) => {
                 let end_label = self.get_new_label();
                 let register = self.generate_expression(cond)?;
 
                 self.instr(Test(Reg(register), Reg(register)));
+                self.free_register(register);
+
                 self.instr(Jz(OpLabel(end_label)));
 
                 self.generate_statement(stmt)?;
@@ -131,11 +148,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             }
             Statement::Function(name, args, _ret_type, body) => {
                 self.scope.push();
-                assert!(args.len() <= 1);
+                assert!(args.len() <= 6);
 
-                if args.len() == 1 {
-                    self.scope
-                        .insert(&args[0].0, ScopeLocation::Reg(X86Register::Rdi))?;
+                for arg in args.iter().zip(ARGUMENT_REGISTERS) {
+                    self.occupy_register(arg.1);
+                    self.scope.insert(&arg.0 .0, ScopeLocation::Reg(arg.1))?;
                 }
 
                 self.instr(Func(
@@ -146,12 +163,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.generate_statement(body)?;
                 self.write_epilogue();
 
-                if name == "main" {
-                    self.instr(Mov(Reg(Rdi), Constant(0)));
-                    self.instr(Call(StringRef("exit".to_string())));
-                } else {
-                    self.instr(Ret());
-                }
+                self.instr(Ret());
                 self.scope.pop()?;
             }
             Statement::Block(stmts) => {
@@ -162,7 +174,8 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.scope.pop()?;
             }
             Statement::Expression(expr) => {
-                self.generate_expression(expr)?;
+                let register = self.generate_expression(expr)?;
+                self.free_register(register);
             }
         }
         Ok(())
@@ -204,13 +217,14 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     }
                     ScopeLocation::Reg(reg) => {
                         self.instr(Mov(Reg(register), Reg(reg)));
+                        self.free_register(reg);
                     }
                 }
 
                 Ok(register)
             }
             Expression::FunctionCall(name, args) => {
-                assert!(args.len() <= 1);
+                assert!(args.len() <= 6);
 
                 let result_register = self.get_next_register();
 
@@ -226,17 +240,18 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
 
                     self.free_register(arg_register);
                 } else {
-                    if args.len() == 1 {
-                        let arg_register = self.generate_expression(&args[0])?;
-                        self.instr(Push(Reg(Rdi)));
-                        self.instr(Mov(Reg(Rdi), Reg(arg_register)));
+                    for arg in args.iter().zip(&ARGUMENT_REGISTERS) {
+                        let arg_register = self.generate_expression(&arg.0)?;
+                        self.instr(Push(Reg(*arg.1)));
+                        self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
+                        self.free_register(arg_register);
                     }
 
                     self.instr(Call(StringRef(name.to_string())));
                     self.instr(Mov(Reg(result_register), Reg(Rax)));
 
-                    if args.len() == 1 {
-                        self.instr(Pop(Reg(Rdi)));
+                    for i in (0..args.len()).rev() {
+                        self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
                     }
                 }
                 Ok(result_register)

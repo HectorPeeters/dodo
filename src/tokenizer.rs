@@ -36,6 +36,7 @@ pub enum TokenType {
 
     Colon,
     SemiColon,
+    Comma,
 
     LeftParen,
     RightParen,
@@ -125,6 +126,7 @@ impl<'a> Lexer<'a> {
             (r"=", Equals),
             (r":", Colon),
             (r";", SemiColon),
+            (r",", Comma),
             (r"\(", LeftParen),
             (r"\)", RightParen),
             (r"\{", LeftBrace),

@@ -12,4 +12,6 @@ fn main() {
     }
 
     print(x);
+
+    exit(0);
 }

@@ -90,8 +90,18 @@ impl<'a, C: FromStr> Parser<'a, C> {
         self.consume_assert(TokenType::LeftParen)?;
 
         let mut args = vec![];
-        if self.peek()?.token_type != TokenType::RightParen {
+        loop {
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
             args.push(self.parse_expression(0)?);
+
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
+            self.consume_assert(TokenType::Comma)?;
         }
 
         self.consume_assert(TokenType::RightParen)?;
@@ -147,6 +157,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
             TokenType::SemiColon,
             TokenType::RightParen,
             TokenType::LeftBrace,
+            TokenType::Comma,
         ];
 
         let token_type = self.peek()?.token_type;
@@ -232,10 +243,22 @@ impl<'a, C: FromStr> Parser<'a, C> {
         let identifier = self.consume_assert(TokenType::Identifier)?;
         self.consume_assert(TokenType::LeftParen)?;
         let mut args = vec![];
-        if self.peek()?.token_type != TokenType::RightParen {
+
+        loop {
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
             let name = self.consume_assert(TokenType::Identifier)?.value.clone();
             args.push((name, Type::UInt64()));
+
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
+            self.consume_assert(TokenType::Comma)?;
         }
+
         self.consume_assert(TokenType::RightParen)?;
 
         let mut return_type = Type::Void();

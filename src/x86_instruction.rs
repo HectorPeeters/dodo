@@ -4,7 +4,7 @@ use std::fmt;
 pub enum X86Register {
     Rax = 0,
     Rcx,
-    Rbx,
+    Rdx,
     Rsi,
     Rdi,
     Rsp,
@@ -25,7 +25,7 @@ impl From<usize> for X86Register {
         match x {
             0 => Rax,
             1 => Rcx,
-            2 => Rbx,
+            2 => Rdx,
             3 => Rsi,
             4 => Rdi,
             5 => Rsp,
@@ -53,7 +53,7 @@ impl fmt::Display for X86Register {
             match self {
                 Rax => "rax",
                 Rcx => "rcx",
-                Rbx => "rbx",
+                Rdx => "rdx",
                 Rsi => "rsi",
                 Rdi => "rdi",
                 Rsp => "rsp",
