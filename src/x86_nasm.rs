@@ -12,6 +12,7 @@ use X86Operand::*;
 use X86Register::*;
 
 const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
+const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScopeLocation {
@@ -24,7 +25,7 @@ pub struct X86NasmGenerator<'a, T: Write> {
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
-    allocated_registers: [bool; 8],
+    allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
 }
 
 impl<'a, T: Write> X86NasmGenerator<'a, T> {
@@ -34,7 +35,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             instructions: vec![],
             label_index: 0,
             scope: Scope::new(),
-            allocated_registers: [false; 8],
+            allocated_registers: [false; GENERAL_PURPOSE_REGISTER_OFFSET],
         }
     }
 
@@ -42,26 +43,26 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         match self.allocated_registers.iter().position(|x| !x) {
             Some(reg) => {
                 self.allocated_registers[reg] = true;
-                X86Register::from(reg + 8)
+                X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET)
             }
             None => unreachable!(),
         }
     }
 
     fn occupy_register(&mut self, reg: X86Register) {
-        if (reg as usize) < 8 {
+        if (reg as usize) < GENERAL_PURPOSE_REGISTER_OFFSET {
             return;
         }
-        assert!(!self.allocated_registers[reg as usize - 8]);
-        self.allocated_registers[reg as usize - 8] = true;
+        assert!(!self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET]);
+        self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET] = true;
     }
 
     fn free_register(&mut self, reg: X86Register) {
-        if (reg as usize) < 8 {
+        if (reg as usize) < GENERAL_PURPOSE_REGISTER_OFFSET {
             return;
         }
-        assert!(self.allocated_registers[reg as usize - 8]);
-        self.allocated_registers[reg as usize - 8] = false;
+        assert!(self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET]);
+        self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET] = false;
     }
 
     fn get_new_label(&mut self) -> usize {
