@@ -151,12 +151,12 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.scope.push();
                 assert!(args.len() <= 6);
 
-                for arg in args.iter().zip(ARGUMENT_REGISTERS) {
-                    self.occupy_register(arg.1);
-                    self.scope.insert(&arg.0 .0, ScopeLocation::Reg(arg.1))?;
+                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                    self.occupy_register(arg_reg);
+                    self.scope.insert(&arg_name, ScopeLocation::Reg(arg_reg))?;
                 }
 
-                self.instr(Func(
+                self.instr(Function(
                     if name == "main" { "_start" } else { name }.to_string(),
                 ));
 
@@ -184,7 +184,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
 
     fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<X86Register> {
         match ast {
-            Expression::Constant(value, _type) => {
+            Expression::Literal(value, _type) => {
                 let register = self.get_next_register();
 
                 self.instr(Mov(Reg(register), Constant(*value)));
@@ -260,10 +260,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                         self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
                     }
                 } else {
-                    for arg in args.iter().zip(&ARGUMENT_REGISTERS) {
-                        let arg_register = self.generate_expression(arg.0)?;
-                        self.instr(Push(Reg(*arg.1)));
-                        self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
+                    for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
+                        let arg_register = self.generate_expression(expr)?;
+
+                        self.instr(Push(Reg(*dest_reg)));
+                        self.instr(Mov(Reg(*dest_reg), Reg(arg_register)));
                         self.free_register(arg_register);
                     }
 

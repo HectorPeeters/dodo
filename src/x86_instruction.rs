@@ -106,7 +106,7 @@ pub enum X86Instruction {
     Ret(),
     Syscall(),
     Label(usize),
-    Func(String),
+    Function(String),
 }
 
 impl fmt::Display for X86Instruction {
@@ -125,13 +125,13 @@ impl fmt::Display for X86Instruction {
             Ret() => write!(f, "ret"),
             Syscall() => write!(f, "syscall"),
             Label(l) => write!(f, "L{l}:"),
-            Func(x) => write!(f, "{x}:"),
+            Function(x) => write!(f, "{x}:"),
         }
     }
 }
 
 impl X86Instruction {
     pub fn should_indent(&self) -> bool {
-        !matches!(self, X86Instruction::Label(_) | X86Instruction::Func(_))
+        !matches!(self, X86Instruction::Label(_) | X86Instruction::Function(_))
     }
 }

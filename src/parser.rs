@@ -28,6 +28,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         );
         prefix_fns.insert(TokenType::Minus, Self::parse_prefix_expression);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
 
         let mut infix_fns: HashMap<_, (InfixParseFn<'a, C>, usize)> = HashMap::new();
         infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 3));
@@ -125,14 +126,24 @@ impl<'a, C: FromStr> Parser<'a, C> {
     }
 
     fn parse_constant(&mut self) -> Result<Expression<C>> {
-        let token = self.consume_assert(TokenType::IntegerLiteral)?;
-
-        match token.value.parse::<C>() {
-            Ok(value) => Ok(Expression::Constant(value, Type::UInt8())),
-            Err(_) => Err(Error::Parser(format!(
-                "Failed to parse {} to int",
-                token.value
-            ))),
+        let token = self.consume()?;
+        match token.token_type {
+            TokenType::IntegerLiteral => match token.value.parse::<C>() {
+                Ok(value) => Ok(Expression::Literal(value, Type::UInt8())),
+                Err(_) => Err(Error::Parser(format!(
+                    "Failed to parse {} to int",
+                    token.value
+                ))),
+            },
+            TokenType::StringLiteral => Ok(Expression::StringLiteral(
+                token.value[1..token.value.len() - 1]
+                    .to_string()
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\r", "\r")
+                    .replace("\\\"", "\""),
+            )),
+            _ => unreachable!(),
         }
     }
 
@@ -349,7 +360,7 @@ mod tests {
     fn parse_constant() -> Result<()> {
         let exprs = parse_expressions("123")?;
 
-        assert_eq!(exprs[0], Expression::Constant(123, Type::UInt8()));
+        assert_eq!(exprs[0], Expression::Literal(123, Type::UInt8()));
 
         Ok(())
     }
@@ -362,7 +373,7 @@ mod tests {
             exprs[0],
             Expression::UnaryOperator(
                 UnaryOperatorType::Negate,
-                Box::new(Expression::Constant(123, Type::UInt8()))
+                Box::new(Expression::Literal(123, Type::UInt8()))
             )
         );
 
@@ -377,8 +388,8 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Constant(456, Type::UInt8())),
-                Box::new(Expression::Constant(123, Type::UInt8()))
+                Box::new(Expression::Literal(456, Type::UInt8())),
+                Box::new(Expression::Literal(123, Type::UInt8()))
             )
         );
 
@@ -393,11 +404,11 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Constant(456, Type::UInt8())),
+                Box::new(Expression::Literal(456, Type::UInt8())),
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Constant(123, Type::UInt8())),
-                    Box::new(Expression::Constant(789, Type::UInt8()))
+                    Box::new(Expression::Literal(123, Type::UInt8())),
+                    Box::new(Expression::Literal(789, Type::UInt8()))
                 ))
             )
         );
@@ -415,10 +426,10 @@ mod tests {
                 BinaryOperatorType::Subtract,
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Constant(456, Type::UInt8())),
-                    Box::new(Expression::Constant(123, Type::UInt8()))
+                    Box::new(Expression::Literal(456, Type::UInt8())),
+                    Box::new(Expression::Literal(123, Type::UInt8()))
                 )),
-                Box::new(Expression::Constant(789, Type::UInt8())),
+                Box::new(Expression::Literal(789, Type::UInt8())),
             )
         );
 
@@ -433,8 +444,8 @@ mod tests {
             stmts[0],
             Statement::Return(Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Constant(456, Type::UInt8())),
-                Box::new(Expression::Constant(123, Type::UInt8()))
+                Box::new(Expression::Literal(456, Type::UInt8())),
+                Box::new(Expression::Literal(123, Type::UInt8()))
             ))
         );
 
@@ -470,7 +481,7 @@ mod tests {
                 vec![],
                 Type::Void(),
                 Box::new(Statement::Block(vec![Statement::Return(
-                    Expression::Constant(12, Type::UInt8())
+                    Expression::Literal(12, Type::UInt8())
                 )]))
             )
         );
@@ -487,7 +498,7 @@ mod tests {
                 vec![],
                 Type::UInt8(),
                 Box::new(Statement::Block(vec![Statement::Return(
-                    Expression::Constant(12, Type::UInt8())
+                    Expression::Literal(12, Type::UInt8())
                 )]))
             )
         );
@@ -500,6 +511,23 @@ mod tests {
         assert_eq!(
             call[0],
             Expression::FunctionCall("test".to_string(), vec![])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_constant_expr() -> Result<()> {
+        let string = parse_expressions("'test'")?;
+        assert_eq!(string[0], Expression::StringLiteral("test".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_constant_escaped_expr() -> Result<()> {
+        let string = parse_expressions("'test\\t\\\"test\\\"\\n'")?;
+        assert_eq!(
+            string[0],
+            Expression::StringLiteral("test\t\"test\"\n".to_string())
         );
         Ok(())
     }

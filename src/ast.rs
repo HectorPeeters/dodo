@@ -56,6 +56,7 @@ pub enum Expression<C> {
     UnaryOperator(UnaryOperatorType, Box<Expression<C>>),
     FunctionCall(String, Vec<Expression<C>>),
     Cast(Box<Expression<C>>, Type),
-    Constant(C, Type),
+    Literal(C, Type),
     VariableRef(String),
+    StringLiteral(String),
 }
