@@ -1,0 +1,7 @@
+fn main() {
+    let x;
+    x = '%d';
+
+    printf(x, 12);
+    exit(0);
+}

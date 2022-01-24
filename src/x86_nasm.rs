@@ -26,6 +26,7 @@ pub struct X86NasmGenerator<'a, T: Write> {
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
+    strings: Vec<String>,
 }
 
 impl<'a, T: Write> X86NasmGenerator<'a, T> {
@@ -36,6 +37,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             label_index: 0,
             scope: Scope::new(),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_OFFSET],
+            strings: vec![],
         }
     }
 
@@ -47,14 +49,6 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             }
             None => unreachable!(),
         }
-    }
-
-    fn occupy_register(&mut self, reg: X86Register) {
-        if (reg as usize) < GENERAL_PURPOSE_REGISTER_OFFSET {
-            return;
-        }
-        assert!(!self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET]);
-        self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET] = true;
     }
 
     fn free_register(&mut self, reg: X86Register) {
@@ -69,6 +63,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         let result = self.label_index;
         self.label_index += 1;
         result
+    }
+
+    fn store_new_string(&mut self, string: &str) -> usize {
+        self.strings.push(string.to_string());
+        self.strings.len() - 1
     }
 
     fn instr(&mut self, instr: X86Instruction) {
@@ -118,11 +117,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 let register = self.generate_expression(cond)?;
 
                 self.instr(Test(Reg(register), Reg(register)));
-                self.instr(Jz(OpLabel(end_label)));
+                self.instr(Jz(JmpLabel(end_label)));
 
                 self.generate_statement(stmt)?;
 
-                self.instr(Jmp(OpLabel(start_label)));
+                self.instr(Jmp(JmpLabel(start_label)));
                 self.instr(Label(end_label));
 
                 self.free_register(register);
@@ -134,7 +133,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.instr(Test(Reg(register), Reg(register)));
                 self.free_register(register);
 
-                self.instr(Jz(OpLabel(end_label)));
+                self.instr(Jz(JmpLabel(end_label)));
 
                 self.generate_statement(stmt)?;
 
@@ -150,22 +149,30 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             Statement::Function(name, args, _ret_type, body) => {
                 self.scope.push();
                 assert!(args.len() <= 6);
-
-                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
-                    self.occupy_register(arg_reg);
-                    self.scope.insert(&arg_name, ScopeLocation::Reg(arg_reg))?;
-                }
+                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
 
                 self.instr(Function(
                     if name == "main" { "_start" } else { name }.to_string(),
                 ));
 
                 self.write_prologue();
+
+                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                    let dest_reg = self.get_next_register();
+
+                    self.instr(Mov(Reg(dest_reg), Reg(arg_reg)));
+                    self.scope.insert(&arg_name, ScopeLocation::Reg(dest_reg))?;
+                }
+
                 self.generate_statement(body)?;
+
                 self.write_epilogue();
 
                 self.instr(Ret());
                 self.scope.pop()?;
+
+                //self.allocated_registers = [false; 10];
+                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
             Statement::Block(stmts) => {
                 self.scope.push();
@@ -218,6 +225,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     }
                     ScopeLocation::Reg(reg) => {
                         self.instr(Mov(Reg(register), Reg(reg)));
+                        // TODO: using the same argument twice wont work
                         self.free_register(reg);
                     }
                 }
@@ -227,20 +235,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
             Expression::FunctionCall(name, args) => {
                 assert!(args.len() <= 6);
 
-                let result_register = self.get_next_register();
-
-                if name == "print" {
-                    let arg_register = self.generate_expression(&args[0])?;
-
-                    self.instr(Mov(Reg(Rax), Constant(0)));
-                    self.instr(Push(Reg(Rdi)));
-                    self.instr(Mov(Reg(Rdi), StringRef("fmt".to_string())));
-                    self.instr(Mov(Reg(Rsi), Reg(arg_register)));
-                    self.instr(Call(StringRef("printf".to_string())));
-                    self.instr(Pop(Reg(Rdi)));
-
-                    self.free_register(arg_register);
-                } else if name.starts_with("syscall") {
+                if name.starts_with("syscall") {
                     let syscall_num = args.get(0).unwrap();
                     let syscall_num_reg = self.generate_expression(syscall_num)?;
 
@@ -259,6 +254,11 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     for i in (0..args.len()).rev() {
                         self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
                     }
+
+                    let result_reg = self.get_next_register();
+                    self.instr(Mov(Reg(result_reg), Reg(Rax)));
+
+                    Ok(result_reg)
                 } else {
                     for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
                         let arg_register = self.generate_expression(expr)?;
@@ -268,35 +268,51 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                         self.free_register(arg_register);
                     }
 
-                    self.instr(Call(StringRef(name.to_string())));
+                    self.instr(Call(Reference(name.to_string())));
+                    let result_register = self.get_next_register();
+
                     self.instr(Mov(Reg(result_register), Reg(Rax)));
 
                     for i in (0..args.len()).rev() {
                         self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
                     }
+
+                    Ok(result_register)
                 }
-                Ok(result_register)
+            }
+            Expression::StringLiteral(value) => {
+                let label = self.store_new_string(value);
+                let result_reg = self.get_next_register();
+                self.instr(Mov(Reg(result_reg), StringLabel(label)));
+                Ok(result_reg)
             }
             _ => unreachable!(),
         }
     }
 
-    pub fn prepare(&mut self) {
+    pub fn finish(&mut self) {
         writeln!(
             self.writer,
             r#"extern printf
 extern exit
 section .data
-    fmt: db "%u", 10, 0
+{}"#,
+            self.strings
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!("\tS{} db \"{}\", 10, 0", i, x))
+                .collect::<Vec<_>>()
+                .join("\n") //    fmt: db "%u", 10, 0"#
+        )
+        .unwrap();
 
-section .text
+        writeln!(
+            self.writer,
+            r#"section .text
     global _start
 "#
         )
         .unwrap();
-    }
-
-    pub fn finish(&mut self) {
         writeln!(
             self.writer,
             "{}",

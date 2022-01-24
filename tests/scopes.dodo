@@ -2,16 +2,16 @@ fn main() {
     let x;
     x = 12;
 
-    print(x);
+    printf('%d', x);
 
     {
         let x;
         x = 13;
 
-        print(x);
+        printf('%d', x);
     }
 
-    print(x);
+    printf('%d', x);
 
     exit(0);
 }
