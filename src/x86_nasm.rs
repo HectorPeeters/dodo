@@ -29,12 +29,12 @@ pub struct X86NasmGenerator<'a, T: Write> {
 }
 
 impl<'a, T: Write> X86NasmGenerator<'a, T> {
-    pub fn new(writer: &'a mut T) -> Self {
+    pub fn new(writer: &'a mut T, source_file: &'a str) -> Self {
         Self {
             writer,
             instructions: vec![],
             label_index: 0,
-            scope: Scope::new(),
+            scope: Scope::new(source_file),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_OFFSET],
         }
     }
@@ -202,7 +202,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     BinaryOperatorType::Subtract => {
                         self.instr(Sub(Reg(left_reg), Reg(right_reg)));
                     }
-                    _ => unreachable!(),
+                    _ => todo!("Cannot generate binary operator {:?}", op),
                 }
 
                 self.free_register(right_reg);
@@ -277,7 +277,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 }
                 Ok(result_register)
             }
-            _ => unreachable!(),
+            _ => todo!("Cannot generate expression: {:?}", ast),
         }
     }
 

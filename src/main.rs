@@ -19,19 +19,35 @@ fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();
     let file = args.get(1).unwrap();
 
-    let code = std::fs::read_to_string(file).unwrap();
+    let code = std::fs::read_to_string(&file).unwrap();
 
-    let tokens = tokenize(&code)?;
-    let mut parser = Parser::<u64>::new(&tokens);
+    let tokens = tokenize(&code, &file);
+    if let Err(error) = tokens {
+        error.print().unwrap();
+        std::process::exit(1);
+    }
+    let tokens = tokens.unwrap();
+
+    let mut parser = Parser::<u64>::new(&tokens, &file);
 
     let mut output = File::create("output.asm").unwrap();
-    let mut generator = X86NasmGenerator::new(&mut output);
+    let mut generator = X86NasmGenerator::new(&mut output, &file);
 
     generator.prepare();
 
     while !parser.eof() {
-        let statement = parser.parse_function()?;
-        generator.generate_statement(&statement)?;
+        let statement = parser.parse_function();
+        if let Err(error) = statement {
+            error.print().unwrap();
+            std::process::exit(1);
+        }
+        let statement = statement.unwrap();
+
+        let generated = generator.generate_statement(&statement);
+        if let Err(error) = generated {
+            error.print().unwrap();
+            std::process::exit(1);
+        }
     }
 
     generator.finish();

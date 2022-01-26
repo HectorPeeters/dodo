@@ -3,27 +3,38 @@ use std::collections::HashMap;
 
 pub struct Scope<T> {
     items: Vec<HashMap<String, T>>,
+    // TODO: convert this to a reference
+    source_file: String,
 }
 
 impl<T: Copy> Scope<T> {
-    pub fn new() -> Self {
-        Self { items: vec![] }
+    pub fn new(source_file: &str) -> Self {
+        Self {
+            items: vec![],
+            source_file: source_file.to_string(),
+        }
     }
 
     pub fn insert(&mut self, name: &str, data: T) -> Result<()> {
         match self.items.last_mut() {
             Some(last_scope) => {
                 if last_scope.contains_key(name) {
-                    Err(Error::Scope(
-                        "Identifier already defined in scope".to_string(),
+                    Err(Error::new(
+                        ErrorType::Scope,
+                        format!("Identifier '{}' already defined in scope", name),
+                        0..0,
+                        self.source_file.clone(),
                     ))
                 } else {
                     last_scope.insert(name.to_owned(), data);
                     Ok(())
                 }
             }
-            None => Err(Error::Scope(
-                "Trying to insert into empty scope".to_string(),
+            None => Err(Error::new(
+                ErrorType::Scope,
+                format!("Trying to insert '{}' into empty scope", name),
+                0..0,
+                self.source_file.clone(),
             )),
         }
     }
@@ -35,7 +46,14 @@ impl<T: Copy> Scope<T> {
     pub fn pop(&mut self) -> Result<()> {
         self.items
             .pop()
-            .ok_or_else(|| Error::Scope("Tried popping while scope stack was empty".to_string()))
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorType::Scope,
+                    format!("Tried popping while scope stack was empty"),
+                    0..0,
+                    "".to_string(),
+                )
+            })
             .map(|_| ())
     }
 
@@ -44,7 +62,14 @@ impl<T: Copy> Scope<T> {
             .iter()
             .rev()
             .find_map(|x| x.get(name).copied())
-            .ok_or_else(|| Error::Scope(format!("{} not found in scope", name)))
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorType::Scope,
+                    format!("'{}' not found in scope", name),
+                    0..0,
+                    "".to_string(),
+                )
+            })
     }
 
     pub fn len(&self) -> Result<usize> {
