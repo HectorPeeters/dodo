@@ -16,7 +16,6 @@ const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScopeLocation {
-    Reg(X86Register),
     Stack(usize),
 }
 
@@ -52,9 +51,6 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
     }
 
     fn free_register(&mut self, reg: X86Register) {
-        if (reg as usize) < GENERAL_PURPOSE_REGISTER_OFFSET {
-            return;
-        }
         assert!(self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET]);
         self.allocated_registers[reg as usize - GENERAL_PURPOSE_REGISTER_OFFSET] = false;
     }
@@ -104,9 +100,6 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 match scope_entry {
                     ScopeLocation::Stack(offset) => {
                         self.instr(Mov(RegIndirect(Rbp, offset * 16), Reg(value_reg)));
-                    }
-                    ScopeLocation::Reg(reg) => {
-                        self.instr(Mov(Reg(reg), Reg(value_reg)));
                     }
                 }
 
@@ -161,11 +154,12 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
 
                 self.write_prologue();
 
-                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
-                    let dest_reg = self.get_next_register();
+                self.instr(Sub(Reg(Rsp), Constant(16 * args.len() as u64)));
 
-                    self.instr(Mov(Reg(dest_reg), Reg(arg_reg)));
-                    self.scope.insert(arg_name, ScopeLocation::Reg(dest_reg))?;
+                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                    let offset = self.scope.len()?;
+                    self.scope.insert(arg_name, ScopeLocation::Stack(offset))?;
+                    self.instr(Mov(RegIndirect(Rbp, offset * 16), Reg(arg_reg)));
                 }
 
                 self.generate_statement(body)?;
@@ -175,7 +169,6 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 self.instr(Ret());
                 self.scope.pop()?;
 
-                //self.allocated_registers = [false; 10];
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
             Statement::Block(stmts) => {
@@ -226,11 +219,6 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                 match scope_location {
                     ScopeLocation::Stack(offset) => {
                         self.instr(Mov(Reg(register), RegIndirect(Rbp, offset * 16)));
-                    }
-                    ScopeLocation::Reg(reg) => {
-                        self.instr(Mov(Reg(register), Reg(reg)));
-                        // TODO: using the same argument twice wont work
-                        self.free_register(reg);
                     }
                 }
 
