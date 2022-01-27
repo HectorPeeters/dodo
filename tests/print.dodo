@@ -1,0 +1,7 @@
+fn main() {
+    printf('%s\n', 'test');
+    printf('%d\n', 1234);
+    printf('%c\n', 65);
+
+    exit(0);
+}

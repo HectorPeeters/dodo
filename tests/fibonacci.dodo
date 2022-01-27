@@ -6,7 +6,7 @@ fn fib(n) {
     curr = 1;
 
     while n {
-        print(curr);
+        printf('%d', curr);
 
         prevprev = prev;
         prev = curr;

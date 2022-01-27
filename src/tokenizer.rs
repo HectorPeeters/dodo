@@ -180,7 +180,7 @@ impl<'a> Lexer<'a> {
             if matches.is_empty() {
                 return Err(Error::new(
                     ErrorType::Lexer,
-                    format!("Unexpected character"),
+                    "Unexpected character".to_string(),
                     self.pointer..self.pointer + 1,
                     self.input_file.to_string(),
                 ));

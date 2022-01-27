@@ -8,7 +8,6 @@ pub enum ErrorType {
     Lexer,
     Parser,
     Scope,
-    CodeGenerator,
 }
 
 #[derive(Debug)]

@@ -54,7 +54,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         if self.eof() {
             Err(Error::new(
                 ErrorType::Parser,
-                format!("Token stream out of bounds"),
+                "Token stream out of bounds".to_string(),
                 self.tokens.last().unwrap().span.clone(),
                 self.source_file.to_string(),
             ))
@@ -67,7 +67,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         if self.index + i >= self.tokens.len() {
             Err(Error::new(
                 ErrorType::Parser,
-                format!("Token stream out of bounds"),
+                "Token stream out of bounds".to_string(),
                 self.tokens.last().unwrap().span.clone(),
                 self.source_file.to_string(),
             ))

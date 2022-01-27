@@ -75,8 +75,9 @@ pub enum X86Operand {
     Reg(X86Register),
     RegIndirect(X86Register, usize),
     Constant(u64),
-    OpLabel(usize),
-    StringRef(String),
+    JmpLabel(usize),
+    StringLabel(usize),
+    Reference(String),
 }
 
 impl fmt::Display for X86Operand {
@@ -87,8 +88,9 @@ impl fmt::Display for X86Operand {
             Reg(r) => write!(f, "{r}"),
             RegIndirect(r, offset) => write!(f, "[{r} - {offset}]"),
             Constant(x) => write!(f, "0x{x:x}"),
-            OpLabel(l) => write!(f, "L{l}"),
-            StringRef(x) => write!(f, "{x}"),
+            JmpLabel(l) => write!(f, "L{l}"),
+            StringLabel(s) => write!(f, "S{s}"),
+            Reference(x) => write!(f, "{x}"),
         }
     }
 }

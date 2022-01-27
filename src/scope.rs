@@ -49,7 +49,7 @@ impl<T: Copy> Scope<T> {
             .ok_or_else(|| {
                 Error::new(
                     ErrorType::Scope,
-                    format!("Tried popping while scope stack was empty"),
+                    "Tried popping while scope stack was empty".to_string(),
                     0..0,
                     "".to_string(),
                 )
