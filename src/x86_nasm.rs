@@ -26,7 +26,7 @@ pub struct X86NasmGenerator<'a, T: Write> {
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
-    strings: Vec<String>,
+    strings: Vec<&'a str>,
 }
 
 impl<'a, T: Write> X86NasmGenerator<'a, T> {
@@ -65,9 +65,13 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         result
     }
 
-    fn store_new_string(&mut self, string: &str) -> usize {
-        self.strings.push(string.to_string());
-        self.strings.len() - 1
+    fn store_new_string(&mut self, string: &'a str) -> usize {
+        if self.strings.contains(&string) {
+            self.strings.iter().position(|x| x == &string).unwrap()
+        } else {
+            self.strings.push(string);
+            self.strings.len() - 1
+        }
     }
 
     fn instr(&mut self, instr: X86Instruction) {
@@ -86,7 +90,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         self.instr(Pop(Reg(Rbp)));
     }
 
-    pub fn generate_statement(&mut self, ast: &Statement<u64>) -> Result<()> {
+    pub fn generate_statement(&mut self, ast: &'a Statement<u64>) -> Result<()> {
         match ast {
             Statement::Declaration(name, _type) => {
                 self.scope
@@ -189,7 +193,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         Ok(())
     }
 
-    fn generate_expression(&mut self, ast: &Expression<u64>) -> Result<X86Register> {
+    fn generate_expression(&mut self, ast: &'a Expression<u64>) -> Result<X86Register> {
         match ast {
             Expression::Literal(value, _type) => {
                 let register = self.get_next_register();
@@ -300,7 +304,7 @@ section .data
             self.strings
                 .iter()
                 .enumerate()
-                .map(|(i, x)| format!("\tS{} db \"{}\", 10, 0", i, x))
+                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace("\n", "\\n")))
                 .collect::<Vec<_>>()
                 .join("\n") //    fmt: db "%u", 10, 0"#
         )

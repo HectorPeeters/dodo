@@ -27,9 +27,14 @@ fn main() -> Result<()> {
     let mut output = File::create("output.asm").unwrap();
     let mut generator = X86NasmGenerator::new(&mut output);
 
+    let mut statements = vec![];
+
     while !parser.eof() {
-        let statement = parser.parse_function()?;
-        generator.generate_statement(&statement)?;
+        statements.push(parser.parse_function()?);
+    }
+
+    for statement in &statements {
+        generator.generate_statement(statement)?;
     }
 
     generator.finish();
