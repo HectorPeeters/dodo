@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorType, Result};
 use regex::Regex;
 use std::ops::Range;
 
@@ -77,6 +77,10 @@ impl Token {
             span,
         }
     }
+
+    pub fn offset(&mut self, offset: usize) {
+        self.span = self.span.start + offset..self.span.end + offset;
+    }
 }
 
 impl PartialEq for Token {
@@ -95,10 +99,11 @@ pub struct Lexer<'a> {
     rules: Vec<(Regex, TokenType)>,
     input: &'a str,
     pointer: usize,
+    input_file: &'a str,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str, input_file: &'a str) -> Self {
         use TokenType::*;
 
         let rules = vec![
@@ -144,6 +149,7 @@ impl<'a> Lexer<'a> {
             rules,
             input,
             pointer: 0,
+            input_file,
         }
     }
 
@@ -162,19 +168,30 @@ impl<'a> Lexer<'a> {
 
                 if let Some(x) = regex.find(&self.input[self.pointer..]) {
                     if x.start() == 0 {
-                        matches.push(Token::new_with_span(*token_type, x.as_str(), x.range()));
+                        matches.push(Token::new_with_span(
+                            *token_type,
+                            x.as_str(),
+                            x.range().start..x.range().end,
+                        ));
                     }
                 }
             }
 
             if matches.is_empty() {
-                return Err(Error::Lexer("Unable to tokenize".to_string()));
+                return Err(Error::new(
+                    ErrorType::Lexer,
+                    "Unexpected character".to_string(),
+                    self.pointer..self.pointer + 1,
+                    self.input_file.to_string(),
+                ));
             }
 
             matches.sort_by(|a, b| (b.span.end - b.span.start).cmp(&(a.span.end - a.span.start)));
 
-            let best_match = matches.remove(0);
-            self.pointer += best_match.span.end;
+            let mut best_match = matches.remove(0);
+            let match_size = best_match.span.end;
+            best_match.offset(self.pointer);
+            self.pointer += match_size;
 
             result.push(best_match);
         }
@@ -186,8 +203,8 @@ impl<'a> Lexer<'a> {
     }
 }
 
-pub fn tokenize(input: &str) -> Result<Vec<Token>> {
-    Lexer::new(input).get_tokens()
+pub fn tokenize(input: &str, input_file: &str) -> Result<Vec<Token>> {
+    Lexer::new(input, input_file).get_tokens()
 }
 
 #[cfg(test)]
@@ -196,7 +213,7 @@ mod tests {
     use super::*;
 
     fn get_tokens(input: &str) -> Vec<Token> {
-        let tokens = tokenize(input);
+        let tokens = tokenize(input, "test.dodo");
         assert!(tokens.is_ok());
         tokens.unwrap()
     }
@@ -274,14 +291,14 @@ mod tests {
 
     #[test]
     fn tokenizer_identifier_error() {
-        let tokens = tokenize("_identifier");
+        let tokens = tokenize("_identifier", "test.dodo");
 
         assert!(tokens.is_err());
     }
 
     #[test]
     fn tokenizer_test_error() {
-        let tokens = tokenize("return &;");
+        let tokens = tokenize("return &;", "test.dodo");
 
         assert!(tokens.is_err());
     }

@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
-    error::{Error, Result},
+    error::{Error, ErrorType, Result},
     tokenizer::{Token, TokenType},
     types::Type,
 };
@@ -17,10 +17,11 @@ pub struct Parser<'a, C> {
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a, C>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a, C>, usize)>,
+    source_file: &'a str,
 }
 
 impl<'a, C: FromStr> Parser<'a, C> {
-    pub fn new(tokens: &'a [Token]) -> Self {
+    pub fn new(tokens: &'a [Token], source_file: &'a str) -> Self {
         let mut prefix_fns: HashMap<_, PrefixParseFn<'a, C>> = HashMap::new();
         prefix_fns.insert(
             TokenType::Identifier,
@@ -41,6 +42,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
             index: 0,
             prefix_fns,
             infix_fns,
+            source_file,
         }
     }
 
@@ -50,7 +52,12 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
     fn peek(&self) -> Result<&'a Token> {
         if self.eof() {
-            Err(Error::TokenStreamOutOfBounds())
+            Err(Error::new(
+                ErrorType::Parser,
+                "Token stream out of bounds".to_string(),
+                self.tokens.last().unwrap().span.clone(),
+                self.source_file.to_string(),
+            ))
         } else {
             Ok(&self.tokens[self.index])
         }
@@ -58,7 +65,12 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
     fn peeks(&self, i: usize) -> Result<&'a Token> {
         if self.index + i >= self.tokens.len() {
-            Err(Error::TokenStreamOutOfBounds())
+            Err(Error::new(
+                ErrorType::Parser,
+                "Token stream out of bounds".to_string(),
+                self.tokens.last().unwrap().span.clone(),
+                self.source_file.to_string(),
+            ))
         } else {
             Ok(&self.tokens[self.index + i])
         }
@@ -130,10 +142,12 @@ impl<'a, C: FromStr> Parser<'a, C> {
         match token.token_type {
             TokenType::IntegerLiteral => match token.value.parse::<C>() {
                 Ok(value) => Ok(Expression::Literal(value, Type::UInt8())),
-                Err(_) => Err(Error::Parser(format!(
-                    "Failed to parse {} to int",
-                    token.value
-                ))),
+                Err(_) => Err(Error::new(
+                    ErrorType::Parser,
+                    format!("Failed to parse '{}' to int", token.value),
+                    token.span.clone(),
+                    self.source_file.to_string(),
+                )),
             },
             TokenType::StringLiteral => Ok(Expression::StringLiteral(
                 token.value[1..token.value.len() - 1]
@@ -175,10 +189,15 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
         let mut left = match self.prefix_fns.get(&token_type) {
             Some(func) => func(self),
-            None => Err(Error::Parser(format!(
-                "Did not expect token: {:?} while parsing prefix expression",
-                token_type
-            ))),
+            None => Err(Error::new(
+                ErrorType::Parser,
+                format!(
+                    "Did not expect token '{:?}' while parsing prefix expression",
+                    token_type
+                ),
+                self.peek()?.span.clone(),
+                self.source_file.to_string(),
+            )),
         }?;
 
         if self.eof() || exit_tokens.contains(&self.peek()?.token_type) {
@@ -200,10 +219,15 @@ impl<'a, C: FromStr> Parser<'a, C> {
                     }
                     func(self, left, prec)
                 }
-                None => Err(Error::Parser(format!(
-                    "Did not expect token: {:?} while parsing infix expression",
-                    token_type
-                ))),
+                None => Err(Error::new(
+                    ErrorType::Parser,
+                    format!(
+                        "Did not expect token '{:?}' while parsing infix expression",
+                        token_type
+                    ),
+                    self.peek()?.span.clone(),
+                    self.source_file.to_string(),
+                )),
             }?;
         }
 
@@ -290,6 +314,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
     pub fn parse_statement(&mut self) -> Result<Statement<C>> {
         let token = self.peek()?;
+
         match token.token_type {
             TokenType::Return => self.parse_return_statement(),
             TokenType::LeftBrace => {
@@ -313,7 +338,12 @@ impl<'a, C: FromStr> Parser<'a, C> {
                     self.consume_assert(TokenType::SemiColon)?;
                     Ok(result)
                 }
-                _ => panic!("{:?}", self.peek()?),
+                _ => Err(Error::new(
+                    ErrorType::Parser,
+                    format!("Unexpected token {:?}", token.token_type),
+                    token.span.clone(),
+                    self.source_file.to_string(),
+                )),
             },
             _ => unreachable!(),
         }
@@ -326,9 +356,9 @@ mod tests {
     use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
 
     fn parse_statements(input: &str) -> Result<Vec<Statement<u64>>> {
-        let tokens = tokenize(input)?;
+        let tokens = tokenize(input, "test.dodo")?;
 
-        let mut parser = Parser::new(&tokens);
+        let mut parser = Parser::new(&tokens, "test.dodo");
         let mut result = vec![];
         while !parser.eof() {
             result.push(parser.parse_statement()?);
@@ -338,9 +368,9 @@ mod tests {
     }
 
     fn parse_expressions(input: &str) -> Result<Vec<Expression<u64>>> {
-        let tokens = tokenize(input)?;
+        let tokens = tokenize(input, "test.dodo")?;
 
-        let mut parser = Parser::new(&tokens);
+        let mut parser = Parser::new(&tokens, "test.dodo");
         let mut result = vec![];
         while !parser.eof() {
             result.push(parser.parse_expression(0)?);
@@ -350,9 +380,9 @@ mod tests {
     }
 
     fn parse_function(input: &str) -> Result<Statement<u64>> {
-        let tokens = tokenize(input)?;
+        let tokens = tokenize(input, "test.dodo")?;
 
-        let mut parser = Parser::new(&tokens);
+        let mut parser = Parser::new(&tokens, "test.dodo");
         parser.parse_function()
     }
 

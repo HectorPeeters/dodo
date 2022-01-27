@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 regex = { version = "1.5.4", default-features = false, features = ["std"] }
+ariadne = "0.1.3"
+
