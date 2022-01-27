@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn scope_simple() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new();
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
         scope.insert("test", 12)?;
         assert_eq!(scope.find("test")?, 12);
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn scope_multiple() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new();
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
         scope.insert("test", 12)?;
         scope.insert("tast", 13)?;
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn scope_nested() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new();
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
         scope.insert("test", 12)?;
         scope.push();
