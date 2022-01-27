@@ -165,7 +165,7 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
                     let dest_reg = self.get_next_register();
 
                     self.instr(Mov(Reg(dest_reg), Reg(arg_reg)));
-                    self.scope.insert(&arg_name, ScopeLocation::Reg(dest_reg))?;
+                    self.scope.insert(arg_name, ScopeLocation::Reg(dest_reg))?;
                 }
 
                 self.generate_statement(body)?;
@@ -304,7 +304,7 @@ section .data
             self.strings
                 .iter()
                 .enumerate()
-                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace("\n", "\\n")))
+                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace('\n', "\\n")))
                 .collect::<Vec<_>>()
                 .join("\n") //    fmt: db "%u", 10, 0"#
         )

@@ -37,8 +37,6 @@ impl BinaryOperatorType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperatorType {
     Negate,
-    Ref,
-    Deref,
 }
 
 impl UnaryOperatorType {
@@ -55,7 +53,6 @@ pub enum Expression<C> {
     BinaryOperator(BinaryOperatorType, Box<Expression<C>>, Box<Expression<C>>),
     UnaryOperator(UnaryOperatorType, Box<Expression<C>>),
     FunctionCall(String, Vec<Expression<C>>),
-    Cast(Box<Expression<C>>, Type),
     Literal(C, Type),
     VariableRef(String),
     StringLiteral(String),
