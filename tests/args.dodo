@@ -1,21 +1,21 @@
 fn test1(a) {
-    printf('%d\n', a);
+    printf("%d\n", a);
 }
 
 fn test2(a, b) {
-    printf('%d %d\n', a, b);
+    printf("%d %d\n", a, b);
 }
 
 fn test3(a, b, c) {
-    printf('%d %d %d\n', a, b, c);
+    printf("%d %d %d\n", a, b, c);
 }
 
 fn test4(a, b, c, d) {
-    printf('%d %d %d %d\n', a, b, c, d);
+    printf("%d %d %d %d\n", a, b, c, d);
 }
 
 fn test5(a, b, c, d, e) {
-    printf('%d %d %d %d %d\n', a, b, c, d, e);
+    printf("%d %d %d %d %d\n", a, b, c, d, e);
 }
 
 fn main() {

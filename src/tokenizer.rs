@@ -108,7 +108,7 @@ impl<'a> Lexer<'a> {
 
         let rules = vec![
             (r"[ \t\n\f]+", Whitespace),
-            (r"'[^']*'", StringLiteral),
+            ("\"[^\"]*\"", StringLiteral),
             (r"return", Return),
             (r"let", Let),
             (r"while", While),
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn tokenizer_string() {
-        let tokens = get_tokens("'test' 'test 123 \" 12312'");
+        let tokens = get_tokens("\"test\" \"test 123 ' 12312\"");
 
         assert_eq!(tokens[0].token_type, StringLiteral);
         assert_eq!(tokens[1].token_type, StringLiteral);

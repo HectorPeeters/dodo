@@ -547,17 +547,17 @@ mod tests {
 
     #[test]
     fn parse_string_constant_expr() -> Result<()> {
-        let string = parse_expressions("'test'")?;
+        let string = parse_expressions("\"test\"")?;
         assert_eq!(string[0], Expression::StringLiteral("test".to_string()));
         Ok(())
     }
 
     #[test]
     fn parse_string_constant_escaped_expr() -> Result<()> {
-        let string = parse_expressions("'test\\t\\\"test\\\"\\n'")?;
+        let string = parse_expressions("\"test\\t\\'test\\'\\n\"")?;
         assert_eq!(
             string[0],
-            Expression::StringLiteral("test\t\"test\"\n".to_string())
+            Expression::StringLiteral("test\t\\'test\\'\n".to_string())
         );
         Ok(())
     }
