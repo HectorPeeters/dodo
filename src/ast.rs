@@ -20,6 +20,8 @@ pub enum BinaryOperatorType {
     Subtract,
     Multiply,
     Divide,
+    Equal,
+    NotEqual,
 }
 
 impl BinaryOperatorType {
@@ -29,6 +31,8 @@ impl BinaryOperatorType {
             TokenType::Minus => BinaryOperatorType::Subtract,
             TokenType::Asterix => BinaryOperatorType::Multiply,
             TokenType::Slash => BinaryOperatorType::Divide,
+            TokenType::DoubleEqual => BinaryOperatorType::Equal,
+            TokenType::NotEqual => BinaryOperatorType::NotEqual,
             _ => unreachable!(),
         }
     }

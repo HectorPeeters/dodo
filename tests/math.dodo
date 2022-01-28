@@ -1,6 +1,5 @@
 fn assert_eq(result, expected) {
-    // idential to result == expected
-    if result - expected {
+    if result == expected {
         printf("Failed: expected %d but got %d\n", expected, result);
         exit(1);
     }

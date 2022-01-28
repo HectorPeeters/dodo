@@ -218,6 +218,14 @@ impl<'a> X86NasmGenerator<'a> {
                         self.instr(Div(Reg(right_reg)));
                         self.instr(Mov(Reg(left_reg), Reg(Rax)));
                     }
+                    BinaryOperatorType::Equal => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetNZ(Reg(left_reg)));
+                    }
+                    BinaryOperatorType::NotEqual => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetZ(Reg(left_reg)));
+                    }
                 }
 
                 self.free_register(right_reg);
