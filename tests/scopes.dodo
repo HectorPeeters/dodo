@@ -1,12 +1,10 @@
 fn main() {
-    let x;
-    x = 12;
+    let x = 12;
 
     printf("%d\n", x);
 
     {
-        let x;
-        x = 13;
+        let x = 13;
 
         printf("%d\n", x);
     }

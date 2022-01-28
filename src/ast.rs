@@ -4,7 +4,7 @@ use crate::tokenizer::TokenType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<C> {
-    Block(Vec<Statement<C>>),
+    Block(Vec<Statement<C>>, bool),
     Declaration(String, Type),
     Assignment(String, Expression<C>),
     Expression(Expression<C>),

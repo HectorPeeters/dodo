@@ -169,12 +169,18 @@ impl<'a> X86NasmGenerator<'a> {
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            Statement::Block(stmts) => {
-                self.scope.push();
+            Statement::Block(stmts, scoped) => {
+                if *scoped {
+                    self.scope.push();
+                }
+
                 for stmt in stmts {
                     self.generate_statement(stmt)?;
                 }
-                self.scope.pop()?;
+
+                if *scoped {
+                    self.scope.pop()?;
+                }
             }
             Statement::Expression(expr) => {
                 let register = self.generate_expression(expr)?;

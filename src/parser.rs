@@ -244,6 +244,22 @@ impl<'a, C: FromStr> Parser<'a, C> {
     fn parse_let_statement(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Let)?;
         let variable_name = self.consume_assert(TokenType::Identifier)?;
+
+        if self.peek()?.token_type == TokenType::Equals {
+            // We have a declaration and assignment combined
+            self.consume_assert(TokenType::Equals)?;
+            let expr = self.parse_expression(0)?;
+            self.consume_assert(TokenType::SemiColon)?;
+
+            return Ok(Statement::Block(
+                vec![
+                    Statement::Declaration(variable_name.value.clone(), Type::UInt64()),
+                    Statement::Assignment(variable_name.value.clone(), expr),
+                ],
+                false,
+            ));
+        }
+
         self.consume_assert(TokenType::SemiColon)?;
         Ok(Statement::Declaration(
             variable_name.value.clone(),
@@ -326,7 +342,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
                 self.consume_assert(TokenType::RightBrace)?;
 
-                Ok(Statement::Block(statements))
+                Ok(Statement::Block(statements, true))
             }
             TokenType::Let => self.parse_let_statement(),
             TokenType::While => self.parse_while_statement(),
