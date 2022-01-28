@@ -210,7 +210,14 @@ impl<'a> X86NasmGenerator<'a> {
                     BinaryOperatorType::Subtract => {
                         self.instr(Sub(Reg(left_reg), Reg(right_reg)));
                     }
-                    _ => todo!("Cannot generate binary operator {:?}", op),
+                    BinaryOperatorType::Multiply => {
+                        self.instr(Mul(Reg(left_reg), Reg(right_reg)));
+                    }
+                    BinaryOperatorType::Divide => {
+                        self.instr(Mov(Reg(Rax), Reg(left_reg)));
+                        self.instr(Div(Reg(right_reg)));
+                        self.instr(Mov(Reg(left_reg), Reg(Rax)));
+                    }
                 }
 
                 self.free_register(right_reg);
