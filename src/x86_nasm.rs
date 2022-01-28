@@ -19,8 +19,7 @@ pub enum ScopeLocation {
     Stack(usize),
 }
 
-pub struct X86NasmGenerator<'a, T: Write> {
-    writer: &'a mut T,
+pub struct X86NasmGenerator<'a> {
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
@@ -28,10 +27,9 @@ pub struct X86NasmGenerator<'a, T: Write> {
     strings: Vec<&'a str>,
 }
 
-impl<'a, T: Write> X86NasmGenerator<'a, T> {
-    pub fn new(writer: &'a mut T, source_file: &'a str) -> Self {
+impl<'a> X86NasmGenerator<'a> {
+    pub fn new(source_file: &'a str) -> Self {
         Self {
-            writer,
             instructions: vec![],
             label_index: 0,
             scope: Scope::new(source_file),
@@ -282,9 +280,9 @@ impl<'a, T: Write> X86NasmGenerator<'a, T> {
         }
     }
 
-    pub fn finish(&mut self) {
+    pub fn write<T: Write>(&'a self, writer: &'a mut T) {
         writeln!(
-            self.writer,
+            writer,
             r#"extern printf
 extern exit
 section .data
@@ -294,19 +292,19 @@ section .data
                 .enumerate()
                 .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace('\n', "\\n")))
                 .collect::<Vec<_>>()
-                .join("\n") //    fmt: db "%u", 10, 0"#
+                .join("\n")
         )
         .unwrap();
 
         writeln!(
-            self.writer,
+            writer,
             r#"section .text
     global _start
 "#
         )
         .unwrap();
         writeln!(
-            self.writer,
+            writer,
             "{}",
             self.instructions
                 .iter()

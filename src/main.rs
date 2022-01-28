@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     let mut parser = Parser::<u64>::new(&tokens, file);
 
     let mut output = File::create("output.asm").unwrap();
-    let mut generator = X86NasmGenerator::new(&mut output, file);
+    let mut generator = X86NasmGenerator::new(file);
 
     let mut statements = vec![];
 
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
         }
     }
 
-    generator.finish();
+    generator.write(&mut output);
 
     Ok(())
 }
