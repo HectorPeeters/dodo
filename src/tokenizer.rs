@@ -5,6 +5,7 @@ use std::ops::Range;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Whitespace,
+    Comment,
 
     Return,
     Fn,
@@ -108,6 +109,7 @@ impl<'a> Lexer<'a> {
 
         let rules = vec![
             (r"[ \t\n\f]+", Whitespace),
+            (r"//[^\n]*", Comment),
             ("\"[^\"]*\"", StringLiteral),
             (r"return", Return),
             (r"let", Let),
@@ -199,6 +201,7 @@ impl<'a> Lexer<'a> {
         Ok(result
             .into_iter()
             .filter(|x| x.token_type != TokenType::Whitespace)
+            .filter(|x| x.token_type != TokenType::Comment)
             .collect())
     }
 }

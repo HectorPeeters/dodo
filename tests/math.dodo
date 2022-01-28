@@ -1,8 +1,10 @@
-fn assert(result, expected) {
+fn assert_eq(result, expected) {
+    // idential to result == expected
     if result - expected {
         printf("Failed: expected %d but got %d\n", expected, result);
         exit(1);
     }
+
     printf("Success\n");
 }
 
@@ -10,10 +12,15 @@ fn main() {
     let x = 12;
     let y = 4;
 
-    assert(x + y, 16);
-    assert(x - y, 8);
-    assert(x * y, 48);
-    assert(x / y, 3);
+    // basic math operations
+    assert_eq(x + y, 16);
+    assert_eq(x - y, 8);
+    assert_eq(x * y, 48);
+    assert_eq(x / y, 3);
+
+    // test operator precedence
+    assert_eq(x + y * 2, 20); 
+    assert_eq(x * y + 2, 50); 
 
     exit(0);
 }
