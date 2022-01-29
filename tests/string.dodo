@@ -1,5 +1,5 @@
 fn main() {
-    let x = "%d";
+    let x = "%d\n";
 
     printf(x, 12);
     exit(0);

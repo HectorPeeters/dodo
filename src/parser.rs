@@ -291,7 +291,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(Statement::If(expr, Box::new(statement)))
     }
 
-    pub fn parse_function(&mut self) -> Result<Statement<C>> {
+    fn parse_function(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
         self.consume_assert(TokenType::LeftParen)?;
@@ -363,7 +363,13 @@ impl<'a, C: FromStr> Parser<'a, C> {
                     self.source_file.to_string(),
                 )),
             },
-            _ => unreachable!(),
+            TokenType::Fn => self.parse_function(),
+            _ => Err(Error::new(
+                ErrorType::Parser,
+                format!("Unexpected token {:?}", token.token_type),
+                token.span.clone(),
+                self.source_file.to_string(),
+            )),
         }
     }
 }

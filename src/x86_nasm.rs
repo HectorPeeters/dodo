@@ -13,6 +13,7 @@ use X86Register::*;
 
 const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
 const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
+const STACK_OFFSET: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScopeLocation {
@@ -89,7 +90,7 @@ impl<'a> X86NasmGenerator<'a> {
             Statement::Declaration(name, _type) => {
                 self.scope
                     .insert(name, ScopeLocation::Stack(self.scope.len()?))?;
-                self.instr(Sub(Reg(Rsp), Constant(16)));
+                self.instr(Sub(Reg(Rsp), Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value) => {
                 let scope_entry = self.scope.find(name)?;
@@ -97,7 +98,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 match scope_entry {
                     ScopeLocation::Stack(offset) => {
-                        self.instr(Mov(RegIndirect(Rbp, offset * 16), Reg(value_reg)));
+                        self.instr(Mov(RegIndirect(Rbp, offset * STACK_OFFSET), Reg(value_reg)));
                     }
                 }
 
@@ -152,12 +153,14 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.write_prologue();
 
-                self.instr(Sub(Reg(Rsp), Constant(16 * args.len() as u64)));
+                if !args.is_empty() {
+                    self.instr(Sub(Reg(Rsp), Constant((STACK_OFFSET * args.len()) as u64)));
+                }
 
                 for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.len()?;
                     self.scope.insert(arg_name, ScopeLocation::Stack(offset))?;
-                    self.instr(Mov(RegIndirect(Rbp, offset * 16), Reg(arg_reg)));
+                    self.instr(Mov(RegIndirect(Rbp, offset * STACK_OFFSET), Reg(arg_reg)));
                 }
 
                 self.generate_statement(body)?;
@@ -277,6 +280,11 @@ impl<'a> X86NasmGenerator<'a> {
                         self.instr(Push(Reg(*dest_reg)));
                         self.instr(Mov(Reg(*dest_reg), Reg(arg_register)));
                         self.free_register(arg_register);
+                    }
+
+                    // TODO: get rid of this disgusting hack
+                    if name == "printf" {
+                        self.instr(Mov(Reg(Rax), Constant(0)));
                     }
 
                     self.instr(Call(Reference(name.to_string())));

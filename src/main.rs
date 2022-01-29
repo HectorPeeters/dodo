@@ -36,13 +36,13 @@ fn main() -> Result<()> {
     let mut statements = vec![];
 
     while !parser.eof() {
-        let statement = parser.parse_function();
-        if let Err(error) = statement {
-            error.print().unwrap();
-            std::process::exit(1);
+        match parser.parse_statement() {
+            Ok(statement) => statements.push(statement),
+            Err(error) => {
+                error.print().unwrap();
+                std::process::exit(1);
+            }
         }
-        let statement = statement.unwrap();
-        statements.push(statement);
     }
 
     for statement in &statements {

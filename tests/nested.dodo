@@ -1,0 +1,17 @@
+fn test2() {
+    printf("C\n");
+}
+
+fn test1() {
+    printf("B\n");
+    test2();
+    printf("D\n");
+}
+
+fn main() {
+    printf("A\n");
+    test1();
+    printf("E\n");
+
+    exit(0);
+}
