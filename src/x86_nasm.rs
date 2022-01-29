@@ -229,6 +229,22 @@ impl<'a> X86NasmGenerator<'a> {
                         self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
                         self.instr(SetZ(Reg(left_reg)));
                     }
+                    BinaryOperatorType::LessThan => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetGE(Reg(left_reg)));
+                    }
+                    BinaryOperatorType::LessThanEqual => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetG(Reg(left_reg)));
+                    }
+                    BinaryOperatorType::GreaterThan => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetLE(Reg(left_reg)));
+                    }
+                    BinaryOperatorType::GreaterThanEqual => {
+                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
+                        self.instr(SetL(Reg(left_reg)));
+                    }
                 }
 
                 self.free_register(right_reg);

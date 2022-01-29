@@ -22,6 +22,10 @@ pub enum BinaryOperatorType {
     Divide,
     Equal,
     NotEqual,
+    LessThan,
+    LessThanEqual,
+    GreaterThan,
+    GreaterThanEqual,
 }
 
 impl BinaryOperatorType {
@@ -33,6 +37,10 @@ impl BinaryOperatorType {
             TokenType::Slash => BinaryOperatorType::Divide,
             TokenType::DoubleEqual => BinaryOperatorType::Equal,
             TokenType::NotEqual => BinaryOperatorType::NotEqual,
+            TokenType::LessThan => BinaryOperatorType::LessThan,
+            TokenType::LessThanEqual => BinaryOperatorType::LessThanEqual,
+            TokenType::GreaterThan => BinaryOperatorType::GreaterThan,
+            TokenType::GreaterThanEqual => BinaryOperatorType::GreaterThanEqual,
             _ => unreachable!(),
         }
     }
