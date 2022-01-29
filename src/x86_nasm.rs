@@ -271,7 +271,9 @@ impl<'a> X86NasmGenerator<'a> {
 
                     for arg in args.iter().skip(1).zip(&ARGUMENT_REGISTERS) {
                         let arg_register = self.generate_expression(arg.0)?;
-                        self.instr(Push(Reg(*arg.1)));
+                        if arg.1.is_caller_saved() {
+                            self.instr(Push(Reg(*arg.1)));
+                        }
                         self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
                         self.free_register(arg_register);
                     }
@@ -282,7 +284,9 @@ impl<'a> X86NasmGenerator<'a> {
                     self.free_register(syscall_num_reg);
 
                     for i in (0..args.len()).rev() {
-                        self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                        if ARGUMENT_REGISTERS[i].is_caller_saved() {
+                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                        }
                     }
 
                     let result_reg = self.get_next_register();
@@ -293,7 +297,9 @@ impl<'a> X86NasmGenerator<'a> {
                     for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
                         let arg_register = self.generate_expression(expr)?;
 
-                        self.instr(Push(Reg(*dest_reg)));
+                        if dest_reg.is_caller_saved() {
+                            self.instr(Push(Reg(*dest_reg)));
+                        }
                         self.instr(Mov(Reg(*dest_reg), Reg(arg_register)));
                         self.free_register(arg_register);
                     }
@@ -309,7 +315,9 @@ impl<'a> X86NasmGenerator<'a> {
                     self.instr(Mov(Reg(result_register), Reg(Rax)));
 
                     for i in (0..args.len()).rev() {
-                        self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                        if ARGUMENT_REGISTERS[i].is_caller_saved() {
+                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                        }
                     }
 
                     Ok(result_register)

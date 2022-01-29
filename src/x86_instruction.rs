@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy)]
 pub enum X86Register {
     Rax = 0,
+    Rbx,
     Rcx,
     Rdx,
     Rsi,
@@ -19,25 +20,33 @@ pub enum X86Register {
     R15,
 }
 
+impl X86Register {
+    pub fn is_caller_saved(&self) -> bool {
+        use X86Register::*;
+        !matches!(self, Rbp | Rbx | R12 | R13 | R14 | R15)
+    }
+}
+
 impl From<usize> for X86Register {
     fn from(x: usize) -> Self {
         use X86Register::*;
         match x {
             0 => Rax,
-            1 => Rcx,
-            2 => Rdx,
-            3 => Rsi,
-            4 => Rdi,
-            5 => Rsp,
-            6 => Rbp,
-            7 => R8,
-            8 => R9,
-            9 => R10,
-            10 => R11,
-            11 => R12,
-            12 => R13,
-            13 => R14,
-            14 => R15,
+            1 => Rbx,
+            2 => Rcx,
+            3 => Rdx,
+            4 => Rsi,
+            5 => Rdi,
+            6 => Rsp,
+            7 => Rbp,
+            8 => R8,
+            9 => R9,
+            10 => R10,
+            11 => R11,
+            12 => R12,
+            13 => R13,
+            14 => R14,
+            15 => R15,
             _ => unreachable!(),
         }
     }
@@ -52,6 +61,7 @@ impl fmt::Display for X86Register {
             "{}",
             match self {
                 Rax => "rax",
+                Rbx => "rbx",
                 Rcx => "rcx",
                 Rdx => "rdx",
                 Rsi => "rsi",
