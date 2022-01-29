@@ -112,7 +112,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 let register = self.generate_expression(cond)?;
 
-                self.instr(Test(Reg(register), Reg(register)));
+                self.instr(Cmp(Reg(register), Constant(0)));
                 self.instr(Jz(JmpLabel(end_label)));
 
                 self.generate_statement(stmt)?;
@@ -126,7 +126,7 @@ impl<'a> X86NasmGenerator<'a> {
                 let end_label = self.get_new_label();
                 let register = self.generate_expression(cond)?;
 
-                self.instr(Test(Reg(register), Reg(register)));
+                self.instr(Cmp(Reg(register), Constant(0)));
                 self.free_register(register);
 
                 self.instr(Jz(JmpLabel(end_label)));
