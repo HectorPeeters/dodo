@@ -27,7 +27,9 @@ impl<'a, C: FromStr> Parser<'a, C> {
             TokenType::Identifier,
             Self::parse_identifier_or_function_call,
         );
-        prefix_fns.insert(TokenType::Minus, Self::parse_prefix_expression);
+        prefix_fns.insert(TokenType::Minus, Self::parse_unary_expression);
+        prefix_fns.insert(TokenType::Ampersand, Self::parse_unary_expression);
+        prefix_fns.insert(TokenType::Asterix, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
 
@@ -139,7 +141,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         }
     }
 
-    fn parse_prefix_expression(&mut self) -> Result<Expression<C>> {
+    fn parse_unary_expression(&mut self) -> Result<Expression<C>> {
         let token = self.consume()?;
         let unop_type = UnaryOperatorType::from_token_type(token.token_type);
         let expression = self.parse_expression(0)?;

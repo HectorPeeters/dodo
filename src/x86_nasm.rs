@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::{
-    ast::{BinaryOperatorType, Expression, Statement},
+    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::Result,
     scope::Scope,
     x86_instruction::{X86Instruction, X86Operand, X86Register},
@@ -202,6 +202,34 @@ impl<'a> X86NasmGenerator<'a> {
 
                 Ok(register)
             }
+            Expression::UnaryOperator(UnaryOperatorType::Ref, expr) => {
+                let result_reg = self.get_next_register();
+
+                match &**expr {
+                    Expression::VariableRef(name) => {
+                        let location = self.scope.find(&name)?;
+                        let ScopeLocation::Stack(offset) = location;
+                        self.instr(Lea(Reg(result_reg), RegIndirect(Rbp, offset * 16)));
+                    }
+                    _ => unreachable!(),
+                }
+
+                Ok(result_reg)
+            }
+            Expression::UnaryOperator(op, expr) => {
+                let reg = self.generate_expression(expr)?;
+                let result_reg = self.get_next_register();
+
+                match op {
+                    &UnaryOperatorType::Deref => {
+                        self.instr(Mov(Reg(result_reg), RegIndirect(reg, 0)));
+                    }
+                    _ => unreachable!(),
+                }
+
+                self.free_register(reg);
+                Ok(result_reg)
+            }
             Expression::BinaryOperator(op, left, right) => {
                 let left_reg = self.generate_expression(left)?;
                 let right_reg = self.generate_expression(right)?;
@@ -329,7 +357,6 @@ impl<'a> X86NasmGenerator<'a> {
                 self.instr(Mov(Reg(result_reg), StringLabel(label)));
                 Ok(result_reg)
             }
-            _ => todo!("Cannot generate expression: {:?}", ast),
         }
     }
 

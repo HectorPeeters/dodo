@@ -18,10 +18,9 @@ pub enum TokenType {
     UInt32,
     Bool,
     StringLiteral,
+    IntegerLiteral,
 
     Identifier,
-
-    IntegerLiteral,
 
     Plus,
     Minus,
@@ -35,6 +34,8 @@ pub enum TokenType {
     GreaterThanEqual,
 
     Equals,
+
+    Ampersand,
 
     Colon,
     SemiColon,
@@ -133,6 +134,7 @@ impl<'a> Lexer<'a> {
             (r">=", GreaterThanEqual),
             (r">", GreaterThan),
             (r"=", Equals),
+            (r"&", Ampersand),
             (r":", Colon),
             (r";", SemiColon),
             (r",", Comma),

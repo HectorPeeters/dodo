@@ -49,12 +49,16 @@ impl BinaryOperatorType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperatorType {
     Negate,
+    Ref,
+    Deref,
 }
 
 impl UnaryOperatorType {
     pub fn from_token_type(token_type: TokenType) -> Self {
         match token_type {
             TokenType::Minus => UnaryOperatorType::Negate,
+            TokenType::Ampersand => UnaryOperatorType::Ref,
+            TokenType::Asterix => UnaryOperatorType::Deref,
             _ => unreachable!(),
         }
     }
