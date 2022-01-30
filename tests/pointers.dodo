@@ -5,5 +5,14 @@ fn main() {
 
     printf("%d\n%d\n%d\n", x, addr_x, y);
 
+    let string = "test";
+    let i = 0;
+
+    while *(string + i) {
+        printf("%c", *(string + i));
+        i = i + 1;
+    }
+    printf("\n");
+
     exit(0);
 }

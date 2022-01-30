@@ -20,6 +20,9 @@ fn main() {
     // test operator precedence
     assert_eq(x + y * 2, 20); 
     assert_eq(x * y + 2, 50); 
+    
+    // parenthesized expressions
+    assert_eq(4 * (2 + 3), 20);
 
     exit(0);
 }

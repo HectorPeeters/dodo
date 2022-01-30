@@ -32,6 +32,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
         prefix_fns.insert(TokenType::Asterix, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
 
         let mut infix_fns: HashMap<_, (InfixParseFn<'a, C>, usize)> = HashMap::new();
         infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 3));
@@ -170,6 +171,13 @@ impl<'a, C: FromStr> Parser<'a, C> {
             )),
             _ => unreachable!(),
         }
+    }
+
+    fn parse_parenthesized(&mut self) -> Result<Expression<C>> {
+        self.consume_assert(TokenType::LeftParen)?;
+        let expr = self.parse_expression(0)?;
+        self.consume_assert(TokenType::RightParen)?;
+        Ok(expr)
     }
 
     fn parse_binary_operator(
