@@ -1,7 +1,7 @@
-fn fib(n) {
-    let prevprev;
-    let prev = 0;
-    let curr = 1;
+fn fib(n: u64) {
+    let prevprev: u64;
+    let prev: u64 = 0;
+    let curr: u64 = 1;
 
     while n {
         printf("%d\n", curr);

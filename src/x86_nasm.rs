@@ -4,7 +4,8 @@ use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::Result,
     scope::Scope,
-    x86_instruction::{X86Instruction, X86Operand, X86Register},
+    types::Type,
+    x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RSP},
 };
 
 use X86Instruction::*;
@@ -15,10 +16,7 @@ const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
 const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
 const STACK_OFFSET: usize = 16;
 
-#[derive(Debug, Clone, Copy)]
-pub enum ScopeLocation {
-    Stack(usize),
-}
+pub type ScopeLocation = (usize, Type);
 
 pub struct X86NasmGenerator<'a> {
     instructions: Vec<X86Instruction>,
@@ -74,33 +72,33 @@ impl<'a> X86NasmGenerator<'a> {
     }
 
     fn write_prologue(&mut self) {
-        self.instr(Push(Reg(Rbp)));
-        self.instr(Push(Reg(Rbp)));
-        self.instr(Mov(Reg(Rbp), Reg(Rsp)));
+        self.instr(Push(RBP));
+        self.instr(Push(RBP));
+        self.instr(Mov(RBP, RSP));
     }
 
     fn write_epilogue(&mut self) {
-        self.instr(Mov(Reg(Rsp), Reg(Rbp)));
-        self.instr(Pop(Reg(Rbp)));
-        self.instr(Pop(Reg(Rbp)));
+        self.instr(Mov(RSP, RBP));
+        self.instr(Pop(RBP));
+        self.instr(Pop(RBP));
     }
 
     pub fn generate_statement(&mut self, ast: &'a Statement<u64>) -> Result<()> {
         match ast {
-            Statement::Declaration(name, _type) => {
+            Statement::Declaration(name, value_type) => {
                 self.scope
-                    .insert(name, ScopeLocation::Stack(self.scope.len()?))?;
-                self.instr(Sub(Reg(Rsp), Constant(STACK_OFFSET as u64)));
+                    .insert(name, (self.scope.len()?, value_type.clone()))?;
+                self.instr(Sub(RBP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value) => {
-                let scope_entry = self.scope.find(name)?;
-                let value_reg = self.generate_expression(value).unwrap();
+                let (offset, variable_type) = self.scope.find(name)?;
+                let (value_reg, value_type) = self.generate_expression(value).unwrap();
 
-                match scope_entry {
-                    ScopeLocation::Stack(offset) => {
-                        self.instr(Mov(RegIndirect(Rbp, offset * STACK_OFFSET), Reg(value_reg)));
-                    }
-                }
+                assert_eq!(variable_type, value_type);
+                self.instr(Mov(
+                    RegIndirect(Rbp, offset * STACK_OFFSET),
+                    Reg(value_reg, value_type.size()),
+                ));
 
                 self.free_register(value_reg);
             }
@@ -110,9 +108,9 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.instr(Label(start_label));
 
-                let register = self.generate_expression(cond)?;
+                let (register, value_type) = self.generate_expression(cond)?;
 
-                self.instr(Cmp(Reg(register), Constant(0)));
+                self.instr(Cmp(Reg(register, value_type.size()), Constant(0)));
                 self.instr(Jz(JmpLabel(end_label)));
 
                 self.generate_statement(stmt)?;
@@ -124,9 +122,9 @@ impl<'a> X86NasmGenerator<'a> {
             }
             Statement::If(cond, stmt) => {
                 let end_label = self.get_new_label();
-                let register = self.generate_expression(cond)?;
+                let (register, value_type) = self.generate_expression(cond)?;
 
-                self.instr(Cmp(Reg(register), Constant(0)));
+                self.instr(Cmp(Reg(register, value_type.size()), Constant(0)));
                 self.free_register(register);
 
                 self.instr(Jz(JmpLabel(end_label)));
@@ -136,9 +134,12 @@ impl<'a> X86NasmGenerator<'a> {
                 self.instr(Label(end_label));
             }
             Statement::Return(expr) => {
-                let value_reg = self.generate_expression(expr).unwrap();
+                let (value_reg, value_type) = self.generate_expression(expr).unwrap();
 
-                self.instr(Mov(Reg(Rax), Reg(value_reg)));
+                self.instr(Mov(
+                    Reg(Rax, value_type.size()),
+                    Reg(value_reg, value_type.size()),
+                ));
 
                 self.free_register(value_reg);
             }
@@ -154,13 +155,16 @@ impl<'a> X86NasmGenerator<'a> {
                 self.write_prologue();
 
                 if !args.is_empty() {
-                    self.instr(Sub(Reg(Rsp), Constant((STACK_OFFSET * args.len()) as u64)));
+                    self.instr(Sub(RSP, Constant((STACK_OFFSET * args.len()) as u64)));
                 }
 
-                for ((arg_name, _arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.len()?;
-                    self.scope.insert(arg_name, ScopeLocation::Stack(offset))?;
-                    self.instr(Mov(RegIndirect(Rbp, offset * STACK_OFFSET), Reg(arg_reg)));
+                    self.scope.insert(arg_name, (offset, arg_type.clone()))?;
+                    self.instr(Mov(
+                        RegIndirect(Rbp, offset * STACK_OFFSET),
+                        Reg(arg_reg, arg_type.size()),
+                    ));
                 }
 
                 self.generate_statement(body)?;
@@ -186,176 +190,200 @@ impl<'a> X86NasmGenerator<'a> {
                 }
             }
             Statement::Expression(expr) => {
-                let register = self.generate_expression(expr)?;
+                let (register, _type) = self.generate_expression(expr)?;
                 self.free_register(register);
             }
         }
         Ok(())
     }
 
-    fn generate_expression(&mut self, ast: &'a Expression<u64>) -> Result<X86Register> {
+    fn generate_expression(&mut self, ast: &'a Expression<u64>) -> Result<(X86Register, Type)> {
         match ast {
-            Expression::Literal(value, _type) => {
+            Expression::Literal(value, value_type) => {
                 let register = self.get_next_register();
 
-                self.instr(Mov(Reg(register), Constant(*value)));
+                self.instr(Mov(Reg(register, value_type.size()), Constant(*value)));
 
-                Ok(register)
+                Ok((register, value_type.clone()))
             }
             Expression::UnaryOperator(UnaryOperatorType::Ref, expr) => {
                 let result_reg = self.get_next_register();
 
                 match &**expr {
                     Expression::VariableRef(name) => {
-                        let location = self.scope.find(&name)?;
-                        let ScopeLocation::Stack(offset) = location;
-                        self.instr(Lea(Reg(result_reg), RegIndirect(Rbp, offset * 16)));
+                        let (offset, value_type) = self.scope.find(&name)?;
+                        self.instr(Lea(
+                            Reg(result_reg, value_type.size()),
+                            RegIndirect(Rbp, offset * 16),
+                        ));
+                        Ok((result_reg, value_type))
                     }
                     _ => unreachable!(),
                 }
-
-                Ok(result_reg)
             }
             Expression::UnaryOperator(op, expr) => {
-                let reg = self.generate_expression(expr)?;
+                let (reg, value_type) = self.generate_expression(expr)?;
                 let result_reg = self.get_next_register();
 
                 match op {
                     &UnaryOperatorType::Deref => {
-                        self.instr(Mov(Reg(result_reg), RegIndirect(reg, 0)));
+                        self.instr(Mov(Reg(result_reg, value_type.size()), RegIndirect(reg, 0)));
                     }
                     _ => unreachable!(),
                 }
 
                 self.free_register(reg);
-                Ok(result_reg)
+                Ok((result_reg, value_type))
             }
             Expression::BinaryOperator(op, left, right) => {
-                let left_reg = self.generate_expression(left)?;
-                let right_reg = self.generate_expression(right)?;
+                let (left_reg, left_type) = self.generate_expression(left)?;
+                let (right_reg, right_type) = self.generate_expression(right)?;
+                let left_op = Reg(left_reg, left_type.size());
+                let right_op = Reg(right_reg, right_type.size());
 
                 match op {
                     BinaryOperatorType::Add => {
-                        self.instr(Add(Reg(left_reg), Reg(right_reg)));
+                        self.instr(Add(left_op, right_op));
                     }
                     BinaryOperatorType::Subtract => {
-                        self.instr(Sub(Reg(left_reg), Reg(right_reg)));
+                        self.instr(Sub(left_op, right_op));
                     }
                     BinaryOperatorType::Multiply => {
-                        self.instr(Mul(Reg(left_reg), Reg(right_reg)));
+                        self.instr(Mul(left_op, right_op));
                     }
                     BinaryOperatorType::Divide => {
-                        self.instr(Mov(Reg(Rax), Reg(left_reg)));
-                        self.instr(Div(Reg(right_reg)));
-                        self.instr(Mov(Reg(left_reg), Reg(Rax)));
+                        self.instr(Mov(Reg(Rax, left_type.size()), left_op.clone()));
+                        self.instr(Div(right_op));
+                        self.instr(Mov(left_op, Reg(Rax, left_type.size())));
                     }
                     BinaryOperatorType::Equal => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetNZ(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetZ(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::NotEqual => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetZ(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetNZ(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::LessThan => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetGE(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetGE(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::LessThanEqual => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetG(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetG(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::GreaterThan => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetLE(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetLE(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::GreaterThanEqual => {
-                        self.instr(Cmp(Reg(left_reg), Reg(right_reg)));
-                        self.instr(SetL(Reg(left_reg)));
+                        self.instr(Cmp(left_op, right_op));
+                        self.instr(SetL(Reg(left_reg, 8)));
                     }
                 }
 
                 self.free_register(right_reg);
-                Ok(left_reg)
+                Ok((left_reg, left_type))
             }
             Expression::VariableRef(name) => {
-                let scope_location = self.scope.find(name)?;
+                let (offset, value_type) = self.scope.find(name)?;
                 let register = self.get_next_register();
 
-                match scope_location {
-                    ScopeLocation::Stack(offset) => {
-                        self.instr(Mov(Reg(register), RegIndirect(Rbp, offset * 16)));
-                    }
-                }
+                self.instr(Mov(
+                    Reg(register, value_type.size()),
+                    RegIndirect(Rbp, offset * 16),
+                ));
 
-                Ok(register)
+                Ok((register, value_type))
             }
             Expression::FunctionCall(name, args) => {
                 assert!(args.len() <= 6);
 
                 if name.starts_with("syscall") {
                     let syscall_num = args.get(0).unwrap();
-                    let syscall_num_reg = self.generate_expression(syscall_num)?;
+                    let (syscall_num_reg, _syscall_num_type) =
+                        self.generate_expression(syscall_num)?;
 
                     for arg in args.iter().skip(1).zip(&ARGUMENT_REGISTERS) {
-                        let arg_register = self.generate_expression(arg.0)?;
+                        let (arg_register, arg_type) = self.generate_expression(arg.0)?;
                         if arg.1.is_caller_saved() {
-                            self.instr(Push(Reg(*arg.1)));
+                            self.instr(Push(Reg(*arg.1, 64)));
                         }
-                        self.instr(Mov(Reg(*arg.1), Reg(arg_register)));
+                        self.instr(Mov(
+                            Reg(*arg.1, arg_type.size()),
+                            Reg(arg_register, arg_type.size()),
+                        ));
                         self.free_register(arg_register);
                     }
 
-                    self.instr(Mov(Reg(Rax), Reg(syscall_num_reg)));
+                    self.instr(Mov(RAX, Reg(syscall_num_reg, 64)));
                     self.instr(Syscall());
 
                     self.free_register(syscall_num_reg);
 
                     for i in (0..args.len()).rev() {
                         if ARGUMENT_REGISTERS[i].is_caller_saved() {
-                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i], 64)));
                         }
                     }
 
                     let result_reg = self.get_next_register();
-                    self.instr(Mov(Reg(result_reg), Reg(Rax)));
+                    self.instr(Mov(Reg(result_reg, 64), RAX));
 
-                    Ok(result_reg)
+                    Ok((result_reg, Type::UInt64()))
                 } else {
                     for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
-                        let arg_register = self.generate_expression(expr)?;
+                        let (arg_register, arg_type) = self.generate_expression(expr)?;
 
                         if dest_reg.is_caller_saved() {
-                            self.instr(Push(Reg(*dest_reg)));
+                            self.instr(Push(Reg(*dest_reg, 64)));
                         }
-                        self.instr(Mov(Reg(*dest_reg), Reg(arg_register)));
+                        self.instr(Mov(
+                            Reg(*dest_reg, arg_type.size()),
+                            Reg(arg_register, arg_type.size()),
+                        ));
                         self.free_register(arg_register);
                     }
 
                     // TODO: get rid of this disgusting hack
                     if name == "printf" {
-                        self.instr(Mov(Reg(Rax), Constant(0)));
+                        self.instr(Mov(RAX, Constant(0)));
                     }
 
                     self.instr(Call(Reference(name.to_string())));
                     let result_register = self.get_next_register();
 
-                    self.instr(Mov(Reg(result_register), Reg(Rax)));
+                    // TODO: use the return value type here
+                    self.instr(Mov(Reg(result_register, 64), Reg(Rax, 64)));
 
                     for i in (0..args.len()).rev() {
                         if ARGUMENT_REGISTERS[i].is_caller_saved() {
-                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i])));
+                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i], 64)));
                         }
                     }
 
-                    Ok(result_register)
+                    Ok((result_register, Type::UInt64()))
                 }
             }
             Expression::StringLiteral(value) => {
                 let label = self.store_new_string(value);
                 let result_reg = self.get_next_register();
-                self.instr(Mov(Reg(result_reg), StringLabel(label)));
-                Ok(result_reg)
+                self.instr(Mov(Reg(result_reg, 64), StringLabel(label)));
+                Ok((result_reg, Type::UInt8().get_ref()))
+            }
+            Expression::Widen(expr, widen_type) => {
+                let (expr_reg, expr_type) = self.generate_expression(expr)?;
+                assert!(expr_type.size() < widen_type.size());
+
+                let result_reg = self.get_next_register();
+                self.instr(MovZX(
+                    Reg(result_reg, widen_type.size()),
+                    Reg(expr_reg, expr_type.size()),
+                ));
+
+                self.free_register(expr_reg);
+
+                Ok((result_reg, widen_type.clone()))
             }
         }
     }

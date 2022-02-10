@@ -72,4 +72,5 @@ pub enum Expression<C> {
     Literal(C, Type),
     VariableRef(String),
     StringLiteral(String),
+    Widen(Box<Expression<C>>, Type),
 }

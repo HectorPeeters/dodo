@@ -20,7 +20,25 @@ pub struct Parser<'a, C> {
     source_file: &'a str,
 }
 
-impl<'a, C: FromStr> Parser<'a, C> {
+pub trait Literal {
+    fn get_bits(&self) -> usize;
+}
+
+impl Literal for u64 {
+    fn get_bits(&self) -> usize {
+        if *self <= 255 {
+            8
+        } else if *self <= 65535 {
+            16
+        } else if *self <= 4294967295 {
+            32
+        } else {
+            64
+        }
+    }
+}
+
+impl<'a, C: FromStr + Literal> Parser<'a, C> {
     pub fn new(tokens: &'a [Token], source_file: &'a str) -> Self {
         let mut prefix_fns: HashMap<_, PrefixParseFn<'a, C>> = HashMap::new();
         prefix_fns.insert(
@@ -96,7 +114,17 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
     fn consume_assert(&mut self, token_type: TokenType) -> Result<&'a Token> {
         let token = self.consume()?;
-        assert_eq!(token.token_type, token_type);
+        if token.token_type != token_type {
+            return Err(Error::new(
+                ErrorType::Parser,
+                format!(
+                    "Expected token {:?}, but got {:?}",
+                    token_type, token.token_type
+                ),
+                token.span.clone(),
+                self.source_file.to_string(),
+            ));
+        }
         Ok(token)
     }
 
@@ -106,7 +134,14 @@ impl<'a, C: FromStr> Parser<'a, C> {
             TokenType::UInt8 => Ok(Type::UInt8()),
             TokenType::UInt16 => Ok(Type::UInt16()),
             TokenType::UInt32 => Ok(Type::UInt32()),
-            _ => unreachable!(),
+            TokenType::UInt64 => Ok(Type::UInt64()),
+            TokenType::Bool => Ok(Type::Bool()),
+            _ => Err(Error::new(
+                ErrorType::Parser,
+                format!("Parsing type but got token {:?}", token.token_type),
+                token.span.clone(),
+                self.source_file.to_string(),
+            )),
         }
     }
 
@@ -153,7 +188,24 @@ impl<'a, C: FromStr> Parser<'a, C> {
         let token = self.consume()?;
         match token.token_type {
             TokenType::IntegerLiteral => match token.value.parse::<C>() {
-                Ok(value) => Ok(Expression::Literal(value, Type::UInt8())),
+                Ok(value) => {
+                    let bits = value.get_bits();
+                    match bits {
+                        8 => Ok(Expression::Literal(value, Type::UInt8())),
+                        16 => Ok(Expression::Literal(value, Type::UInt16())),
+                        32 => Ok(Expression::Literal(value, Type::UInt32())),
+                        64 => Ok(Expression::Literal(value, Type::UInt64())),
+                        _ => Err(Error::new(
+                            ErrorType::Parser,
+                            format!(
+                                "Integer literal is too big to fit into 64 bits ({}): {}",
+                                bits, token.value
+                            ),
+                            token.span.clone(),
+                            self.source_file.to_string(),
+                        )),
+                    }
+                }
                 Err(_) => Err(Error::new(
                     ErrorType::Parser,
                     format!("Failed to parse '{}' to int", token.value),
@@ -169,7 +221,12 @@ impl<'a, C: FromStr> Parser<'a, C> {
                     .replace("\\r", "\r")
                     .replace("\\\"", "\""),
             )),
-            _ => unreachable!(),
+            _ => Err(Error::new(
+                ErrorType::Parser,
+                format!("Parsing constant but got token {:?}", token.token_type),
+                token.span.clone(),
+                self.source_file.to_string(),
+            )),
         }
     }
 
@@ -262,7 +319,7 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
     fn parse_let_statement(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Let)?;
-        let variable_name = self.consume_assert(TokenType::Identifier)?;
+        let (variable_name, value_type) = self.parse_identifier_type()?;
 
         if self.peek()?.token_type == TokenType::Equals {
             // We have a declaration and assignment combined
@@ -272,18 +329,15 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
             return Ok(Statement::Block(
                 vec![
-                    Statement::Declaration(variable_name.value.clone(), Type::UInt64()),
-                    Statement::Assignment(variable_name.value.clone(), expr),
+                    Statement::Declaration(variable_name.clone(), value_type.clone()),
+                    Statement::Assignment(variable_name.clone(), expr),
                 ],
                 false,
             ));
         }
 
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Declaration(
-            variable_name.value.clone(),
-            Type::UInt64(),
-        ))
+        Ok(Statement::Declaration(variable_name, value_type))
     }
 
     fn parse_assignment_statement(&mut self) -> Result<Statement<C>> {
@@ -308,6 +362,13 @@ impl<'a, C: FromStr> Parser<'a, C> {
         Ok(Statement::If(expr, Box::new(statement)))
     }
 
+    fn parse_identifier_type(&mut self) -> Result<(String, Type)> {
+        let identifier = self.consume_assert(TokenType::Identifier)?.value.clone();
+        self.consume_assert(TokenType::Colon)?;
+        let value_type = self.parse_type()?;
+        Ok((identifier, value_type))
+    }
+
     fn parse_function(&mut self) -> Result<Statement<C>> {
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -319,8 +380,8 @@ impl<'a, C: FromStr> Parser<'a, C> {
                 break;
             }
 
-            let name = self.consume_assert(TokenType::Identifier)?.value.clone();
-            args.push((name, Type::UInt64()));
+            let (name, value_type) = self.parse_identifier_type()?;
+            args.push((name, value_type));
 
             if self.peek()?.token_type == TokenType::RightParen {
                 break;
@@ -331,7 +392,11 @@ impl<'a, C: FromStr> Parser<'a, C> {
 
         self.consume_assert(TokenType::RightParen)?;
 
-        let mut return_type = Type::Void();
+        let mut return_type = if self.peek()?.token_type == TokenType::LeftBrace {
+            Type::Void()
+        } else {
+            self.parse_type()?
+        };
 
         if self.peek()?.token_type == TokenType::Colon {
             self.consume_assert(TokenType::Colon)?;
@@ -527,7 +592,7 @@ mod tests {
     fn parse_empty_block() -> Result<()> {
         let stmts = parse_statements("{}")?;
         assert_eq!(stmts.len(), 1);
-        assert_eq!(stmts[0], Statement::Block(vec![]));
+        assert_eq!(stmts[0], Statement::Block(vec![], true));
         Ok(())
     }
 
@@ -537,7 +602,10 @@ mod tests {
         assert_eq!(stmts.len(), 1);
         assert_eq!(
             stmts[0],
-            Statement::Block(vec![Statement::Block(vec![Statement::Block(vec![])])])
+            Statement::Block(
+                vec![Statement::Block(vec![Statement::Block(vec![], true)], true)],
+                true
+            )
         );
         Ok(())
     }
@@ -551,9 +619,10 @@ mod tests {
                 "test".to_string(),
                 vec![],
                 Type::Void(),
-                Box::new(Statement::Block(vec![Statement::Return(
-                    Expression::Literal(12, Type::UInt8())
-                )]))
+                Box::new(Statement::Block(
+                    vec![Statement::Return(Expression::Literal(12, Type::UInt8()))],
+                    true
+                ))
             )
         );
         Ok(())
@@ -561,16 +630,17 @@ mod tests {
 
     #[test]
     fn parse_function_return_type() -> Result<()> {
-        let func = parse_function("fn test(): u8 { return 12; }")?;
+        let func = parse_function("fn test() u8 { return 12; }")?;
         assert_eq!(
             func,
             Statement::Function(
                 "test".to_string(),
                 vec![],
                 Type::UInt8(),
-                Box::new(Statement::Block(vec![Statement::Return(
-                    Expression::Literal(12, Type::UInt8())
-                )]))
+                Box::new(Statement::Block(
+                    vec![Statement::Return(Expression::Literal(12, Type::UInt8()))],
+                    true
+                ))
             )
         );
         Ok(())

@@ -1,9 +1,12 @@
+#![feature(int_log)]
+
 use std::fs::File;
 
 use error::Result;
 use parser::Parser;
 use std::env;
 use tokenizer::tokenize;
+use type_checker::TypeChecker;
 use x86_nasm::X86NasmGenerator;
 
 mod ast;
@@ -11,6 +14,7 @@ mod error;
 mod parser;
 mod scope;
 mod tokenizer;
+mod type_checker;
 mod types;
 mod x86_instruction;
 mod x86_nasm;
@@ -45,7 +49,11 @@ fn main() -> Result<()> {
         }
     }
 
-    for statement in &statements {
+    for statement in &mut statements {
+        let mut type_checker = TypeChecker::new(file);
+
+        type_checker.check(statement)?;
+
         let generated = generator.generate_statement(statement);
         if let Err(error) = generated {
             error.print().unwrap();

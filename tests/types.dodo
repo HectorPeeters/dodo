@@ -1,0 +1,35 @@
+fn main() {
+    let x: u8 = 0;
+    x = x - 1;
+    printf("%hhu\n", x);
+
+    x = 255;
+    x = x + 1;
+    printf("%hhu\n", x);
+
+    let y: u16 = 0;
+    y = y - 1;
+    printf("%hu\n", y);
+
+    y = 65535;
+    y = y + 1;
+    printf("%hhu\n", y);
+
+    let z: u32 = 0;
+    z = z - 1;
+    printf("%u\n", z);
+
+    z = 4294967295;
+    z = z + 1;
+    printf("%u\n", z);
+
+    let w: u64 = 0;
+    w = w - 1;
+    printf("%llu\n", w);
+
+    w = 18446744073709551615;
+    w = w + 1;
+    printf("%llu\n", w);
+    
+    exit(0);
+}

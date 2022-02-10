@@ -1,5 +1,9 @@
 use std::fmt;
 
+pub const RAX: X86Operand = X86Operand::Reg(X86Register::Rax, 64);
+pub const RBP: X86Operand = X86Operand::Reg(X86Register::Rbp, 64);
+pub const RSP: X86Operand = X86Operand::Reg(X86Register::Rsp, 64);
+
 #[derive(Debug, Clone, Copy)]
 pub enum X86Register {
     Rax = 0,
@@ -24,6 +28,29 @@ impl X86Register {
     pub fn is_caller_saved(&self) -> bool {
         use X86Register::*;
         !matches!(self, Rbp | Rbx | R12 | R13 | R14 | R15)
+    }
+
+    pub fn to_string(&self, size: usize) -> &'static str {
+        let names = [
+            [
+                "al", "bl", "cl", "dl", "sil", "dil", "spl", "bpl", "r8b", "r9b", "r10b", "r11b",
+                "r12b", "r13b", "r14b", "r15b",
+            ],
+            [
+                "ax", "bx", "cx", "dx", "si", "di", "sp", "bp", "r8w", "r9w", "r10w", "r11w",
+                "r12w", "r13w", "r14w", "r15w",
+            ],
+            [
+                "eax", "ebx", "ecx", "edx", "esi", "edi", "esp", "ebp", "r8d", "r9d", "r10d",
+                "r11d", "r12d", "r13d", "r14d", "r15d",
+            ],
+            [
+                "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp", "r8", "r9", "r10", "r11",
+                "r12", "r13", "r14", "r15",
+            ],
+        ];
+
+        names[(size.log2() - 3) as usize][*self as usize]
     }
 }
 
@@ -81,8 +108,9 @@ impl fmt::Display for X86Register {
     }
 }
 
+#[derive(Clone)]
 pub enum X86Operand {
-    Reg(X86Register),
+    Reg(X86Register, usize),
     RegIndirect(X86Register, usize),
     Constant(u64),
     JmpLabel(usize),
@@ -95,7 +123,7 @@ impl fmt::Display for X86Operand {
         use X86Operand::*;
 
         match self {
-            Reg(r) => write!(f, "{r}"),
+            Reg(r, s) => write!(f, "{}", r.to_string(*s)),
             RegIndirect(r, offset) => write!(f, "[{r} - {offset}]"),
             Constant(x) => write!(f, "0x{x:x}"),
             JmpLabel(l) => write!(f, "L{l}"),
@@ -109,6 +137,7 @@ pub enum X86Instruction {
     Push(X86Operand),
     Pop(X86Operand),
     Mov(X86Operand, X86Operand),
+    MovZX(X86Operand, X86Operand),
     Lea(X86Operand, X86Operand),
     Add(X86Operand, X86Operand),
     Sub(X86Operand, X86Operand),
@@ -137,18 +166,19 @@ impl fmt::Display for X86Instruction {
             Push(x) => write!(f, "push {x}"),
             Pop(x) => write!(f, "pop {x}"),
             Mov(d, s) => write!(f, "mov {d}, {s}"),
+            MovZX(d, s) => write!(f, "movzx {d}, {s}"),
             Lea(d, s) => write!(f, "lea {d}, {s}"),
             Add(d, s) => write!(f, "add {d}, {s}"),
             Sub(d, s) => write!(f, "sub {d}, {s}"),
             Mul(d, s) => write!(f, "imul {d}, {s}"),
             Div(x) => write!(f, "div {x}"),
             Cmp(a, b) => write!(f, "cmp {a}, {b}"),
-            SetZ(x) => write!(f, "setz {x}b"),
-            SetNZ(x) => write!(f, "setnz {x}b"),
-            SetL(x) => write!(f, "setl {x}b"),
-            SetLE(x) => write!(f, "setle {x}b"),
-            SetG(x) => write!(f, "setg {x}b"),
-            SetGE(x) => write!(f, "setge {x}b"),
+            SetZ(x) => write!(f, "setz {x}"),
+            SetNZ(x) => write!(f, "setnz {x}"),
+            SetL(x) => write!(f, "setl {x}"),
+            SetLE(x) => write!(f, "setle {x}"),
+            SetG(x) => write!(f, "setg {x}"),
+            SetGE(x) => write!(f, "setge {x}"),
             Jz(x) => write!(f, "jz {x}"),
             Jmp(x) => write!(f, "jmp {x}"),
             Call(x) => write!(f, "call {x}"),

@@ -7,10 +7,10 @@ pub struct Scope<T> {
     source_file: String,
 }
 
-impl<T: Copy> Scope<T> {
+impl<T: Clone> Scope<T> {
     pub fn new(source_file: &str) -> Self {
         Self {
-            items: vec![],
+            items: vec![HashMap::new()],
             source_file: source_file.to_string(),
         }
     }
@@ -61,7 +61,8 @@ impl<T: Copy> Scope<T> {
         self.items
             .iter()
             .rev()
-            .find_map(|x| x.get(name).copied())
+            .find_map(|x| x.get(name))
+            .map(|x| x.clone())
             .ok_or_else(|| {
                 Error::new(
                     ErrorType::Scope,

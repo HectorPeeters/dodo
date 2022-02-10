@@ -16,6 +16,7 @@ pub enum TokenType {
     UInt8,
     UInt16,
     UInt32,
+    UInt64,
     Bool,
     StringLiteral,
     IntegerLiteral,
@@ -120,6 +121,7 @@ impl<'a> Lexer<'a> {
             (r"u8", UInt8),
             (r"u16", UInt16),
             (r"u32", UInt32),
+            (r"u64", UInt64),
             (r"bool", Bool),
             (r"[a-zA-Z][_0-9a-zA-Z]*", Identifier),
             (r"[0-9]+", IntegerLiteral),
@@ -303,7 +305,7 @@ mod tests {
 
     #[test]
     fn tokenizer_test_error() {
-        let tokens = tokenize("return &;", "test.dodo");
+        let tokens = tokenize("return #;", "test.dodo");
 
         assert!(tokens.is_err());
     }
