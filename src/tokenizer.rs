@@ -50,33 +50,17 @@ pub enum TokenType {
 }
 
 #[derive(Debug)]
-pub struct Token {
+pub struct Token<'a> {
     pub token_type: TokenType,
-    pub value: String,
+    pub value: &'a str,
     pub span: Range<usize>,
 }
 
-impl Token {
-    pub fn new(token_type: TokenType, value: &str) -> Self {
+impl<'a> Token<'a> {
+    pub fn new(token_type: TokenType, value: &'a str, span: Range<usize>) -> Self {
         Self {
             token_type,
-            value: value.to_string(),
-            span: 0..0,
-        }
-    }
-
-    pub fn with_type(token_type: TokenType) -> Self {
-        Self {
-            token_type,
-            value: String::default(),
-            span: 0..0,
-        }
-    }
-
-    pub fn new_with_span(token_type: TokenType, value: &str, span: Range<usize>) -> Self {
-        Self {
-            token_type,
-            value: value.to_string(),
+            value,
             span,
         }
     }
@@ -86,13 +70,14 @@ impl Token {
     }
 }
 
-impl PartialEq for Token {
+impl<'a> PartialEq for Token<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.token_type == other.token_type && self.value == other.value
+        // NOTE: comparing the actual value might also be necessary
+        self.token_type == other.token_type && self.span == other.span
     }
 }
 
-impl PartialEq<TokenType> for &Token {
+impl<'a> PartialEq<TokenType> for &Token<'a> {
     fn eq(&self, other: &TokenType) -> bool {
         self.token_type == *other
     }
@@ -159,7 +144,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn get_tokens(&mut self) -> Result<Vec<Token>> {
+    pub fn get_tokens(&mut self) -> Result<Vec<Token<'a>>> {
         let mut result = vec![];
 
         loop {
@@ -174,7 +159,7 @@ impl<'a> Lexer<'a> {
 
                 if let Some(x) = regex.find(&self.input[self.pointer..]) {
                     if x.start() == 0 {
-                        matches.push(Token::new_with_span(
+                        matches.push(Token::new(
                             *token_type,
                             x.as_str(),
                             x.range().start..x.range().end,
@@ -210,8 +195,9 @@ impl<'a> Lexer<'a> {
     }
 }
 
-pub fn tokenize(input: &str, input_file: &str) -> Result<Vec<Token>> {
-    Lexer::new(input, input_file).get_tokens()
+pub fn tokenize<'a>(input: &'a str, file: &'a str) -> Result<Vec<Token<'a>>> {
+    let mut lexer = Lexer::new(input, file);
+    lexer.get_tokens()
 }
 
 #[cfg(test)]
@@ -260,10 +246,10 @@ mod tests {
     fn tokenizer_integer_literal() {
         let tokens = get_tokens("12 0 439394474 123");
 
-        assert_eq!(tokens[0], Token::new(IntegerLiteral, "12"));
-        assert_eq!(tokens[1], Token::new(IntegerLiteral, "0"));
-        assert_eq!(tokens[2], Token::new(IntegerLiteral, "439394474"));
-        assert_eq!(tokens[3], Token::new(IntegerLiteral, "123"));
+        assert_eq!(tokens[0], Token::new(IntegerLiteral, "12", 0..2));
+        assert_eq!(tokens[1], Token::new(IntegerLiteral, "0", 3..4));
+        assert_eq!(tokens[2], Token::new(IntegerLiteral, "439394474", 5..14));
+        assert_eq!(tokens[3], Token::new(IntegerLiteral, "123", 15..18));
     }
 
     #[test]
@@ -292,8 +278,11 @@ mod tests {
     fn tokenizer_identifier() {
         let tokens = get_tokens("test test_with_underscore");
 
-        assert_eq!(tokens[0], Token::new(Identifier, "test"));
-        assert_eq!(tokens[1], Token::new(Identifier, "test_with_underscore"));
+        assert_eq!(tokens[0], Token::new(Identifier, "test", 0..4));
+        assert_eq!(
+            tokens[1],
+            Token::new(Identifier, "test_with_underscore", 5..25)
+        );
     }
 
     #[test]

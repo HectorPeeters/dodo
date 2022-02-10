@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::{
     ast::{Expression, Statement},
     error::{Error, ErrorType, Result},
@@ -64,15 +66,17 @@ impl<'a> TypeChecker<'a> {
                 let destination_type = self.get_scope_value_type(name)?;
 
                 let new_type =
-                    Self::widen_assignment(&destination_type, &source_type).ok_or(Error::new(
-                        ErrorType::TypeCheck,
-                        format!(
-                            "Cannot widen from type {:?} to {:?}",
-                            source_type, destination_type
-                        ),
-                        0..0,
-                        self.source_file.to_string(),
-                    ))?;
+                    Self::widen_assignment(&destination_type, &source_type).ok_or_else(|| {
+                        Error::new(
+                            ErrorType::TypeCheck,
+                            format!(
+                                "Cannot widen from type {:?} to {:?}",
+                                source_type, destination_type
+                            ),
+                            0..0,
+                            self.source_file.to_string(),
+                        )
+                    })?;
 
                 // TODO: get rid of this clone
                 if new_type != source_type {
@@ -121,15 +125,17 @@ impl<'a> TypeChecker<'a> {
             BinaryOperator(_, left, right) => {
                 let left_type = self.get_type(left)?;
                 let right_type = self.get_type(right)?;
-                if left_type.size() > right_type.size() {
-                    // TODO: clean up this mess
-                    *right = Box::new(Widen(Box::new(*right.clone()), left_type.clone()));
-                    left_type
-                } else if left_type.size() < right_type.size() {
-                    *left = Box::new(Widen(Box::new(*left.clone()), right_type.clone()));
-                    right_type
-                } else {
-                    right_type
+                match left_type.size().cmp(&right_type.size()) {
+                    Ordering::Greater => {
+                        // TODO: clean up this mess
+                        *right = Box::new(Widen(Box::new(*right.clone()), left_type.clone()));
+                        left_type
+                    }
+                    Ordering::Less => {
+                        *left = Box::new(Widen(Box::new(*left.clone()), right_type.clone()));
+                        right_type
+                    }
+                    Ordering::Equal => right_type,
                 }
             }
             UnaryOperator(_, expr) => self.get_type(expr)?,
@@ -141,20 +147,21 @@ impl<'a> TypeChecker<'a> {
 
                     assert_eq!(args.len(), arg_types.len());
 
-                    for (mut arg_expr, expected_type) in args.iter_mut().zip(arg_types.iter()) {
-                        let source_type = self.get_type(&mut arg_expr)?;
+                    for (arg_expr, expected_type) in args.iter_mut().zip(arg_types.iter()) {
+                        let source_type = self.get_type(arg_expr)?;
 
-                        let new_type = Self::widen_assignment(&expected_type, &source_type).ok_or(
-                            Error::new(
-                                ErrorType::TypeCheck,
-                                format!(
-                                    "Cannot widen from type {:?} to {:?}",
-                                    source_type, expected_type
-                                ),
-                                0..0,
-                                self.source_file.to_string(),
-                            ),
-                        )?;
+                        let new_type = Self::widen_assignment(expected_type, &source_type)
+                            .ok_or_else(|| {
+                                Error::new(
+                                    ErrorType::TypeCheck,
+                                    format!(
+                                        "Cannot widen from type {:?} to {:?}",
+                                        source_type, expected_type
+                                    ),
+                                    0..0,
+                                    self.source_file.to_string(),
+                                )
+                            })?;
 
                         if new_type != source_type {
                             *arg_expr = Expression::Widen(Box::new(arg_expr.clone()), new_type);

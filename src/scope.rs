@@ -62,7 +62,7 @@ impl<T: Clone> Scope<T> {
             .iter()
             .rev()
             .find_map(|x| x.get(name))
-            .map(|x| x.clone())
+            .cloned()
             .ok_or_else(|| {
                 Error::new(
                     ErrorType::Scope,

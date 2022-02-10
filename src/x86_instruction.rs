@@ -30,7 +30,7 @@ impl X86Register {
         !matches!(self, Rbp | Rbx | R12 | R13 | R14 | R15)
     }
 
-    pub fn to_string(&self, size: usize) -> &'static str {
+    pub fn get_string(&self, size: usize) -> &'static str {
         let names = [
             [
                 "al", "bl", "cl", "dl", "sil", "dil", "spl", "bpl", "r8b", "r9b", "r10b", "r11b",
@@ -123,7 +123,7 @@ impl fmt::Display for X86Operand {
         use X86Operand::*;
 
         match self {
-            Reg(r, s) => write!(f, "{}", r.to_string(*s)),
+            Reg(r, s) => write!(f, "{}", r.get_string(*s)),
             RegIndirect(r, offset) => write!(f, "[{r} - {offset}]"),
             Constant(x) => write!(f, "0x{x:x}"),
             JmpLabel(l) => write!(f, "L{l}"),

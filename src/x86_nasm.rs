@@ -211,7 +211,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 match &**expr {
                     Expression::VariableRef(name) => {
-                        let (offset, value_type) = self.scope.find(&name)?;
+                        let (offset, value_type) = self.scope.find(name)?;
                         self.instr(Lea(
                             Reg(result_reg, value_type.size()),
                             RegIndirect(Rbp, offset * 16),

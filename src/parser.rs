@@ -13,7 +13,7 @@ type InfixParseFn<'a, C> =
     fn(&mut Parser<'a, C>, left: Expression<C>, precedence: usize) -> Result<Expression<C>>;
 
 pub struct Parser<'a, C> {
-    tokens: &'a [Token],
+    tokens: &'a [Token<'a>],
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a, C>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a, C>, usize)>,
@@ -80,7 +80,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         self.index >= self.tokens.len()
     }
 
-    fn peek(&self) -> Result<&'a Token> {
+    fn peek(&self) -> Result<&'a Token<'a>> {
         if self.eof() {
             Err(Error::new(
                 ErrorType::Parser,
@@ -93,7 +93,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
     }
 
-    fn peeks(&self, i: usize) -> Result<&'a Token> {
+    fn peeks(&self, i: usize) -> Result<&'a Token<'a>> {
         if self.index + i >= self.tokens.len() {
             Err(Error::new(
                 ErrorType::Parser,
@@ -106,13 +106,13 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
     }
 
-    fn consume(&mut self) -> Result<&'a Token> {
+    fn consume(&mut self) -> Result<&'a Token<'a>> {
         let token = self.peek()?;
         self.index += 1;
         Ok(token)
     }
 
-    fn consume_assert(&mut self, token_type: TokenType) -> Result<&'a Token> {
+    fn consume_assert(&mut self, token_type: TokenType) -> Result<&'a Token<'a>> {
         let token = self.consume()?;
         if token.token_type != token_type {
             return Err(Error::new(
@@ -146,7 +146,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_function_call(&mut self) -> Result<Expression<C>> {
-        let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+        let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
 
         let mut args = vec![];
@@ -165,15 +165,15 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
 
         self.consume_assert(TokenType::RightParen)?;
-        Ok(Expression::FunctionCall(name, args))
+        Ok(Expression::FunctionCall(name.to_string(), args))
     }
 
     fn parse_identifier_or_function_call(&mut self) -> Result<Expression<C>> {
         if self.peeks(1)?.token_type == TokenType::LeftParen {
             self.parse_function_call()
         } else {
-            let name = self.consume_assert(TokenType::Identifier)?.value.clone();
-            Ok(Expression::VariableRef(name))
+            let name = self.consume_assert(TokenType::Identifier)?.value;
+            Ok(Expression::VariableRef(name.to_string()))
         }
     }
 
@@ -329,8 +329,8 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
 
             return Ok(Statement::Block(
                 vec![
-                    Statement::Declaration(variable_name.clone(), value_type.clone()),
-                    Statement::Assignment(variable_name.clone(), expr),
+                    Statement::Declaration(variable_name.clone(), value_type),
+                    Statement::Assignment(variable_name, expr),
                 ],
                 false,
             ));
@@ -341,11 +341,11 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_assignment_statement(&mut self) -> Result<Statement<C>> {
-        let name = self.consume_assert(TokenType::Identifier)?.value.clone();
+        let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Equals)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Assignment(name, expr))
+        Ok(Statement::Assignment(name.to_string(), expr))
     }
 
     fn parse_while_statement(&mut self) -> Result<Statement<C>> {
@@ -363,10 +363,10 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_identifier_type(&mut self) -> Result<(String, Type)> {
-        let identifier = self.consume_assert(TokenType::Identifier)?.value.clone();
+        let identifier = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Colon)?;
         let value_type = self.parse_type()?;
-        Ok((identifier, value_type))
+        Ok((identifier.to_string(), value_type))
     }
 
     fn parse_function(&mut self) -> Result<Statement<C>> {
@@ -405,7 +405,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
 
         let body = self.parse_statement()?;
         Ok(Statement::Function(
-            identifier.value.clone(),
+            identifier.value.to_string(),
             args,
             return_type,
             Box::new(body),
@@ -524,7 +524,7 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, Type::UInt8())),
+                Box::new(Expression::Literal(456, Type::UInt16())),
                 Box::new(Expression::Literal(123, Type::UInt8()))
             )
         );
@@ -540,11 +540,11 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, Type::UInt8())),
+                Box::new(Expression::Literal(456, Type::UInt16())),
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
                     Box::new(Expression::Literal(123, Type::UInt8())),
-                    Box::new(Expression::Literal(789, Type::UInt8()))
+                    Box::new(Expression::Literal(789, Type::UInt16()))
                 ))
             )
         );
@@ -562,10 +562,10 @@ mod tests {
                 BinaryOperatorType::Subtract,
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Literal(456, Type::UInt8())),
+                    Box::new(Expression::Literal(456, Type::UInt16())),
                     Box::new(Expression::Literal(123, Type::UInt8()))
                 )),
-                Box::new(Expression::Literal(789, Type::UInt8())),
+                Box::new(Expression::Literal(789, Type::UInt16())),
             )
         );
 
@@ -580,7 +580,7 @@ mod tests {
             stmts[0],
             Statement::Return(Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, Type::UInt8())),
+                Box::new(Expression::Literal(456, Type::UInt16())),
                 Box::new(Expression::Literal(123, Type::UInt8()))
             ))
         );
