@@ -76,6 +76,12 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
     }
 
+    fn current_index(&self) -> usize {
+        self.tokens[self.index.min(self.tokens.len() - 1)]
+            .range
+            .start
+    }
+
     pub fn eof(&self) -> bool {
         self.index >= self.tokens.len()
     }
@@ -153,7 +159,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_function_call(&mut self) -> Result<Expression<C>> {
-        let function_start = self.index;
+        let function_start = self.current_index();
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
 
@@ -181,7 +187,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_identifier_or_function_call(&mut self) -> Result<Expression<C>> {
-        let identifier_start = self.index;
+        let identifier_start = self.current_index();
         if self.peeks(1)?.token_type == TokenType::LeftParen {
             self.parse_function_call()
         } else {
@@ -194,7 +200,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_unary_expression(&mut self) -> Result<Expression<C>> {
-        let unary_start = self.index;
+        let unary_start = self.current_index();
         let token = self.consume()?;
         let unop_type = UnaryOperatorType::from_token_type(token.token_type);
         let expression = self.parse_expression(0)?;
@@ -206,7 +212,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_constant(&mut self) -> Result<Expression<C>> {
-        let constant_start = self.index;
+        let constant_start = self.current_index();
         let token = self.consume()?;
         match token.token_type {
             TokenType::IntegerLiteral => match token.value.parse::<C>() {
@@ -216,22 +222,22 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
                         8 => Ok(Expression::Literal(
                             value,
                             Type::UInt8(),
-                            constant_start..self.index,
+                            constant_start..self.current_index(),
                         )),
                         16 => Ok(Expression::Literal(
                             value,
                             Type::UInt16(),
-                            constant_start..self.index,
+                            constant_start..self.current_index(),
                         )),
                         32 => Ok(Expression::Literal(
                             value,
                             Type::UInt32(),
-                            constant_start..self.index,
+                            constant_start..self.current_index(),
                         )),
                         64 => Ok(Expression::Literal(
                             value,
                             Type::UInt64(),
-                            constant_start..self.index,
+                            constant_start..self.current_index(),
                         )),
                         _ => Err(Error::new(
                             ErrorType::Parser,
@@ -258,7 +264,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
                     .replace("\\t", "\t")
                     .replace("\\r", "\r")
                     .replace("\\\"", "\""),
-                constant_start..self.index,
+                constant_start..self.current_index(),
             )),
             _ => Err(Error::new(
                 ErrorType::Parser,
@@ -281,7 +287,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         left: Expression<C>,
         precedence: usize,
     ) -> Result<Expression<C>> {
-        let binop_start = self.index;
+        let binop_start = self.current_index();
         let operator = self.consume()?;
 
         let op_type = BinaryOperatorType::from_token_type(operator.token_type);
@@ -290,7 +296,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
             op_type,
             Box::new(left),
             Box::new(right),
-            binop_start..self.index,
+            binop_start..self.current_index(),
         ))
     }
 
@@ -352,22 +358,22 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement<C>> {
-        let return_start = self.index;
+        let return_start = self.current_index();
         self.consume_assert(TokenType::Return)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Return(expr, return_start..self.index))
+        Ok(Statement::Return(expr, return_start..self.current_index()))
     }
 
     fn parse_let_statement(&mut self) -> Result<Statement<C>> {
-        let let_start = self.index;
+        let let_start = self.current_index();
         self.consume_assert(TokenType::Let)?;
         let (variable_name, value_type) = self.parse_identifier_type()?;
 
         if self.peek()?.token_type == TokenType::Equals {
             // We have a declaration and assignment combined
             self.consume_assert(TokenType::Equals)?;
-            let decl_start = self.index;
+            let decl_start = self.current_index();
             let expr = self.parse_expression(0)?;
             self.consume_assert(TokenType::SemiColon)?;
 
@@ -378,10 +384,10 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
                         value_type,
                         let_start..decl_start,
                     ),
-                    Statement::Assignment(variable_name, expr, decl_start..self.index),
+                    Statement::Assignment(variable_name, expr, decl_start..self.current_index()),
                 ],
                 false,
-                let_start..self.index,
+                let_start..self.current_index(),
             ));
         }
 
@@ -389,12 +395,12 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         Ok(Statement::Declaration(
             variable_name,
             value_type,
-            let_start..self.index,
+            let_start..self.current_index(),
         ))
     }
 
     fn parse_assignment_statement(&mut self) -> Result<Statement<C>> {
-        let assignment_start = self.index;
+        let assignment_start = self.current_index();
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Equals)?;
         let expr = self.parse_expression(0)?;
@@ -402,31 +408,31 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         Ok(Statement::Assignment(
             name.to_string(),
             expr,
-            assignment_start..self.index,
+            assignment_start..self.current_index(),
         ))
     }
 
     fn parse_while_statement(&mut self) -> Result<Statement<C>> {
-        let while_start = self.index;
+        let while_start = self.current_index();
         self.consume_assert(TokenType::While)?;
         let expr = self.parse_expression(0)?;
         let statement = self.parse_statement()?;
         Ok(Statement::While(
             expr,
             Box::new(statement),
-            while_start..self.index,
+            while_start..self.current_index(),
         ))
     }
 
     fn parse_if_statement(&mut self) -> Result<Statement<C>> {
-        let if_start = self.index;
+        let if_start = self.current_index();
         self.consume_assert(TokenType::If)?;
         let expr = self.parse_expression(0)?;
         let statement = self.parse_statement()?;
         Ok(Statement::If(
             expr,
             Box::new(statement),
-            if_start..self.index,
+            if_start..self.current_index(),
         ))
     }
 
@@ -438,7 +444,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
     }
 
     fn parse_function(&mut self) -> Result<Statement<C>> {
-        let function_start = self.index;
+        let function_start = self.current_index();
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
         self.consume_assert(TokenType::LeftParen)?;
@@ -478,7 +484,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
             args,
             return_type,
             Box::new(body),
-            function_start..self.index,
+            function_start..self.current_index(),
         ))
     }
 
@@ -488,7 +494,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         match token.token_type {
             TokenType::Return => self.parse_return_statement(),
             TokenType::LeftBrace => {
-                let block_start = self.index;
+                let block_start = self.current_index();
                 self.consume_assert(TokenType::LeftBrace)?;
                 let mut statements = vec![];
                 while self.peek()?.token_type != TokenType::RightBrace {
@@ -497,7 +503,11 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
 
                 self.consume_assert(TokenType::RightBrace)?;
 
-                Ok(Statement::Block(statements, true, block_start..self.index))
+                Ok(Statement::Block(
+                    statements,
+                    true,
+                    block_start..self.current_index(),
+                ))
             }
             TokenType::Let => self.parse_let_statement(),
             TokenType::While => self.parse_while_statement(),
@@ -505,9 +515,11 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
             TokenType::Identifier => match self.peeks(1)?.token_type {
                 TokenType::Equals => self.parse_assignment_statement(),
                 TokenType::LeftParen => {
-                    let expr_start = self.index;
-                    let result =
-                        Statement::Expression(self.parse_expression(0)?, expr_start..self.index);
+                    let expr_start = self.current_index();
+                    let result = Statement::Expression(
+                        self.parse_expression(0)?,
+                        expr_start..self.current_index(),
+                    );
                     self.consume_assert(TokenType::SemiColon)?;
                     Ok(result)
                 }
