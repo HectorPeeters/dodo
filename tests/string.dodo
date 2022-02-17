@@ -1,6 +1,7 @@
 fn main() {
-    let x = "%d\n";
+    let x: u8* = "%d\n";
 
-    printf(x, 12);
+    let value: u64 = 12;
+    printf(x, value);
     exit(0);
 }

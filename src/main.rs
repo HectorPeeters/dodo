@@ -49,10 +49,14 @@ fn main() -> Result<()> {
         }
     }
 
-    for statement in &mut statements {
-        let mut type_checker = TypeChecker::new(file);
+    let mut type_checker = TypeChecker::new(file);
 
-        type_checker.check(statement)?;
+    for statement in &mut statements {
+        let type_check_result = type_checker.check(statement);
+        if let Err(error) = type_check_result {
+            error.print().unwrap();
+            std::process::exit(1);
+        }
 
         let generated = generator.generate_statement(statement);
         if let Err(error) = generated {

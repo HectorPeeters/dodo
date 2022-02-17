@@ -1,17 +1,23 @@
 use crate::types::Type;
 
-use crate::tokenizer::TokenType;
+use crate::tokenizer::{SourceRange, TokenType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<C> {
-    Block(Vec<Statement<C>>, bool),
-    Declaration(String, Type),
-    Assignment(String, Expression<C>),
-    Expression(Expression<C>),
-    While(Expression<C>, Box<Statement<C>>),
-    If(Expression<C>, Box<Statement<C>>),
-    Return(Expression<C>),
-    Function(String, Vec<(String, Type)>, Type, Box<Statement<C>>),
+    Block(Vec<Statement<C>>, bool, SourceRange),
+    Declaration(String, Type, SourceRange),
+    Assignment(String, Expression<C>, SourceRange),
+    Expression(Expression<C>, SourceRange),
+    While(Expression<C>, Box<Statement<C>>, SourceRange),
+    If(Expression<C>, Box<Statement<C>>, SourceRange),
+    Return(Expression<C>, SourceRange),
+    Function(
+        String,
+        Vec<(String, Type)>,
+        Type,
+        Box<Statement<C>>,
+        SourceRange,
+    ),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +39,7 @@ impl BinaryOperatorType {
         match token_type {
             TokenType::Plus => BinaryOperatorType::Add,
             TokenType::Minus => BinaryOperatorType::Subtract,
-            TokenType::Asterix => BinaryOperatorType::Multiply,
+            TokenType::Asterisk => BinaryOperatorType::Multiply,
             TokenType::Slash => BinaryOperatorType::Divide,
             TokenType::DoubleEqual => BinaryOperatorType::Equal,
             TokenType::NotEqual => BinaryOperatorType::NotEqual,
@@ -43,6 +49,14 @@ impl BinaryOperatorType {
             TokenType::GreaterThanEqual => BinaryOperatorType::GreaterThanEqual,
             _ => unreachable!(),
         }
+    }
+
+    pub fn is_comparison(&self) -> bool {
+        use BinaryOperatorType::*;
+        matches!(
+            self,
+            Equal | NotEqual | LessThan | LessThanEqual | GreaterThan | GreaterThanEqual
+        )
     }
 }
 
@@ -58,7 +72,7 @@ impl UnaryOperatorType {
         match token_type {
             TokenType::Minus => UnaryOperatorType::Negate,
             TokenType::Ampersand => UnaryOperatorType::Ref,
-            TokenType::Asterix => UnaryOperatorType::Deref,
+            TokenType::Asterisk => UnaryOperatorType::Deref,
             _ => unreachable!(),
         }
     }
@@ -66,11 +80,16 @@ impl UnaryOperatorType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<C> {
-    BinaryOperator(BinaryOperatorType, Box<Expression<C>>, Box<Expression<C>>),
-    UnaryOperator(UnaryOperatorType, Box<Expression<C>>),
-    FunctionCall(String, Vec<Expression<C>>),
-    Literal(C, Type),
-    VariableRef(String),
-    StringLiteral(String),
-    Widen(Box<Expression<C>>, Type),
+    BinaryOperator(
+        BinaryOperatorType,
+        Box<Expression<C>>,
+        Box<Expression<C>>,
+        SourceRange,
+    ),
+    UnaryOperator(UnaryOperatorType, Box<Expression<C>>, SourceRange),
+    FunctionCall(String, Vec<Expression<C>>, SourceRange),
+    Literal(C, Type, SourceRange),
+    VariableRef(String, SourceRange),
+    StringLiteral(String, SourceRange),
+    Widen(Box<Expression<C>>, Type, SourceRange),
 }

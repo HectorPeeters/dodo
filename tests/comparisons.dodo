@@ -15,21 +15,21 @@ fn nassert(x: bool) {
 }
 
 fn main() {
-//    assert(1 == 1);
-//    assert(1 != 2);
-//    assert(1 < 2);
-//    assert(1 <= 2);
-//    assert(2 <= 2);
-//    assert(2 > 1);
-//    assert(2 >= 1);
-//    assert(2 >= 2);
-//
-//    nassert(2 == 1);
-//    nassert(2 != 2);
-//    nassert(2 < 2);
-//    nassert(3 <= 2);
-//    nassert(2 > 2);
-//    nassert(2 >= 3);
+    assert(1 == 1);
+    assert(1 != 2);
+    assert(1 < 2);
+    assert(1 <= 2);
+    assert(2 <= 2);
+    assert(2 > 1);
+    assert(2 >= 1);
+    assert(2 >= 2);
+
+    nassert(2 == 1);
+    nassert(2 != 2);
+    nassert(2 < 2);
+    nassert(3 <= 2);
+    nassert(2 > 2);
+    nassert(2 >= 3);
 
     exit(0);
 }

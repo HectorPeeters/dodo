@@ -1,5 +1,6 @@
-fn exit(code) {
-    syscall(60, code);
+fn exit(code: u64) {
+    let syscall_num: u64 = 60;
+    syscall(syscall_num, code);
 }
 
 fn main() {

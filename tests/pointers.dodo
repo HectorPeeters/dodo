@@ -1,15 +1,16 @@
 fn main() {
-    let x = 12;
-    let addr_x = &x;
-    let y = *addr_x;
+    let x: u8 = 12;
+    let addr_x: u8* = &x;
+    let y: u8 = *addr_x;
 
-    printf("%d\n%d\n%d\n", x, addr_x, y);
+    printf("%hhu\n%llu\n%hhu\n", x, addr_x, y);
 
-    let string = "test";
-    let i = 0;
+    let string: u8* = "test";
+    let i: u8 = 0;
 
-    while *(string + i) {
-        printf("%c", *(string + i));
+    while (*(string + i)) != 0 {
+        let char: u8 = *(string + i);
+        printf("%c", char);
         i = i + 1;
     }
     printf("\n");

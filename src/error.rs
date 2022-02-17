@@ -1,5 +1,6 @@
 use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
-use std::ops::Range;
+
+use crate::tokenizer::SourceRange;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -15,7 +16,7 @@ pub enum ErrorType {
 pub struct Error {
     error_type: ErrorType,
     message: String,
-    range: Range<usize>,
+    range: SourceRange,
     source_file: String,
 }
 
@@ -23,7 +24,7 @@ impl Error {
     pub fn new(
         error_type: ErrorType,
         message: String,
-        range: Range<usize>,
+        range: SourceRange,
         source_file: String,
     ) -> Self {
         Self {

@@ -26,4 +26,16 @@ impl Type {
     pub fn get_ref(self) -> Self {
         Type::Ref(Box::new(self))
     }
+
+    pub fn get_deref(self) -> Self {
+        match self {
+            Type::Ref(x) => *x,
+            // TODO: change this to return a result
+            _ => panic!("Trying to deref type which is not a ref"),
+        }
+    }
+
+    pub fn is_ref(&self) -> bool {
+        matches!(self, Type::Ref(_))
+    }
 }

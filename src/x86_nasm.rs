@@ -85,13 +85,13 @@ impl<'a> X86NasmGenerator<'a> {
 
     pub fn generate_statement(&mut self, ast: &'a Statement<u64>) -> Result<()> {
         match ast {
-            Statement::Declaration(name, value_type) => {
+            Statement::Declaration(name, value_type, range) => {
                 self.scope
-                    .insert(name, (self.scope.len()?, value_type.clone()))?;
-                self.instr(Sub(RBP, Constant(STACK_OFFSET as u64)));
+                    .insert(name, (self.scope.len()?, value_type.clone()), range)?;
+                self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
-            Statement::Assignment(name, value) => {
-                let (offset, variable_type) = self.scope.find(name)?;
+            Statement::Assignment(name, value, range) => {
+                let (offset, variable_type) = self.scope.find(name, range)?;
                 let (value_reg, value_type) = self.generate_expression(value).unwrap();
 
                 assert_eq!(variable_type, value_type);
@@ -102,7 +102,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.free_register(value_reg);
             }
-            Statement::While(cond, stmt) => {
+            Statement::While(cond, stmt, _range) => {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
 
@@ -120,7 +120,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.free_register(register);
             }
-            Statement::If(cond, stmt) => {
+            Statement::If(cond, stmt, _range) => {
                 let end_label = self.get_new_label();
                 let (register, value_type) = self.generate_expression(cond)?;
 
@@ -133,7 +133,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.instr(Label(end_label));
             }
-            Statement::Return(expr) => {
+            Statement::Return(expr, _range) => {
                 let (value_reg, value_type) = self.generate_expression(expr).unwrap();
 
                 self.instr(Mov(
@@ -143,7 +143,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.free_register(value_reg);
             }
-            Statement::Function(name, args, _ret_type, body) => {
+            Statement::Function(name, args, _ret_type, body, range) => {
                 self.scope.push();
                 assert!(args.len() <= 6);
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
@@ -160,7 +160,8 @@ impl<'a> X86NasmGenerator<'a> {
 
                 for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.len()?;
-                    self.scope.insert(arg_name, (offset, arg_type.clone()))?;
+                    self.scope
+                        .insert(arg_name, (offset, arg_type.clone()), range)?;
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET),
                         Reg(arg_reg, arg_type.size()),
@@ -172,11 +173,11 @@ impl<'a> X86NasmGenerator<'a> {
                 self.write_epilogue();
 
                 self.instr(Ret());
-                self.scope.pop()?;
+                self.scope.pop(range)?;
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            Statement::Block(stmts, scoped) => {
+            Statement::Block(stmts, scoped, range) => {
                 if *scoped {
                     self.scope.push();
                 }
@@ -186,10 +187,10 @@ impl<'a> X86NasmGenerator<'a> {
                 }
 
                 if *scoped {
-                    self.scope.pop()?;
+                    self.scope.pop(range)?;
                 }
             }
-            Statement::Expression(expr) => {
+            Statement::Expression(expr, _range) => {
                 let (register, _type) = self.generate_expression(expr)?;
                 self.free_register(register);
             }
@@ -199,29 +200,30 @@ impl<'a> X86NasmGenerator<'a> {
 
     fn generate_expression(&mut self, ast: &'a Expression<u64>) -> Result<(X86Register, Type)> {
         match ast {
-            Expression::Literal(value, value_type) => {
+            Expression::Literal(value, value_type, _range) => {
                 let register = self.get_next_register();
 
                 self.instr(Mov(Reg(register, value_type.size()), Constant(*value)));
 
                 Ok((register, value_type.clone()))
             }
-            Expression::UnaryOperator(UnaryOperatorType::Ref, expr) => {
+            Expression::UnaryOperator(UnaryOperatorType::Ref, expr, _range) => {
                 let result_reg = self.get_next_register();
 
                 match &**expr {
-                    Expression::VariableRef(name) => {
-                        let (offset, value_type) = self.scope.find(name)?;
+                    Expression::VariableRef(name, range) => {
+                        let (offset, value_type) = self.scope.find(name, range)?;
+                        let result_type = value_type.get_ref();
                         self.instr(Lea(
-                            Reg(result_reg, value_type.size()),
+                            Reg(result_reg, result_type.size()),
                             RegIndirect(Rbp, offset * 16),
                         ));
-                        Ok((result_reg, value_type))
+                        Ok((result_reg, result_type))
                     }
                     _ => unreachable!(),
                 }
             }
-            Expression::UnaryOperator(op, expr) => {
+            Expression::UnaryOperator(op, expr, _range) => {
                 let (reg, value_type) = self.generate_expression(expr)?;
                 let result_reg = self.get_next_register();
 
@@ -233,11 +235,14 @@ impl<'a> X86NasmGenerator<'a> {
                 }
 
                 self.free_register(reg);
-                Ok((result_reg, value_type))
+                Ok((result_reg, value_type.get_deref()))
             }
-            Expression::BinaryOperator(op, left, right) => {
+            Expression::BinaryOperator(op, left, right, _range) => {
                 let (left_reg, left_type) = self.generate_expression(left)?;
                 let (right_reg, right_type) = self.generate_expression(right)?;
+
+                assert_eq!(left_type.size(), right_type.size());
+
                 let left_op = Reg(left_reg, left_type.size());
                 let right_op = Reg(right_reg, right_type.size());
 
@@ -249,6 +254,10 @@ impl<'a> X86NasmGenerator<'a> {
                         self.instr(Sub(left_op, right_op));
                     }
                     BinaryOperatorType::Multiply => {
+                        assert!(
+                            left_type.size() > 8 && right_type.size() > 8,
+                            "We don't support multiplication of 8 bit integers"
+                        );
                         self.instr(Mul(left_op, right_op));
                     }
                     BinaryOperatorType::Divide => {
@@ -266,27 +275,27 @@ impl<'a> X86NasmGenerator<'a> {
                     }
                     BinaryOperatorType::LessThan => {
                         self.instr(Cmp(left_op, right_op));
-                        self.instr(SetGE(Reg(left_reg, 8)));
+                        self.instr(SetL(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::LessThanEqual => {
                         self.instr(Cmp(left_op, right_op));
-                        self.instr(SetG(Reg(left_reg, 8)));
+                        self.instr(SetLE(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::GreaterThan => {
                         self.instr(Cmp(left_op, right_op));
-                        self.instr(SetLE(Reg(left_reg, 8)));
+                        self.instr(SetG(Reg(left_reg, 8)));
                     }
                     BinaryOperatorType::GreaterThanEqual => {
                         self.instr(Cmp(left_op, right_op));
-                        self.instr(SetL(Reg(left_reg, 8)));
+                        self.instr(SetGE(Reg(left_reg, 8)));
                     }
                 }
 
                 self.free_register(right_reg);
                 Ok((left_reg, left_type))
             }
-            Expression::VariableRef(name) => {
-                let (offset, value_type) = self.scope.find(name)?;
+            Expression::VariableRef(name, range) => {
+                let (offset, value_type) = self.scope.find(name, range)?;
                 let register = self.get_next_register();
 
                 self.instr(Mov(
@@ -296,7 +305,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 Ok((register, value_type))
             }
-            Expression::FunctionCall(name, args) => {
+            Expression::FunctionCall(name, args, _range) => {
                 assert!(args.len() <= 6);
 
                 if name.starts_with("syscall") {
@@ -365,13 +374,13 @@ impl<'a> X86NasmGenerator<'a> {
                     Ok((result_register, Type::UInt64()))
                 }
             }
-            Expression::StringLiteral(value) => {
+            Expression::StringLiteral(value, _range) => {
                 let label = self.store_new_string(value);
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), StringLabel(label)));
                 Ok((result_reg, Type::UInt8().get_ref()))
             }
-            Expression::Widen(expr, widen_type) => {
+            Expression::Widen(expr, widen_type, _range) => {
                 let (expr_reg, expr_type) = self.generate_expression(expr)?;
                 assert!(expr_type.size() < widen_type.size());
 

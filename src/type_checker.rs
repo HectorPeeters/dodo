@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 
 use crate::{
-    ast::{Expression, Statement},
+    ast::{Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
     scope::Scope,
+    tokenizer::SourceRange,
     types::Type,
 };
 
@@ -26,9 +27,9 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn get_scope_value_type(&self, name: &str) -> Result<Type> {
+    fn get_scope_value_type(&self, name: &str, range: &SourceRange) -> Result<Type> {
         use TypeScopeEntry::*;
-        match self.scope.find(name)? {
+        match self.scope.find(name, range)? {
             Value(t) => Ok(t),
             Function(_, _) => {
                 unreachable!("Trying to get type of value with the name of a function")
@@ -36,9 +37,13 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn get_scope_function_type(&self, name: &str) -> Result<(Vec<Type>, Type)> {
+    fn get_scope_function_type(
+        &self,
+        name: &str,
+        range: &SourceRange,
+    ) -> Result<(Vec<Type>, Type)> {
         use TypeScopeEntry::*;
-        match self.scope.find(name)? {
+        match self.scope.find(name, range)? {
             Value(_) => unreachable!("Trying to get type of function with the name of a value"),
             Function(arg_types, return_type) => Ok((arg_types, return_type)),
         }
@@ -46,7 +51,7 @@ impl<'a> TypeChecker<'a> {
 
     pub fn check(&mut self, ast: &mut Statement<u64>) -> Result<()> {
         match ast {
-            Statement::Block(statements, scoped) => {
+            Statement::Block(statements, scoped, range) => {
                 if *scoped {
                     self.scope.push();
                 }
@@ -54,16 +59,16 @@ impl<'a> TypeChecker<'a> {
                     self.check(statement)?;
                 }
                 if *scoped {
-                    self.scope.pop()?;
+                    self.scope.pop(range)?;
                 }
             }
-            Statement::Declaration(name, variable_type) => {
+            Statement::Declaration(name, variable_type, range) => {
                 self.scope
-                    .insert(name, TypeScopeEntry::Value(variable_type.clone()))?;
+                    .insert(name, TypeScopeEntry::Value(variable_type.clone()), range)?;
             }
-            Statement::Assignment(name, expr) => {
+            Statement::Assignment(name, expr, range) => {
                 let source_type = self.get_type(expr)?;
-                let destination_type = self.get_scope_value_type(name)?;
+                let destination_type = self.get_scope_value_type(name, range)?;
 
                 let new_type =
                     Self::widen_assignment(&destination_type, &source_type).ok_or_else(|| {
@@ -73,37 +78,68 @@ impl<'a> TypeChecker<'a> {
                                 "Cannot widen from type {:?} to {:?}",
                                 source_type, destination_type
                             ),
-                            0..0,
+                            range.clone(),
                             self.source_file.to_string(),
                         )
                     })?;
 
                 // TODO: get rid of this clone
                 if new_type != source_type {
-                    *expr = Expression::Widen(Box::new(expr.clone()), new_type);
+                    *expr = Expression::Widen(Box::new(expr.clone()), new_type, range.clone());
                 }
             }
-            Statement::Expression(expr) => {
+            Statement::Expression(expr, _range) => {
                 self.get_type(expr)?;
             }
-            Statement::Function(name, args, return_type, body) => {
+            Statement::Function(name, args, return_type, body, range) => {
                 self.scope.insert(
                     name,
                     TypeScopeEntry::Function(
                         args.iter().map(|x| x.1.clone()).collect::<Vec<_>>(),
                         return_type.clone(),
                     ),
+                    range,
                 )?;
                 self.scope.push();
                 for (arg_name, arg_type) in args {
                     self.scope
-                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()))?;
+                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()), range)?;
                 }
 
                 // TODO: check return type
                 self.check(body)?;
 
-                self.scope.pop()?;
+                self.scope.pop(range)?;
+            }
+            Statement::If(cond, body, range) => {
+                let condition_type = self.get_type(cond)?;
+                if condition_type != Type::Bool() {
+                    return Err(Error::new(
+                        ErrorType::TypeCheck,
+                        format!(
+                            "Condition of if statement should be a boolean but is {:?}",
+                            condition_type
+                        ),
+                        range.clone(),
+                        self.source_file.to_string(),
+                    ));
+                }
+                self.check(body)?;
+            }
+            Statement::While(cond, body, range) => {
+                let condition_type = self.get_type(cond)?;
+                if condition_type != Type::Bool() {
+                    return Err(Error::new(
+                        ErrorType::TypeCheck,
+                        format!(
+                            "Condition of while statement should be a boolean but is {:?}",
+                            condition_type
+                        ),
+                        range.clone(),
+                        self.source_file.to_string(),
+                    ));
+                }
+                self.check(body)?;
             }
             _ => unreachable!("{:?}", ast),
         }
@@ -122,28 +158,62 @@ impl<'a> TypeChecker<'a> {
     pub fn get_type(&self, expr: &mut Expression<u64>) -> Result<Type> {
         use Expression::*;
         Ok(match expr {
-            BinaryOperator(_, left, right) => {
+            BinaryOperator(op, left, right, range) => {
                 let left_type = self.get_type(left)?;
                 let right_type = self.get_type(right)?;
+
+                // TODO: this needs a thorough rework, comparing references won't work
+                if left_type.is_ref() && !op.is_comparison() {
+                    // TODO: limit this to only addition and subtraction
+                    *right = Box::new(Widen(
+                        Box::new(*right.clone()),
+                        left_type.clone(),
+                        range.clone(),
+                    ));
+                    return Ok(left_type);
+                }
+
+                let mut result_type;
+
                 match left_type.size().cmp(&right_type.size()) {
                     Ordering::Greater => {
                         // TODO: clean up this mess
-                        *right = Box::new(Widen(Box::new(*right.clone()), left_type.clone()));
-                        left_type
+                        *right = Box::new(Widen(
+                            Box::new(*right.clone()),
+                            left_type.clone(),
+                            range.clone(),
+                        ));
+                        result_type = left_type;
                     }
                     Ordering::Less => {
-                        *left = Box::new(Widen(Box::new(*left.clone()), right_type.clone()));
-                        right_type
+                        *left = Box::new(Widen(
+                            Box::new(*left.clone()),
+                            right_type.clone(),
+                            range.clone(),
+                        ));
+                        result_type = right_type;
                     }
-                    Ordering::Equal => right_type,
+                    Ordering::Equal => {
+                        result_type = right_type;
+                    }
                 }
+
+                if op.is_comparison() {
+                    result_type = Type::Bool();
+                }
+
+                result_type
             }
-            UnaryOperator(_, expr) => self.get_type(expr)?,
-            FunctionCall(name, args) => {
-                if name == "printf" || name == "exit" {
+            UnaryOperator(op, expr, _range) => match op {
+                UnaryOperatorType::Negate => self.get_type(expr)?,
+                UnaryOperatorType::Ref => self.get_type(expr)?.get_ref(),
+                UnaryOperatorType::Deref => self.get_type(expr)?.get_deref(),
+            },
+            FunctionCall(name, args, range) => {
+                if name == "printf" || name == "exit" || name == "syscall" {
                     Type::Void()
                 } else {
-                    let (arg_types, return_type) = self.get_scope_function_type(name)?;
+                    let (arg_types, return_type) = self.get_scope_function_type(name, range)?;
 
                     assert_eq!(args.len(), arg_types.len());
 
@@ -164,17 +234,21 @@ impl<'a> TypeChecker<'a> {
                             })?;
 
                         if new_type != source_type {
-                            *arg_expr = Expression::Widen(Box::new(arg_expr.clone()), new_type);
+                            *arg_expr = Expression::Widen(
+                                Box::new(arg_expr.clone()),
+                                new_type,
+                                range.clone(),
+                            );
                         }
                     }
 
                     return_type
                 }
             }
-            Literal(_, value_type) => value_type.clone(),
-            VariableRef(name) => self.get_scope_value_type(name)?,
-            StringLiteral(_) => Type::UInt64(),
-            Widen(_, value_type) => value_type.clone(),
+            Literal(_value, value_type, _range) => value_type.clone(),
+            VariableRef(name, range) => self.get_scope_value_type(name, range)?,
+            StringLiteral(_, _range) => Type::UInt8().get_ref(),
+            Widen(_, value_type, _range) => value_type.clone(),
         })
     }
 }

@@ -1,5 +1,5 @@
-fn assert_eq(result, expected) {
-    if result == expected {
+fn assert_eq(result: u32, expected: u32) {
+    if result != expected {
         printf("Failed: expected %d but got %d\n", expected, result);
         exit(1);
     }
@@ -8,8 +8,8 @@ fn assert_eq(result, expected) {
 }
 
 fn main() {
-    let x = 12;
-    let y = 4;
+    let x: u32 = 12;
+    let y: u32 = 4;
 
     // basic math operations
     assert_eq(x + y, 16);
@@ -21,8 +21,5 @@ fn main() {
     assert_eq(x + y * 2, 20); 
     assert_eq(x * y + 2, 50); 
     
-    // parenthesized expressions
-    assert_eq(4 * (2 + 3), 20);
-
     exit(0);
 }

@@ -25,7 +25,7 @@ pub enum TokenType {
 
     Plus,
     Minus,
-    Asterix,
+    Asterisk,
     Slash,
     DoubleEqual,
     NotEqual,
@@ -49,31 +49,33 @@ pub enum TokenType {
     RightBrace,
 }
 
+pub type SourceRange = Range<usize>;
+
 #[derive(Debug)]
 pub struct Token<'a> {
     pub token_type: TokenType,
     pub value: &'a str,
-    pub span: Range<usize>,
+    pub range: SourceRange,
 }
 
 impl<'a> Token<'a> {
-    pub fn new(token_type: TokenType, value: &'a str, span: Range<usize>) -> Self {
+    pub fn new(token_type: TokenType, value: &'a str, range: SourceRange) -> Self {
         Self {
             token_type,
             value,
-            span,
+            range,
         }
     }
 
     pub fn offset(&mut self, offset: usize) {
-        self.span = self.span.start + offset..self.span.end + offset;
+        self.range = self.range.start + offset..self.range.end + offset;
     }
 }
 
 impl<'a> PartialEq for Token<'a> {
     fn eq(&self, other: &Self) -> bool {
         // NOTE: comparing the actual value might also be necessary
-        self.token_type == other.token_type && self.span == other.span
+        self.token_type == other.token_type && self.range == other.range
     }
 }
 
@@ -112,7 +114,7 @@ impl<'a> Lexer<'a> {
             (r"[0-9]+", IntegerLiteral),
             (r"\+", Plus),
             (r"-", Minus),
-            (r"\*", Asterix),
+            (r"\*", Asterisk),
             (r"/", Slash),
             (r"==", DoubleEqual),
             (r"!=", NotEqual),
@@ -177,10 +179,11 @@ impl<'a> Lexer<'a> {
                 ));
             }
 
-            matches.sort_by(|a, b| (b.span.end - b.span.start).cmp(&(a.span.end - a.span.start)));
+            matches
+                .sort_by(|a, b| (b.range.end - b.range.start).cmp(&(a.range.end - a.range.start)));
 
             let mut best_match = matches.remove(0);
-            let match_size = best_match.span.end;
+            let match_size = best_match.range.end;
             best_match.offset(self.pointer);
             self.pointer += match_size;
 
@@ -258,7 +261,7 @@ mod tests {
 
         assert_eq!(tokens[0].token_type, Plus);
         assert_eq!(tokens[1].token_type, Minus);
-        assert_eq!(tokens[2].token_type, Asterix);
+        assert_eq!(tokens[2].token_type, Asterisk);
         assert_eq!(tokens[3].token_type, Slash);
     }
 
