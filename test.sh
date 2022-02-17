@@ -9,6 +9,7 @@ for i in tests/*.dodo; do
     /tmp/output > /dev/null
     if [ $? -ne 0 ] 
     then
+        echo "FAILED"
         exit 
     fi
 done

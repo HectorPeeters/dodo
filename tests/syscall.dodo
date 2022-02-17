@@ -4,5 +4,5 @@ fn exit(code: u64) {
 }
 
 fn main() {
-    exit(123);
+    exit(0);
 }
