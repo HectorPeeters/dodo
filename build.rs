@@ -10,24 +10,23 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-// build script's entry point
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let out_dir = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&out_dir).join("tests.rs");
     let mut test_file = File::create(&destination).unwrap();
 
-    // write test file header, put `use`, `const` etc there
-    write_header(&mut test_file);
+    // write test file header, this includes imports and a run function
+    write!(test_file, include_str!("./tests/test_header"),)?;
 
-    let test_data_directories = read_dir("./tests/data/").unwrap();
-
-    for directory in test_data_directories {
-        write_test(&mut test_file, &directory.unwrap());
+    for directory in read_dir("./tests/data/")? {
+        write_test(&mut test_file, &directory?)?;
     }
+
+    Ok(())
 }
 
-fn write_test(test_file: &mut File, directory: &DirEntry) {
-    let directory = directory.path().canonicalize().unwrap();
+fn write_test(test_file: &mut File, directory: &DirEntry) -> Result<(), std::io::Error> {
+    let directory = directory.path().canonicalize()?;
     let path = directory.display();
     let test_name = format!(
         "dodo_{}",
@@ -43,82 +42,7 @@ fn write_test(test_file: &mut File, directory: &DirEntry) {
         include_str!("./tests/test_template"),
         name = test_name,
         path = path
-    )
-    .unwrap();
-}
-
-fn write_header(test_file: &mut File) {
-    write!(
-        test_file,
-        r#"use dodo::error::Result;
-use dodo::parser::Parser;
-use dodo::tokenizer::tokenize;
-use dodo::type_checker::TypeChecker;
-use dodo::x86_nasm::X86NasmGenerator;
-use std::collections::hash_map::DefaultHasher;
-use std::fs::File;
-use std::hash::{{Hash, Hasher}};
-use std::process::Command;
-
-fn run_test(file: &str, code: &str) -> Result<()> {{
-    let mut hasher = DefaultHasher::new();
-    file.hash(&mut hasher);
-    let test_code = hasher.finish();
-
-    let tokens = tokenize(&code, file)?;
-
-    let mut parser = Parser::new(&tokens, file);
-
-    let mut output = File::create(&format!("/tmp/output_{{}}.asm", test_code)).unwrap();
-    let mut generator = X86NasmGenerator::new(file);
-
-    let mut statements = vec![];
-
-    while !parser.eof() {{
-        let statement = parser.parse_statement()?;
-        statements.push(statement);
-    }}
-
-    let mut type_checker = TypeChecker::new(file);
-
-    for statement in &mut statements {{
-        type_checker.check(statement)?;
-        generator.generate_statement(statement)?;
-    }}
-
-    generator.write(&mut output);
-
-    Command::new("nasm")
-        .args([
-            "-f", 
-            "elf64", 
-            &format!("/tmp/output_{{}}.asm", test_code), 
-            "-o", 
-            &format!("/tmp/output_{{}}.o", test_code), 
-            "-g",
-        ])
-        .output()
-        .expect("Failed to compile assembly");
-
-    Command::new("gcc")
-        .args([
-            "-o", 
-            &format!("/tmp/output_{{}}", test_code), 
-            &format!("/tmp/output_{{}}.o", test_code), 
-            "-nostartfiles", 
-            "-no-pie", 
-            "-g",
-        ])
-        .output()
-        .expect("Failed to link");
-
-    Command::new(&format!("/tmp/output_{{}}", test_code))
-        .output()
-        .expect("Failed to execute");
+    )?;
 
     Ok(())
-}}
-"#
-    )
-    .unwrap();
 }

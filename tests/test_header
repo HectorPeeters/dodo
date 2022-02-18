@@ -1,0 +1,68 @@
+use dodo::error::Result;
+use dodo::parser::Parser;
+use dodo::tokenizer::tokenize;
+use dodo::type_checker::TypeChecker;
+use dodo::x86_nasm::X86NasmGenerator;
+use std::collections::hash_map::DefaultHasher;
+use std::fs::File;
+use std::hash::{{Hash, Hasher}};
+use std::process::Command;
+
+fn run_test(file: &str, code: &str) -> Result<()> {{
+    let mut hasher = DefaultHasher::new();
+    file.hash(&mut hasher);
+    let test_code = hasher.finish();
+
+    let tokens = tokenize(&code, file)?;
+
+    let mut parser = Parser::new(&tokens, file);
+
+    let mut output = File::create(&format!("/tmp/output_{{}}.asm", test_code)).unwrap();
+    let mut generator = X86NasmGenerator::new(file);
+
+    let mut statements = vec![];
+
+    while !parser.eof() {{
+        let statement = parser.parse_statement()?;
+        statements.push(statement);
+    }}
+
+    let mut type_checker = TypeChecker::new(file);
+
+    for statement in &mut statements {{
+        type_checker.check(statement)?;
+        generator.generate_statement(statement)?;
+    }}
+
+    generator.write(&mut output);
+
+    Command::new("nasm")
+        .args([
+            "-f", 
+            "elf64", 
+            &format!("/tmp/output_{{}}.asm", test_code), 
+            "-o", 
+            &format!("/tmp/output_{{}}.o", test_code), 
+            "-g",
+        ])
+        .output()
+        .expect("Failed to compile assembly");
+
+    Command::new("gcc")
+        .args([
+            "-o", 
+            &format!("/tmp/output_{{}}", test_code), 
+            &format!("/tmp/output_{{}}.o", test_code), 
+            "-nostartfiles", 
+            "-no-pie", 
+            "-g",
+        ])
+        .output()
+        .expect("Failed to link");
+
+    Command::new(&format!("/tmp/output_{{}}", test_code))
+        .output()
+        .expect("Failed to execute");
+
+    Ok(())
+}}
