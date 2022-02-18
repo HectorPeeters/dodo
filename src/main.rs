@@ -1,23 +1,10 @@
-#![feature(int_log)]
-
-use std::fs::File;
-
-use error::Result;
-use parser::Parser;
+use dodo::error::Result;
+use dodo::parser::Parser;
+use dodo::tokenizer::tokenize;
+use dodo::type_checker::TypeChecker;
+use dodo::x86_nasm::X86NasmGenerator;
 use std::env;
-use tokenizer::tokenize;
-use type_checker::TypeChecker;
-use x86_nasm::X86NasmGenerator;
-
-mod ast;
-mod error;
-mod parser;
-mod scope;
-mod tokenizer;
-mod type_checker;
-mod types;
-mod x86_instruction;
-mod x86_nasm;
+use std::fs::File;
 
 fn unwrap_or_error<T>(result: Result<T>) -> T {
     match result {

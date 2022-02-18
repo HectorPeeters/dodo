@@ -6,6 +6,10 @@ edition = "2021"
 [lib]
 name = "dodo"
 
+[[bin]]
+name = "dodo"
+path = "src/main.rs"
+
 [dependencies]
 regex = { version = "1.5.4", default-features = false, features = ["std"] }
 ariadne = "0.1.3"
