@@ -8,8 +8,12 @@ use crate::{
 };
 
 type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<Expression>;
-type InfixParseFn<'a> =
-    fn(&mut Parser<'a>, start_index: usize, left: Expression, precedence: usize) -> Result<Expression>;
+type InfixParseFn<'a> = fn(
+    &mut Parser<'a>,
+    start_index: usize,
+    left: Expression,
+    precedence: usize,
+) -> Result<Expression>;
 
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
@@ -265,7 +269,12 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_binary_operator(&mut self, start_index: usize, left: Expression, precedence: usize) -> Result<Expression> {
+    fn parse_binary_operator(
+        &mut self,
+        start_index: usize,
+        left: Expression,
+        precedence: usize,
+    ) -> Result<Expression> {
         let operator = self.consume()?;
 
         let op_type = BinaryOperatorType::from_token_type(operator.token_type);
@@ -341,7 +350,10 @@ impl<'a> Parser<'a> {
         self.consume_assert(TokenType::Return)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Return(expr, return_start..self.current_index(true)))
+        Ok(Statement::Return(
+            expr,
+            return_start..self.current_index(true),
+        ))
     }
 
     fn parse_let_statement(&mut self) -> Result<Statement> {
@@ -363,7 +375,11 @@ impl<'a> Parser<'a> {
                         value_type,
                         let_start..decl_start,
                     ),
-                    Statement::Assignment(variable_name, expr, decl_start..self.current_index(true)),
+                    Statement::Assignment(
+                        variable_name,
+                        expr,
+                        decl_start..self.current_index(true),
+                    ),
                 ],
                 false,
                 let_start..self.current_index(true),

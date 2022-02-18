@@ -74,7 +74,7 @@ impl<T: Clone> Scope<T> {
             })
     }
 
-    pub fn len(&self) -> Result<usize> {
+    pub fn size(&self) -> Result<usize> {
         Ok(self.items.iter().map(|x| x.len()).sum())
     }
 }

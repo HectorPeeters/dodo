@@ -23,10 +23,12 @@ impl Type {
         }
     }
 
+    #[must_use]
     pub fn get_ref(self) -> Self {
         Type::Ref(Box::new(self))
     }
 
+    #[must_use]
     pub fn get_deref(self) -> Self {
         match self {
             Type::Ref(x) => *x,

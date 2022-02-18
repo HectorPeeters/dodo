@@ -87,7 +87,7 @@ impl<'a> X86NasmGenerator<'a> {
         match ast {
             Statement::Declaration(name, value_type, range) => {
                 self.scope
-                    .insert(name, (self.scope.len()?, value_type.clone()), range)?;
+                    .insert(name, (self.scope.size()?, value_type.clone()), range)?;
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value, range) => {
@@ -159,7 +159,7 @@ impl<'a> X86NasmGenerator<'a> {
                 }
 
                 for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
-                    let offset = self.scope.len()?;
+                    let offset = self.scope.size()?;
                     self.scope
                         .insert(arg_name, (offset, arg_type.clone()), range)?;
                     self.instr(Mov(
