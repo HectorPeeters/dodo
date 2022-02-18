@@ -3,7 +3,9 @@ name = "dodo"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "dodo"
+
 [dependencies]
 regex = { version = "1.5.4", default-features = false, features = ["std"] }
 ariadne = "0.1.3"
-
