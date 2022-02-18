@@ -19,18 +19,23 @@ mod types;
 mod x86_instruction;
 mod x86_nasm;
 
+fn unwrap_or_error<T>(result: Result<T>) -> T {
+    match result {
+        Ok(x) => x,
+        Err(e) => {
+            e.print().unwrap();
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();
     let file = args.get(1).unwrap();
 
     let code = std::fs::read_to_string(file).unwrap();
 
-    let tokens = tokenize(&code, file);
-    if let Err(error) = tokens {
-        error.print().unwrap();
-        std::process::exit(1);
-    }
-    let tokens = tokens.unwrap();
+    let tokens = unwrap_or_error(tokenize(&code, file));
 
     let mut parser = Parser::new(&tokens, file);
 
@@ -40,29 +45,15 @@ fn main() -> Result<()> {
     let mut statements = vec![];
 
     while !parser.eof() {
-        match parser.parse_statement() {
-            Ok(statement) => statements.push(statement),
-            Err(error) => {
-                error.print().unwrap();
-                std::process::exit(1);
-            }
-        }
+        let statement = unwrap_or_error(parser.parse_statement());
+        statements.push(statement);
     }
 
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {
-        let type_check_result = type_checker.check(statement);
-        if let Err(error) = type_check_result {
-            error.print().unwrap();
-            std::process::exit(1);
-        }
-
-        let generated = generator.generate_statement(statement);
-        if let Err(error) = generated {
-            error.print().unwrap();
-            std::process::exit(1);
-        }
+        unwrap_or_error(type_checker.check(statement));
+        unwrap_or_error(generator.generate_statement(statement));
     }
 
     generator.write(&mut output);
