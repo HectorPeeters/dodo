@@ -16,7 +16,7 @@ pub enum TypeScopeEntry {
 
 pub struct TypeChecker<'a> {
     source_file: &'a str,
-    scope: Scope<TypeScopeEntry>,
+    scope: Scope<'a, TypeScopeEntry>,
 }
 
 impl<'a> TypeChecker<'a> {

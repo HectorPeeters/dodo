@@ -21,7 +21,7 @@ pub type ScopeLocation = (usize, Type);
 pub struct X86NasmGenerator<'a> {
     instructions: Vec<X86Instruction>,
     label_index: usize,
-    scope: Scope<ScopeLocation>,
+    scope: Scope<'a, ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
     strings: Vec<&'a str>,
 }

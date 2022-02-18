@@ -60,22 +60,12 @@ use std::fs::File;
 use std::hash::{{Hash, Hasher}};
 use std::process::Command;
 
-fn unwrap_or_error<T>(result: Result<T>) -> T {{
-    match result {{
-        Ok(x) => x,
-        Err(e) => {{
-            e.print().unwrap();
-            std::process::exit(1);
-        }}
-    }}
-}}
-
-fn run_test(file: &str, code: &str) {{
+fn run_test(file: &str, code: &str) -> Result<()> {{
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
 
-    let tokens = unwrap_or_error(tokenize(&code, file));
+    let tokens = tokenize(&code, file)?;
 
     let mut parser = Parser::new(&tokens, file);
 
@@ -85,15 +75,15 @@ fn run_test(file: &str, code: &str) {{
     let mut statements = vec![];
 
     while !parser.eof() {{
-        let statement = unwrap_or_error(parser.parse_statement());
+        let statement = parser.parse_statement()?;
         statements.push(statement);
     }}
 
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {{
-        unwrap_or_error(type_checker.check(statement));
-        unwrap_or_error(generator.generate_statement(statement));
+        type_checker.check(statement)?;
+        generator.generate_statement(statement)?;
     }}
 
     generator.write(&mut output);
@@ -125,6 +115,8 @@ fn run_test(file: &str, code: &str) {{
     Command::new(&format!("/tmp/output_{{}}", test_code))
         .output()
         .expect("Failed to execute");
+
+    Ok(())
 }}
 "#
     )

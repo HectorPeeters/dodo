@@ -1,7 +1,13 @@
 #[test]
-fn {name}() {{
-    run_test(
+fn {name}() -> Result<()> {{
+    match run_test(
         "{path}", 
         include_str!("{path}")
-    );
+    ) {{
+        Ok(_) => Ok(()),
+        Err(e) => {{
+            e.print().unwrap();
+            Err(e)
+        }}
+    }}
 }}

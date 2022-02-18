@@ -1,17 +1,16 @@
 use crate::{error::*, tokenizer::SourceRange};
 use std::collections::HashMap;
 
-pub struct Scope<T> {
+pub struct Scope<'a, T> {
     items: Vec<HashMap<String, T>>,
-    // TODO: convert this to a reference
-    source_file: String,
+    source_file: &'a str,
 }
 
-impl<T: Clone> Scope<T> {
-    pub fn new(source_file: &str) -> Self {
+impl<'a, T: Clone> Scope<'a, T> {
+    pub fn new(source_file: &'a str) -> Self {
         Self {
             items: vec![HashMap::new()],
-            source_file: source_file.to_string(),
+            source_file,
         }
     }
 
@@ -23,7 +22,7 @@ impl<T: Clone> Scope<T> {
                         ErrorType::Scope,
                         format!("Identifier '{}' already defined in scope", name),
                         range.clone(),
-                        self.source_file.clone(),
+                        self.source_file.to_string(),
                     ))
                 } else {
                     last_scope.insert(name.to_owned(), data);
@@ -34,7 +33,7 @@ impl<T: Clone> Scope<T> {
                 ErrorType::Scope,
                 format!("Trying to insert '{}' into empty scope", name),
                 range.clone(),
-                self.source_file.clone(),
+                self.source_file.to_string(),
             )),
         }
     }
@@ -52,7 +51,7 @@ impl<T: Clone> Scope<T> {
                     ErrorType::Scope,
                     "Tried popping while scope stack was empty".to_string(),
                     range.clone(),
-                    self.source_file.clone(),
+                    self.source_file.to_string(),
                 )
             })
             .map(|_| ())
@@ -69,7 +68,7 @@ impl<T: Clone> Scope<T> {
                     ErrorType::Scope,
                     format!("'{}' not found in scope", name),
                     range.clone(),
-                    self.source_file.clone(),
+                    self.source_file.to_string(),
                 )
             })
     }
