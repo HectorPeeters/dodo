@@ -49,7 +49,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn check(&mut self, ast: &mut Statement<u64>) -> Result<()> {
+    pub fn check(&mut self, ast: &mut Statement) -> Result<()> {
         match ast {
             Statement::Block(statements, scoped, range) => {
                 if *scoped {
@@ -155,7 +155,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn get_type(&self, expr: &mut Expression<u64>) -> Result<Type> {
+    pub fn get_type(&self, expr: &mut Expression) -> Result<Type> {
         use Expression::*;
         Ok(match expr {
             BinaryOperator(op, left, right, range) => {

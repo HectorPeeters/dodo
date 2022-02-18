@@ -3,19 +3,19 @@ use crate::types::Type;
 use crate::tokenizer::{SourceRange, TokenType};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement<C> {
-    Block(Vec<Statement<C>>, bool, SourceRange),
+pub enum Statement {
+    Block(Vec<Statement>, bool, SourceRange),
     Declaration(String, Type, SourceRange),
-    Assignment(String, Expression<C>, SourceRange),
-    Expression(Expression<C>, SourceRange),
-    While(Expression<C>, Box<Statement<C>>, SourceRange),
-    If(Expression<C>, Box<Statement<C>>, SourceRange),
-    Return(Expression<C>, SourceRange),
+    Assignment(String, Expression, SourceRange),
+    Expression(Expression, SourceRange),
+    While(Expression, Box<Statement>, SourceRange),
+    If(Expression, Box<Statement>, SourceRange),
+    Return(Expression, SourceRange),
     Function(
         String,
         Vec<(String, Type)>,
         Type,
-        Box<Statement<C>>,
+        Box<Statement>,
         SourceRange,
     ),
 }
@@ -79,17 +79,17 @@ impl UnaryOperatorType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression<C> {
+pub enum Expression {
     BinaryOperator(
         BinaryOperatorType,
-        Box<Expression<C>>,
-        Box<Expression<C>>,
+        Box<Expression>,
+        Box<Expression>,
         SourceRange,
     ),
-    UnaryOperator(UnaryOperatorType, Box<Expression<C>>, SourceRange),
-    FunctionCall(String, Vec<Expression<C>>, SourceRange),
-    Literal(C, Type, SourceRange),
+    UnaryOperator(UnaryOperatorType, Box<Expression>, SourceRange),
+    FunctionCall(String, Vec<Expression>, SourceRange),
+    Literal(u64, Type, SourceRange),
     VariableRef(String, SourceRange),
     StringLiteral(String, SourceRange),
-    Widen(Box<Expression<C>>, Type, SourceRange),
+    Widen(Box<Expression>, Type, SourceRange),
 }

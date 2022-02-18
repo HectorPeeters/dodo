@@ -83,7 +83,7 @@ impl<'a> X86NasmGenerator<'a> {
         self.instr(Pop(RBP));
     }
 
-    pub fn generate_statement(&mut self, ast: &'a Statement<u64>) -> Result<()> {
+    pub fn generate_statement(&mut self, ast: &'a Statement) -> Result<()> {
         match ast {
             Statement::Declaration(name, value_type, range) => {
                 self.scope
@@ -198,7 +198,7 @@ impl<'a> X86NasmGenerator<'a> {
         Ok(())
     }
 
-    fn generate_expression(&mut self, ast: &'a Expression<u64>) -> Result<(X86Register, Type)> {
+    fn generate_expression(&mut self, ast: &'a Expression) -> Result<(X86Register, Type)> {
         match ast {
             Expression::Literal(value, value_type, _range) => {
                 let register = self.get_next_register();

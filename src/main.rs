@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     }
     let tokens = tokens.unwrap();
 
-    let mut parser = Parser::<u64>::new(&tokens, file);
+    let mut parser = Parser::new(&tokens, file);
 
     let mut output = File::create("output.asm").unwrap();
     let mut generator = X86NasmGenerator::new(file);

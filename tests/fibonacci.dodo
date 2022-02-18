@@ -4,7 +4,7 @@ fn fib(n: u64) {
     let curr: u64 = 1;
 
     while n > 0 {
-        printf("%d\n", curr);
+        printf("%llu\n", curr);
 
         prevprev = prev;
         prev = curr;
@@ -15,7 +15,7 @@ fn fib(n: u64) {
 }
 
 fn main() {
-    fib(10);
+    fib(93);
 
     exit(0);
 }

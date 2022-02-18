@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
@@ -8,39 +7,33 @@ use crate::{
     types::Type,
 };
 
-type PrefixParseFn<'a, C> = fn(&mut Parser<'a, C>) -> Result<Expression<C>>;
-type InfixParseFn<'a, C> =
-    fn(&mut Parser<'a, C>, left: Expression<C>, precedence: usize) -> Result<Expression<C>>;
+type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<Expression>;
+type InfixParseFn<'a> =
+    fn(&mut Parser<'a>, left: Expression, precedence: usize) -> Result<Expression>;
 
-pub struct Parser<'a, C> {
+pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
     index: usize,
-    prefix_fns: HashMap<TokenType, PrefixParseFn<'a, C>>,
-    infix_fns: HashMap<TokenType, (InfixParseFn<'a, C>, usize)>,
+    prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
+    infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
     source_file: &'a str,
 }
 
-pub trait Literal {
-    fn get_bits(&self) -> usize;
-}
-
-impl Literal for u64 {
-    fn get_bits(&self) -> usize {
-        if *self <= 255 {
-            8
-        } else if *self <= 65535 {
-            16
-        } else if *self <= 4294967295 {
-            32
-        } else {
-            64
-        }
+fn get_bits(x: u64) -> usize {
+    if x <= 255 {
+        8
+    } else if x <= 65535 {
+        16
+    } else if x <= 4294967295 {
+        32
+    } else {
+        64
     }
 }
 
-impl<'a, C: FromStr + Literal> Parser<'a, C> {
+impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token], source_file: &'a str) -> Self {
-        let mut prefix_fns: HashMap<_, PrefixParseFn<'a, C>> = HashMap::new();
+        let mut prefix_fns: HashMap<_, PrefixParseFn<'a>> = HashMap::new();
         prefix_fns.insert(
             TokenType::Identifier,
             Self::parse_identifier_or_function_call,
@@ -52,7 +45,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
 
-        let mut infix_fns: HashMap<_, (InfixParseFn<'a, C>, usize)> = HashMap::new();
+        let mut infix_fns: HashMap<_, (InfixParseFn<'a>, usize)> = HashMap::new();
         infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 3));
         infix_fns.insert(TokenType::Minus, (Self::parse_binary_operator, 3));
         infix_fns.insert(TokenType::Asterisk, (Self::parse_binary_operator, 4));
@@ -158,7 +151,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         result
     }
 
-    fn parse_function_call(&mut self) -> Result<Expression<C>> {
+    fn parse_function_call(&mut self) -> Result<Expression> {
         let function_start = self.current_index();
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
@@ -186,7 +179,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    fn parse_identifier_or_function_call(&mut self) -> Result<Expression<C>> {
+    fn parse_identifier_or_function_call(&mut self) -> Result<Expression> {
         let identifier_start = self.current_index();
         if self.peeks(1)?.token_type == TokenType::LeftParen {
             self.parse_function_call()
@@ -199,7 +192,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
     }
 
-    fn parse_unary_expression(&mut self) -> Result<Expression<C>> {
+    fn parse_unary_expression(&mut self) -> Result<Expression> {
         let unary_start = self.current_index();
         let token = self.consume()?;
         let unop_type = UnaryOperatorType::from_token_type(token.token_type);
@@ -211,13 +204,13 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    fn parse_constant(&mut self) -> Result<Expression<C>> {
+    fn parse_constant(&mut self) -> Result<Expression> {
         let constant_start = self.current_index();
         let token = self.consume()?;
         match token.token_type {
-            TokenType::IntegerLiteral => match token.value.parse::<C>() {
+            TokenType::IntegerLiteral => match token.value.parse() {
                 Ok(value) => {
-                    let bits = value.get_bits();
+                    let bits = get_bits(value);
                     match bits {
                         8 => Ok(Expression::Literal(
                             value,
@@ -275,18 +268,14 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         }
     }
 
-    fn parse_parenthesized(&mut self) -> Result<Expression<C>> {
+    fn parse_parenthesized(&mut self) -> Result<Expression> {
         self.consume_assert(TokenType::LeftParen)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightParen)?;
         Ok(expr)
     }
 
-    fn parse_binary_operator(
-        &mut self,
-        left: Expression<C>,
-        precedence: usize,
-    ) -> Result<Expression<C>> {
+    fn parse_binary_operator(&mut self, left: Expression, precedence: usize) -> Result<Expression> {
         let binop_start = self.current_index();
         let operator = self.consume()?;
 
@@ -300,7 +289,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression<C>> {
+    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression> {
         let exit_tokens = vec![
             TokenType::SemiColon,
             TokenType::RightParen,
@@ -357,7 +346,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         Ok(left)
     }
 
-    fn parse_return_statement(&mut self) -> Result<Statement<C>> {
+    fn parse_return_statement(&mut self) -> Result<Statement> {
         let return_start = self.current_index();
         self.consume_assert(TokenType::Return)?;
         let expr = self.parse_expression(0)?;
@@ -365,7 +354,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         Ok(Statement::Return(expr, return_start..self.current_index()))
     }
 
-    fn parse_let_statement(&mut self) -> Result<Statement<C>> {
+    fn parse_let_statement(&mut self) -> Result<Statement> {
         let let_start = self.current_index();
         self.consume_assert(TokenType::Let)?;
         let (variable_name, value_type) = self.parse_identifier_type()?;
@@ -399,7 +388,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    fn parse_assignment_statement(&mut self) -> Result<Statement<C>> {
+    fn parse_assignment_statement(&mut self) -> Result<Statement> {
         let assignment_start = self.current_index();
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Equals)?;
@@ -412,7 +401,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    fn parse_while_statement(&mut self) -> Result<Statement<C>> {
+    fn parse_while_statement(&mut self) -> Result<Statement> {
         let while_start = self.current_index();
         self.consume_assert(TokenType::While)?;
         let expr = self.parse_expression(0)?;
@@ -424,7 +413,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    fn parse_if_statement(&mut self) -> Result<Statement<C>> {
+    fn parse_if_statement(&mut self) -> Result<Statement> {
         let if_start = self.current_index();
         self.consume_assert(TokenType::If)?;
         let expr = self.parse_expression(0)?;
@@ -443,7 +432,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         Ok((identifier.to_string(), value_type))
     }
 
-    fn parse_function(&mut self) -> Result<Statement<C>> {
+    fn parse_function(&mut self) -> Result<Statement> {
         let function_start = self.current_index();
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -488,7 +477,7 @@ impl<'a, C: FromStr + Literal> Parser<'a, C> {
         ))
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement<C>> {
+    pub fn parse_statement(&mut self) -> Result<Statement> {
         let token = self.peek()?;
 
         match token.token_type {
