@@ -10,7 +10,7 @@ fn fib(n: u32) u32 {
 
 fn main() {
     let n: u32 = 0;
-    while n < 10 {
+    while n < 20 {
         printf("%d: %d\n", n, fib(n));
         n = n + 1;
     }

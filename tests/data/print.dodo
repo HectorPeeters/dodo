@@ -1,6 +1,6 @@
 fn main() {
     printf("%s\n", "test");
-    printf("%d\n", 1234);
+    printf("%hu\n", 1234);
     printf("%c\n", 65);
     syscall(1, 1, "Hello world!\n", 13);
 

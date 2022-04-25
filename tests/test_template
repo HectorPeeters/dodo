@@ -2,7 +2,8 @@
 fn {name}() -> Result<()> {{
     match run_test(
         "{path}", 
-        include_str!("{path}")
+        include_str!("{path}"),
+        "{expected}"
     ) {{
         Ok(_) => Ok(()),
         Err(e) => {{

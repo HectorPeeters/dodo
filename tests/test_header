@@ -9,7 +9,7 @@ use std::fs::File;
 use std::hash::{{Hash, Hasher}};
 use std::process::Command;
 
-fn run_test(file: &str, code: &str) -> Result<()> {{
+fn run_test(file: &str, code: &str, expected: &str) -> Result<()> {{
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
@@ -61,9 +61,11 @@ fn run_test(file: &str, code: &str) -> Result<()> {{
         .output()
         .expect("Failed to link");
 
-    Command::new(&format!("/tmp/output_{{}}", test_code))
+    let output = Command::new(&format!("/tmp/output_{{}}", test_code))
         .output()
         .expect("Failed to execute");
+
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected.trim());
 
     Ok(())
 }}

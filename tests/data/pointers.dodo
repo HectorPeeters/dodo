@@ -3,7 +3,7 @@ fn main() {
     let addr_x: u8* = &x;
     let y: u8 = *addr_x;
 
-    printf("%hhu\n%llu\n%hhu\n", x, addr_x, y);
+    printf("%hhu\n%hhu\n", x, y);
 
     let string: u8* = "test";
     let i: u8 = 0;
