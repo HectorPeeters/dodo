@@ -49,11 +49,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn check(
-        &mut self,
-        ast: &mut Statement,
-        expected_return_type: Option<&Type>,
-    ) -> Result<()> {
+    pub fn check(&mut self, ast: &mut Statement, expected_return_type: &Type) -> Result<()> {
         match ast {
             Statement::Block(statements, scoped, range) => {
                 if *scoped {
@@ -110,7 +106,7 @@ impl<'a> TypeChecker<'a> {
                         .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()), range)?;
                 }
 
-                self.check(body, Some(return_type))?;
+                self.check(body, return_type)?;
 
                 self.scope.pop(range)?;
             }
@@ -144,7 +140,30 @@ impl<'a> TypeChecker<'a> {
                 }
                 self.check(body, expected_return_type)?;
             }
-            _ => unreachable!("{:?}", ast),
+            Statement::Return(expr, range) => {
+                let actual_return_type = self.get_type(expr)?;
+
+                let new_actual_type =
+                    Self::widen_assignment(expected_return_type, &actual_return_type);
+
+                match new_actual_type {
+                    None => {
+                        return Err(Error::new(
+                            ErrorType::TypeCheck,
+                            format!(
+                            "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
+                            expected_return_type, actual_return_type
+                        ),
+                            range.clone(),
+                            self.source_file.to_string(),
+                        ))
+                    }
+                    Some(t) => {
+                        // TODO: replace this weird clone
+                        *expr = Expression::Widen(Box::new(expr.clone()), t, range.clone());
+                    }
+                }
+            }
         }
 
         Ok(())

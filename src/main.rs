@@ -2,6 +2,7 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
+use dodo::types::Type;
 use dodo::x86_nasm::X86NasmGenerator;
 use std::env;
 use std::fs::File;
@@ -39,7 +40,7 @@ fn main() -> Result<()> {
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {
-        unwrap_or_error(type_checker.check(statement, None));
+        unwrap_or_error(type_checker.check(statement, &Type::Void()));
         unwrap_or_error(generator.generate_statement(statement));
     }
 

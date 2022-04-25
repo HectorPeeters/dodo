@@ -2,6 +2,7 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
+use dodo::types::Type;
 use dodo::x86_nasm::X86NasmGenerator;
 use std::collections::hash_map::DefaultHasher;
 use std::fs::File;
@@ -30,7 +31,7 @@ fn run_test(file: &str, code: &str) -> Result<()> {{
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {{
-        type_checker.check(statement, None)?;
+        type_checker.check(statement, &Type::Void())?;
         generator.generate_statement(statement)?;
     }}
 

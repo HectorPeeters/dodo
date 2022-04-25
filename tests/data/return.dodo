@@ -1,0 +1,9 @@
+fn test() u32 {
+    return 12;
+}
+
+fn main() {
+    printf("%d\n", test());
+
+    exit(0);
+}
