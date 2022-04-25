@@ -305,7 +305,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 Ok((register, value_type))
             }
-            Expression::FunctionCall(name, args, _range) => {
+            Expression::FunctionCall(name, args, return_type, _range) => {
                 assert!(args.len() <= 6);
 
                 if name.starts_with("syscall") {
@@ -337,7 +337,7 @@ impl<'a> X86NasmGenerator<'a> {
                     }
 
                     let result_reg = self.get_next_register();
-                    self.instr(Mov(Reg(result_reg, 64), RAX));
+                    self.instr(Mov(Reg(result_reg, return_type.size()), RAX));
 
                     Ok((result_reg, Type::UInt64()))
                 } else {
@@ -362,8 +362,12 @@ impl<'a> X86NasmGenerator<'a> {
                     self.instr(Call(Reference(name.to_string())));
                     let result_register = self.get_next_register();
 
-                    // TODO: use the return value type here
-                    self.instr(Mov(Reg(result_register, 64), Reg(Rax, 64)));
+                    if return_type != &Type::Void() {
+                        self.instr(Mov(
+                            Reg(result_register, return_type.size()),
+                            Reg(Rax, return_type.size()),
+                        ));
+                    }
 
                     for i in (0..args.len()).rev() {
                         if ARGUMENT_REGISTERS[i].is_caller_saved() {
@@ -371,7 +375,7 @@ impl<'a> X86NasmGenerator<'a> {
                         }
                     }
 
-                    Ok((result_register, Type::UInt64()))
+                    Ok((result_register, return_type.clone()))
                 }
             }
             Expression::StringLiteral(value, _range) => {

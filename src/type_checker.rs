@@ -159,8 +159,9 @@ impl<'a> TypeChecker<'a> {
                         ))
                     }
                     Some(t) => {
-                        // TODO: replace this weird clone
-                        *expr = Expression::Widen(Box::new(expr.clone()), t, range.clone());
+                        if t != actual_return_type {
+                            *expr = Expression::Widen(Box::new(expr.clone()), t, range.clone());
+                        }
                     }
                 }
             }
@@ -231,9 +232,13 @@ impl<'a> TypeChecker<'a> {
                 UnaryOperatorType::Ref => self.get_type(expr)?.get_ref(),
                 UnaryOperatorType::Deref => self.get_type(expr)?.get_deref(),
             },
-            FunctionCall(name, args, range) => {
+            FunctionCall(name, args, ast_return_type, range) => {
                 if name == "printf" || name == "exit" || name == "syscall" {
-                    Type::Void()
+                    for arg in args {
+                        self.get_type(arg)?;
+                    }
+                    *ast_return_type = Type::UInt64();
+                    Type::UInt64()
                 } else {
                     let (arg_types, return_type) = self.get_scope_function_type(name, range)?;
 
@@ -263,7 +268,8 @@ impl<'a> TypeChecker<'a> {
                             );
                         }
                     }
-
+                    
+                    *ast_return_type = return_type.clone();
                     return_type
                 }
             }

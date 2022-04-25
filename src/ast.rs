@@ -87,7 +87,7 @@ pub enum Expression {
         SourceRange,
     ),
     UnaryOperator(UnaryOperatorType, Box<Expression>, SourceRange),
-    FunctionCall(String, Vec<Expression>, SourceRange),
+    FunctionCall(String, Vec<Expression>, Type, SourceRange),
     Literal(u64, Type, SourceRange),
     VariableRef(String, SourceRange),
     StringLiteral(String, SourceRange),

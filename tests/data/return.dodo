@@ -2,8 +2,12 @@ fn test() u32 {
     return 12;
 }
 
+fn test2() u32 {
+    return 12 + test();
+}
+
 fn main() {
-    printf("%d\n", test());
+    printf("%d\n", test2());
 
     exit(0);
 }

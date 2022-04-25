@@ -7,6 +7,7 @@ pub enum Type {
     Bool(),
     Ref(Box<Type>),
     Void(),
+    Unknown(),
 }
 
 impl Type {
@@ -20,6 +21,7 @@ impl Type {
             Bool() => 8,
             Ref(_) => 64,
             Void() => unreachable!(),
+            Unknown() => unreachable!(),
         }
     }
 

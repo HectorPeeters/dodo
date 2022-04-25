@@ -184,6 +184,7 @@ impl<'a> Parser<'a> {
         Ok(Expression::FunctionCall(
             name.to_string(),
             args,
+            Type::Unknown(),
             function_start..self.current_index(true),
         ))
     }
@@ -757,7 +758,7 @@ mod tests {
         let call = parse_expressions("test()")?;
         assert_eq!(
             call[0],
-            Expression::FunctionCall("test".to_string(), vec![], 0..6)
+            Expression::FunctionCall("test".to_string(), vec![], Type::Unknown(), 0..6)
         );
         Ok(())
     }
@@ -788,7 +789,7 @@ mod tests {
         assert_eq!(
             call[0],
             Statement::Expression(
-                Expression::FunctionCall("test".to_string(), vec![], 0..6),
+                Expression::FunctionCall("test".to_string(), vec![], Type::Unknown(), 0..6),
                 0..7
             )
         );
@@ -804,6 +805,7 @@ mod tests {
                 Expression::FunctionCall(
                     "test".to_string(),
                     vec![Expression::VariableRef("x".to_string(), 5..6)],
+                    Type::Unknown(),
                     0..7,
                 ),
                 0..8
