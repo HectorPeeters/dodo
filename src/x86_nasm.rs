@@ -24,6 +24,7 @@ pub struct X86NasmGenerator<'a> {
     scope: Scope<'a, ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
     strings: Vec<&'a str>,
+    current_function_end_label: usize,
 }
 
 impl<'a> X86NasmGenerator<'a> {
@@ -34,6 +35,7 @@ impl<'a> X86NasmGenerator<'a> {
             scope: Scope::new(source_file),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_OFFSET],
             strings: vec![],
+            current_function_end_label: 0,
         }
     }
 
@@ -140,6 +142,7 @@ impl<'a> X86NasmGenerator<'a> {
                     Reg(Rax, value_type.size()),
                     Reg(value_reg, value_type.size()),
                 ));
+                self.instr(Jmp(JmpLabel(self.current_function_end_label)));
 
                 self.free_register(value_reg);
             }
@@ -147,6 +150,9 @@ impl<'a> X86NasmGenerator<'a> {
                 self.scope.push();
                 assert!(args.len() <= 6);
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
+
+                assert_eq!(self.current_function_end_label, 0);
+                self.current_function_end_label = self.get_new_label();
 
                 self.instr(Function(
                     if name == "main" { "_start" } else { name }.to_string(),
@@ -170,8 +176,11 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.generate_statement(body)?;
 
-                self.write_epilogue();
+                self.instr(Label(self.current_function_end_label));
+                self.current_function_end_label = 0;
 
+                self.write_epilogue();
+            
                 self.instr(Ret());
                 self.scope.pop(range)?;
 
@@ -337,9 +346,9 @@ impl<'a> X86NasmGenerator<'a> {
                     }
 
                     let result_reg = self.get_next_register();
-                    self.instr(Mov(Reg(result_reg, return_type.size()), RAX));
+                    self.instr(Mov(Reg(result_reg, return_type.size()), Reg(Rax, return_type.size())));
 
-                    Ok((result_reg, Type::UInt64()))
+                    Ok((result_reg, return_type.clone()))
                 } else {
                     for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
                         let (arg_register, arg_type) = self.generate_expression(expr)?;

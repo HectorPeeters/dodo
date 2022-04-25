@@ -1,0 +1,19 @@
+fn fib(n: u32) u32 {
+    if n <= 1 {
+        return n;
+    }
+
+    // TODO: this is a stupid fix
+    let snd: u32 = fib(n - 2);
+    return fib(n - 1) + snd;
+}
+
+fn main() {
+    let n: u32 = 0;
+    while n < 10 {
+        printf("%d: %d\n", n, fib(n));
+        n = n + 1;
+    }
+
+    exit(0);
+}

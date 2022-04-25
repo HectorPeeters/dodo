@@ -6,8 +6,20 @@ fn test2() u32 {
     return 12 + test();
 }
 
+fn multiple_returns(x: u32) u32 {
+    if (x >= 10) {
+        return x - 10;
+    }
+
+    return x;
+}
+
 fn main() {
     printf("%d\n", test2());
+
+    printf("%d\n", multiple_returns(10));
+    printf("%d\n", multiple_returns(11));
+    printf("%d\n", multiple_returns(3));
 
     exit(0);
 }
