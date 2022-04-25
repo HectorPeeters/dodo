@@ -49,14 +49,18 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn check(&mut self, ast: &mut Statement) -> Result<()> {
+    pub fn check(
+        &mut self,
+        ast: &mut Statement,
+        expected_return_type: Option<&Type>,
+    ) -> Result<()> {
         match ast {
             Statement::Block(statements, scoped, range) => {
                 if *scoped {
                     self.scope.push();
                 }
                 for statement in statements {
-                    self.check(statement)?;
+                    self.check(statement, expected_return_type)?;
                 }
                 if *scoped {
                     self.scope.pop(range)?;
@@ -106,8 +110,7 @@ impl<'a> TypeChecker<'a> {
                         .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()), range)?;
                 }
 
-                // TODO: check return type
-                self.check(body)?;
+                self.check(body, Some(return_type))?;
 
                 self.scope.pop(range)?;
             }
@@ -124,7 +127,7 @@ impl<'a> TypeChecker<'a> {
                         self.source_file.to_string(),
                     ));
                 }
-                self.check(body)?;
+                self.check(body, expected_return_type)?;
             }
             Statement::While(cond, body, range) => {
                 let condition_type = self.get_type(cond)?;
@@ -139,7 +142,7 @@ impl<'a> TypeChecker<'a> {
                         self.source_file.to_string(),
                     ));
                 }
-                self.check(body)?;
+                self.check(body, expected_return_type)?;
             }
             _ => unreachable!("{:?}", ast),
         }

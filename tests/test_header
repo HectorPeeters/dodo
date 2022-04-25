@@ -30,7 +30,7 @@ fn run_test(file: &str, code: &str) -> Result<()> {{
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {{
-        type_checker.check(statement)?;
+        type_checker.check(statement, None)?;
         generator.generate_statement(statement)?;
     }}
 

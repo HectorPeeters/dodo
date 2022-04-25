@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     let mut type_checker = TypeChecker::new(file);
 
     for statement in &mut statements {
-        unwrap_or_error(type_checker.check(statement));
+        unwrap_or_error(type_checker.check(statement, None));
         unwrap_or_error(generator.generate_statement(statement));
     }
 
