@@ -1,8 +1,8 @@
+use dodo::ast::AstTransformer;
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::types::Type;
 use dodo::x86_nasm::X86NasmGenerator;
 use std::env;
 use std::fs::File;
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     let mut type_checker = TypeChecker::new(file);
 
     for statement in statements {
-        let typed_statement = unwrap_or_error(type_checker.check(statement, &Type::Void()));
+        let typed_statement = unwrap_or_error(type_checker.transform_statement(statement));
         println!("{:#?}", typed_statement);
         unwrap_or_error(generator.generate_statement(typed_statement));
     }

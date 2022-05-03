@@ -1,7 +1,9 @@
 use std::cmp::Ordering;
 
 use crate::{
-    ast::{Expression, Statement, TypedExpression, TypedStatement, UnaryOperatorType},
+    ast::{
+        AstTransformer, Expression, Statement, TypedExpression, TypedStatement, UnaryOperatorType,
+    },
     error::{Error, ErrorType, Result},
     scope::Scope,
     tokenizer::SourceRange,
@@ -17,6 +19,7 @@ pub enum TypeScopeEntry {
 pub struct TypeChecker<'a> {
     source_file: &'a str,
     scope: Scope<'a, TypeScopeEntry>,
+    current_function_return_type: Type,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -24,6 +27,7 @@ impl<'a> TypeChecker<'a> {
         Self {
             source_file,
             scope: Scope::new(source_file),
+            current_function_return_type: Type::Unknown(),
         }
     }
 
@@ -49,12 +53,18 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn check(
-        &mut self,
-        ast: Statement<()>,
-        expected_return_type: &Type,
-    ) -> Result<TypedStatement> {
-        match ast {
+    fn widen_assignment(left: &Type, right: &Type) -> Option<Type> {
+        if left.size() < right.size() {
+            None
+        } else {
+            Some(left.clone())
+        }
+    }
+}
+
+impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
+    fn transform_statement(&mut self, statement: Statement<()>) -> Result<TypedStatement> {
+        match statement {
             Statement::Block(statements, scoped, _, range) => {
                 if scoped {
                     self.scope.push();
@@ -62,13 +72,13 @@ impl<'a> TypeChecker<'a> {
                 }
                 let children = statements
                     .into_iter()
-                    .map(|x| self.check(x, expected_return_type))
+                    .map(|x| self.transform_statement(x))
                     .collect::<Result<Vec<_>>>()?;
                 if scoped {
                     self.scope.pop(&range)?;
                 }
 
-                Ok(TypedStatement::Block(children, scoped, Type::Void(), range))
+                Ok(Statement::Block(children, scoped, Type::Void(), range))
             }
             Statement::Declaration(name, variable_type, _, range) => {
                 self.scope
@@ -82,7 +92,7 @@ impl<'a> TypeChecker<'a> {
                 ))
             }
             Statement::Assignment(name, expr, _, range) => {
-                let mut checked_expr = self.check_expression(expr)?;
+                let mut checked_expr = self.transform_expression(expr)?;
                 let destination_type = self.get_scope_value_type(&name, &range)?;
 
                 let new_type = Self::widen_assignment(&destination_type, checked_expr.data())
@@ -107,7 +117,7 @@ impl<'a> TypeChecker<'a> {
                 Ok(Statement::Assignment(name, checked_expr, new_type, range))
             }
             Statement::Expression(expr, _, range) => {
-                let checked_expr = self.check_expression(expr)?;
+                let checked_expr = self.transform_expression(expr)?;
                 Ok(Statement::Expression(
                     checked_expr.clone(),
                     checked_expr.data().clone(),
@@ -129,7 +139,12 @@ impl<'a> TypeChecker<'a> {
                         .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()), &range)?;
                 }
 
-                let checked_body = self.check(*body, &return_type)?;
+                assert_eq!(self.current_function_return_type, Type::Unknown());
+                self.current_function_return_type = return_type.clone();
+
+                let checked_body = self.transform_statement(*body)?;
+
+                self.current_function_return_type = Type::Unknown();
 
                 self.scope.pop(&range)?;
 
@@ -138,12 +153,12 @@ impl<'a> TypeChecker<'a> {
                     args.clone(),
                     return_type.clone(),
                     Box::new(checked_body),
-                    return_type.clone(),
+                    return_type,
                     range,
                 ))
             }
             Statement::If(cond, body, _, range) => {
-                let checked_cond = self.check_expression(cond)?;
+                let checked_cond = self.transform_expression(cond)?;
                 if checked_cond.data() != &Type::Bool() {
                     return Err(Error::new(
                         ErrorType::TypeCheck,
@@ -155,7 +170,7 @@ impl<'a> TypeChecker<'a> {
                         self.source_file.to_string(),
                     ));
                 }
-                let checked_body = self.check(*body, expected_return_type)?;
+                let checked_body = self.transform_statement(*body)?;
 
                 Ok(Statement::If(
                     checked_cond,
@@ -165,7 +180,7 @@ impl<'a> TypeChecker<'a> {
                 ))
             }
             Statement::While(cond, body, _, range) => {
-                let checked_cond = self.check_expression(cond)?;
+                let checked_cond = self.transform_expression(cond)?;
                 if checked_cond.data() != &Type::Bool() {
                     return Err(Error::new(
                         ErrorType::TypeCheck,
@@ -178,7 +193,7 @@ impl<'a> TypeChecker<'a> {
                     ));
                 }
 
-                let checked_body = self.check(*body, expected_return_type)?;
+                let checked_body = self.transform_statement(*body)?;
 
                 Ok(Statement::While(
                     checked_cond,
@@ -188,17 +203,18 @@ impl<'a> TypeChecker<'a> {
                 ))
             }
             Statement::Return(expr, _, range) => {
-                let mut checked_expr = self.check_expression(expr)?;
+                let mut checked_expr = self.transform_expression(expr)?;
 
+                assert_ne!(self.current_function_return_type, Type::Unknown());
                 let new_actual_type =
-                    Self::widen_assignment(expected_return_type, checked_expr.data());
+                    Self::widen_assignment(&self.current_function_return_type, checked_expr.data());
 
                 match new_actual_type {
                     None => Err(Error::new(
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
-                            expected_return_type,
+                            self.current_function_return_type,
                             checked_expr.data()
                         ),
                         range,
@@ -221,21 +237,13 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn widen_assignment(left: &Type, right: &Type) -> Option<Type> {
-        if left.size() < right.size() {
-            None
-        } else {
-            Some(left.clone())
-        }
-    }
-
-    pub fn check_expression(&self, expr: Expression<()>) -> Result<TypedExpression> {
+    fn transform_expression(&mut self, expression: Expression<()>) -> Result<Expression<Type>> {
         use Expression::*;
 
-        match expr {
+        match expression {
             BinaryOperator(op, left, right, _, range) => {
-                let mut checked_left = self.check_expression(*left)?;
-                let mut checked_right = self.check_expression(*right)?;
+                let mut checked_left = self.transform_expression(*left)?;
+                let mut checked_right = self.transform_expression(*right)?;
 
                 // TODO: this needs a thorough rework, comparing references won't work
                 if checked_left.data().is_ref() && !op.is_comparison() {
@@ -256,7 +264,6 @@ impl<'a> TypeChecker<'a> {
                 let mut result_type =
                     match checked_left.data().size().cmp(&checked_right.data().size()) {
                         Ordering::Greater => {
-                            // TODO: clean up this mess
                             checked_right = Widen(
                                 Box::new(checked_right),
                                 checked_left.data().clone(),
@@ -288,7 +295,7 @@ impl<'a> TypeChecker<'a> {
                 ))
             }
             UnaryOperator(op, expr, _, range) => {
-                let checked_expr = self.check_expression(*expr)?;
+                let checked_expr = self.transform_expression(*expr)?;
                 match op {
                     UnaryOperatorType::Negate => Ok(UnaryOperator(
                         UnaryOperatorType::Negate,
@@ -315,7 +322,7 @@ impl<'a> TypeChecker<'a> {
                     Ok(FunctionCall(
                         name,
                         args.into_iter()
-                            .map(|arg| self.check_expression(arg))
+                            .map(|arg| self.transform_expression(arg))
                             .collect::<Result<Vec<_>>>()?,
                         Type::UInt64(),
                         range,
@@ -328,7 +335,7 @@ impl<'a> TypeChecker<'a> {
                     let mut new_args: Vec<TypedExpression> = vec![];
 
                     for (arg_expr, expected_type) in args.into_iter().zip(arg_types.iter()) {
-                        let checked_arg = self.check_expression(arg_expr)?;
+                        let checked_arg = self.transform_expression(arg_expr)?;
 
                         let new_type = Self::widen_assignment(expected_type, checked_arg.data())
                             .ok_or_else(|| {

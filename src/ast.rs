@@ -1,3 +1,4 @@
+use crate::error::Result;
 use crate::types::Type;
 
 use crate::tokenizer::{SourceRange, TokenType};
@@ -132,8 +133,8 @@ impl<T> Expression<T> {
     }
 }
 
-pub trait AstTransformer<T, S> {
-    fn transform_statement(&mut self, statement: Statement<T>) -> Statement<S>;
+pub trait AstTransformer<S, T> {
+    fn transform_statement(&mut self, statement: Statement<S>) -> Result<Statement<T>>;
 
-    fn transform_expression(&mut self, expression: Expression<T>) -> Expression<S>;
+    fn transform_expression(&mut self, expression: Expression<S>) -> Result<Expression<T>>;
 }
