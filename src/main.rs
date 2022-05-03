@@ -21,27 +21,21 @@ fn main() -> Result<()> {
     let args: Vec<_> = env::args().collect();
     let file = args.get(1).unwrap();
 
-    let code = std::fs::read_to_string(file).unwrap();
+    let source = std::fs::read_to_string(file).unwrap();
 
-    let tokens = unwrap_or_error(tokenize(&code, file));
+    let tokens = unwrap_or_error(tokenize(&source, file));
 
     let mut parser = Parser::new(&tokens, file);
 
     let mut output = File::create("output.asm").unwrap();
     let mut generator = X86NasmGenerator::new(file);
 
-    let mut statements = vec![];
+    let mut type_checker = TypeChecker::new(file);
 
     while !parser.eof() {
         let statement = unwrap_or_error(parser.parse_statement());
-        statements.push(statement);
-    }
-
-    let mut type_checker = TypeChecker::new(file);
-
-    for statement in statements {
         let typed_statement = unwrap_or_error(type_checker.transform_statement(statement));
-        println!("{:#?}", typed_statement);
+
         unwrap_or_error(generator.generate_statement(typed_statement));
     }
 

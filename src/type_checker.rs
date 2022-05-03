@@ -78,7 +78,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     self.scope.pop(&range)?;
                 }
 
-                Ok(Statement::Block(children, scoped, Type::Void(), range))
+                Ok(Statement::Block(children, scoped, Type::Unknown(), range))
             }
             Statement::Declaration(name, variable_type, _, range) => {
                 self.scope
@@ -357,6 +357,8 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                                 new_type,
                                 range.clone(),
                             ));
+                        } else {
+                            new_args.push(checked_arg);
                         }
                     }
 
