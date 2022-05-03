@@ -138,3 +138,9 @@ pub trait AstTransformer<S, T> {
 
     fn transform_expression(&mut self, expression: Expression<S>) -> Result<Expression<T>>;
 }
+
+pub trait ConsumingAstVisitor<T, RS, RE> {
+    fn visit_statement(&mut self, statement: Statement<T>) -> Result<RS>;
+
+    fn visit_expression(&mut self, expression: Expression<T>) -> Result<RE>;
+}

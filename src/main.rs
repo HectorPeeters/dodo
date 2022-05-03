@@ -1,4 +1,4 @@
-use dodo::ast::AstTransformer;
+use dodo::ast::{AstTransformer, ConsumingAstVisitor};
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         let statement = unwrap_or_error(parser.parse_statement());
         let typed_statement = unwrap_or_error(type_checker.transform_statement(statement));
 
-        unwrap_or_error(generator.generate_statement(typed_statement));
+        unwrap_or_error(generator.visit_statement(typed_statement));
     }
 
     generator.write(&mut output);

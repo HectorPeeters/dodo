@@ -1,4 +1,4 @@
-use dodo::ast::AstTransformer;
+use dodo::ast::{{AstTransformer, ConsumingAstVisitor}};
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
@@ -32,7 +32,7 @@ fn run_test(file: &str, code: &str, expected: &str) -> Result<()> {{
 
     for statement in statements {{
         let typed_statement = type_checker.transform_statement(statement)?;
-        generator.generate_statement(typed_statement)?;
+        generator.visit_statement(typed_statement)?;
     }}
 
     generator.write(&mut output);

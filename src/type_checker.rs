@@ -237,7 +237,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
         }
     }
 
-    fn transform_expression(&mut self, expression: Expression<()>) -> Result<Expression<Type>> {
+    fn transform_expression(&mut self, expression: Expression<()>) -> Result<TypedExpression> {
         use Expression::*;
 
         match expression {

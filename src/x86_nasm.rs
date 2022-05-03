@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::{
     ast::{
-        BinaryOperatorType, Expression, Statement, TypedExpression, TypedStatement,
-        UnaryOperatorType,
+        BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
+        TypedStatement, UnaryOperatorType,
     },
     error::Result,
     scope::Scope,
@@ -90,15 +90,52 @@ impl<'a> X86NasmGenerator<'a> {
         self.instr(Pop(RBP));
     }
 
-    pub fn generate_statement(&mut self, ast: TypedStatement) -> Result<()> {
-        match ast {
+    pub fn write<T: Write>(&'a self, writer: &'a mut T) {
+        writeln!(
+            writer,
+            r#"extern printf
+extern exit
+section .data
+{}"#,
+            self.strings
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace('\n', "\\n")))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .unwrap();
+
+        writeln!(
+            writer,
+            r#"section .text
+    global _start
+"#
+        )
+        .unwrap();
+        writeln!(
+            writer,
+            "{}",
+            self.instructions
+                .iter()
+                .map(|instr| format!("{}{}", if instr.should_indent() { "\t" } else { "" }, instr))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .unwrap();
+    }
+}
+
+impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
+    fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
+        match statement {
             Statement::Declaration(name, _value_type, _, range) => {
                 self.scope.insert(&name, self.scope.size()?, &range)?;
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value, value_type, range) => {
                 let offset = self.scope.find(&name, &range)?;
-                let value_reg = self.generate_expression(value).unwrap();
+                let value_reg = self.visit_expression(value)?;
 
                 self.instr(Mov(
                     RegIndirect(Rbp, offset * STACK_OFFSET),
@@ -115,12 +152,12 @@ impl<'a> X86NasmGenerator<'a> {
 
                 self.instr(Label(start_label));
 
-                let register = self.generate_expression(cond)?;
+                let register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(register, cond_size), Constant(0)));
                 self.instr(Jz(JmpLabel(end_label)));
 
-                self.generate_statement(*stmt)?;
+                self.visit_statement(*stmt)?;
 
                 self.instr(Jmp(JmpLabel(start_label)));
                 self.instr(Label(end_label));
@@ -130,20 +167,20 @@ impl<'a> X86NasmGenerator<'a> {
             Statement::If(cond, stmt, _, _range) => {
                 let end_label = self.get_new_label();
                 let cond_size = cond.data().size();
-                let cond_register = self.generate_expression(cond)?;
+                let cond_register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(cond_register, cond_size), Constant(0)));
                 self.free_register(cond_register);
 
                 self.instr(Jz(JmpLabel(end_label)));
 
-                self.generate_statement(*stmt)?;
+                self.visit_statement(*stmt)?;
 
                 self.instr(Label(end_label));
             }
             Statement::Return(expr, _, _range) => {
                 let expr_size = expr.data().size();
-                let value_reg = self.generate_expression(expr).unwrap();
+                let value_reg = self.visit_expression(expr).unwrap();
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
                 self.instr(Jmp(JmpLabel(self.current_function_end_label)));
@@ -179,7 +216,7 @@ impl<'a> X86NasmGenerator<'a> {
                     ));
                 }
 
-                self.generate_statement(*body)?;
+                self.visit_statement(*body)?;
 
                 self.instr(Label(self.current_function_end_label));
                 self.current_function_end_label = 0;
@@ -197,7 +234,7 @@ impl<'a> X86NasmGenerator<'a> {
                 }
 
                 for stmt in stmts {
-                    self.generate_statement(stmt)?;
+                    self.visit_statement(stmt)?;
                 }
 
                 if scoped {
@@ -205,15 +242,15 @@ impl<'a> X86NasmGenerator<'a> {
                 }
             }
             Statement::Expression(expr, _expr_type, _range) => {
-                let register = self.generate_expression(expr)?;
+                let register = self.visit_expression(expr)?;
                 self.free_register(register);
             }
         }
         Ok(())
     }
 
-    fn generate_expression(&mut self, ast: TypedExpression) -> Result<X86Register> {
-        match ast {
+    fn visit_expression(&mut self, expression: TypedExpression) -> Result<X86Register> {
+        match expression {
             Expression::Literal(value, value_type, _range) => {
                 let register = self.get_next_register();
 
@@ -239,7 +276,7 @@ impl<'a> X86NasmGenerator<'a> {
             }
             Expression::UnaryOperator(op, expr, _, _range) => {
                 let expr_size = expr.data().size();
-                let reg = self.generate_expression(*expr)?;
+                let reg = self.visit_expression(*expr)?;
                 let result_reg = self.get_next_register();
 
                 match op {
@@ -255,8 +292,8 @@ impl<'a> X86NasmGenerator<'a> {
             Expression::BinaryOperator(op, left, right, _, _range) => {
                 let left_size = left.data().size();
                 let right_size = right.data().size();
-                let left_reg = self.generate_expression(*left)?;
-                let right_reg = self.generate_expression(*right)?;
+                let left_reg = self.visit_expression(*left)?;
+                let right_reg = self.visit_expression(*right)?;
 
                 assert_eq!(left_size, right_size);
 
@@ -272,7 +309,7 @@ impl<'a> X86NasmGenerator<'a> {
                     }
                     BinaryOperatorType::Multiply => {
                         assert!(
-                            left_size > 8 && right_size > 8,
+                            left_size != 8 && right_size != 8,
                             "We don't support multiplication of 8 bit integers"
                         );
                         self.instr(Mul(left_op, right_op));
@@ -328,11 +365,11 @@ impl<'a> X86NasmGenerator<'a> {
                 if name.starts_with("syscall") {
                     let syscall_num = args.remove(0);
                     let arg_count = args.len();
-                    let syscall_num_reg = self.generate_expression(syscall_num)?;
+                    let syscall_num_reg = self.visit_expression(syscall_num)?;
 
                     for arg in args.into_iter().zip(&ARGUMENT_REGISTERS) {
                         let arg_size = arg.0.data().size();
-                        let arg_register = self.generate_expression(arg.0)?;
+                        let arg_register = self.visit_expression(arg.0)?;
                         if arg.1.is_caller_saved() {
                             self.instr(Push(Reg(*arg.1, 64)));
                         }
@@ -363,7 +400,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                     for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
                         let arg_size = expr.data().size();
-                        let arg_register = self.generate_expression(expr)?;
+                        let arg_register = self.visit_expression(expr)?;
 
                         if dest_reg.is_caller_saved() {
                             self.instr(Push(Reg(*dest_reg, 64)));
@@ -405,7 +442,7 @@ impl<'a> X86NasmGenerator<'a> {
             Expression::Widen(expr, widen_type, _range) => {
                 let expr_size = expr.data().size();
                 assert!(expr_size < widen_type.size());
-                let expr_reg = self.generate_expression(*expr)?;
+                let expr_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
                 self.instr(MovZX(
@@ -418,40 +455,5 @@ impl<'a> X86NasmGenerator<'a> {
                 Ok(result_reg)
             }
         }
-    }
-
-    pub fn write<T: Write>(&'a self, writer: &'a mut T) {
-        writeln!(
-            writer,
-            r#"extern printf
-extern exit
-section .data
-{}"#,
-            self.strings
-                .iter()
-                .enumerate()
-                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace('\n', "\\n")))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-        .unwrap();
-
-        writeln!(
-            writer,
-            r#"section .text
-    global _start
-"#
-        )
-        .unwrap();
-        writeln!(
-            writer,
-            "{}",
-            self.instructions
-                .iter()
-                .map(|instr| format!("{}{}", if instr.should_indent() { "\t" } else { "" }, instr))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-        .unwrap();
     }
 }
