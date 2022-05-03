@@ -2,25 +2,46 @@ use crate::types::Type;
 
 use crate::tokenizer::{SourceRange, TokenType};
 
+pub type TypedStatement = Statement<Type>;
+pub type TypedExpression = Expression<Type>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    Block(Vec<Statement>, bool, SourceRange),
-    Declaration(String, Type, SourceRange),
-    Assignment(String, Expression, SourceRange),
-    Expression(Expression, SourceRange),
-    While(Expression, Box<Statement>, SourceRange),
-    If(Expression, Box<Statement>, SourceRange),
-    Return(Expression, SourceRange),
+pub enum Statement<T> {
+    Block(Vec<Statement<T>>, bool, T, SourceRange),
+    Declaration(String, Type, T, SourceRange),
+    Assignment(String, Expression<T>, T, SourceRange),
+    Expression(Expression<T>, T, SourceRange),
+    While(Expression<T>, Box<Statement<T>>, T, SourceRange),
+    If(Expression<T>, Box<Statement<T>>, T, SourceRange),
+    Return(Expression<T>, T, SourceRange),
     Function(
         String,
         Vec<(String, Type)>,
         Type,
-        Box<Statement>,
+        Box<Statement<T>>,
+        T,
         SourceRange,
     ),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl<T> Statement<T> {
+    pub fn data(&self) -> &T {
+        use Statement::*;
+
+        match self {
+            Block(_, _, t, _) => t,
+            Declaration(_, _, t, _) => t,
+            Assignment(_, _, t, _) => t,
+            Expression(_, t, _) => t,
+            While(_, _, t, _) => t,
+            If(_, _, t, _) => t,
+            Return(_, t, _) => t,
+            Function(_, _, _, _, t, _) => t,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BinaryOperatorType {
     Add,
     Subtract,
@@ -79,17 +100,40 @@ impl UnaryOperatorType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
+pub enum Expression<T> {
     BinaryOperator(
         BinaryOperatorType,
-        Box<Expression>,
-        Box<Expression>,
+        Box<Expression<T>>,
+        Box<Expression<T>>,
+        T,
         SourceRange,
     ),
-    UnaryOperator(UnaryOperatorType, Box<Expression>, SourceRange),
-    FunctionCall(String, Vec<Expression>, Type, SourceRange),
-    Literal(u64, Type, SourceRange),
-    VariableRef(String, SourceRange),
-    StringLiteral(String, SourceRange),
-    Widen(Box<Expression>, Type, SourceRange),
+    UnaryOperator(UnaryOperatorType, Box<Expression<T>>, T, SourceRange),
+    FunctionCall(String, Vec<Expression<T>>, T, SourceRange),
+    Literal(u64, T, SourceRange),
+    VariableRef(String, T, SourceRange),
+    StringLiteral(String, T, SourceRange),
+    Widen(Box<Expression<T>>, T, SourceRange),
+}
+
+impl<T> Expression<T> {
+    pub fn data(&self) -> &T {
+        use Expression::*;
+
+        match self {
+            BinaryOperator(_, _, _, t, _) => t,
+            UnaryOperator(_, _, t, _) => t,
+            FunctionCall(_, _, t, _) => t,
+            Literal(_, t, _) => t,
+            VariableRef(_, t, _) => t,
+            StringLiteral(_, t, _) => t,
+            Widen(_, t, _) => t,
+        }
+    }
+}
+
+pub trait AstTransformer<T, S> {
+    fn transform_statement(&mut self, statement: Statement<T>) -> Statement<S>;
+
+    fn transform_expression(&mut self, expression: Expression<T>) -> Expression<S>;
 }

@@ -7,13 +7,13 @@ use crate::{
     types::Type,
 };
 
-type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<Expression>;
+type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<Expression<()>>;
 type InfixParseFn<'a> = fn(
     &mut Parser<'a>,
     start_index: usize,
-    left: Expression,
+    left: Expression<()>,
     precedence: usize,
-) -> Result<Expression>;
+) -> Result<Expression<()>>;
 
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
@@ -21,18 +21,6 @@ pub struct Parser<'a> {
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
     source_file: &'a str,
-}
-
-fn get_bits(x: u64) -> usize {
-    if x <= 255 {
-        8
-    } else if x <= 65535 {
-        16
-    } else if x <= 4294967295 {
-        32
-    } else {
-        64
-    }
 }
 
 impl<'a> Parser<'a> {
@@ -160,7 +148,7 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn parse_function_call(&mut self) -> Result<Expression> {
+    fn parse_function_call(&mut self) -> Result<Expression<()>> {
         let function_start = self.current_index(false);
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
@@ -184,12 +172,12 @@ impl<'a> Parser<'a> {
         Ok(Expression::FunctionCall(
             name.to_string(),
             args,
-            Type::Unknown(),
+            (),
             function_start..self.current_index(true),
         ))
     }
 
-    fn parse_identifier_or_function_call(&mut self) -> Result<Expression> {
+    fn parse_identifier_or_function_call(&mut self) -> Result<Expression<()>> {
         let identifier_start = self.current_index(false);
         if self.peeks(1)?.token_type == TokenType::LeftParen {
             self.parse_function_call()
@@ -197,12 +185,13 @@ impl<'a> Parser<'a> {
             let name = self.consume_assert(TokenType::Identifier)?.value;
             Ok(Expression::VariableRef(
                 name.to_string(),
+                (),
                 identifier_start..self.current_index(true),
             ))
         }
     }
 
-    fn parse_unary_expression(&mut self) -> Result<Expression> {
+    fn parse_unary_expression(&mut self) -> Result<Expression<()>> {
         let unary_start = self.current_index(false);
         let token = self.consume()?;
         let unop_type = UnaryOperatorType::from_token_type(token.token_type);
@@ -210,34 +199,18 @@ impl<'a> Parser<'a> {
         Ok(Expression::UnaryOperator(
             unop_type,
             Box::new(expression),
+            (),
             unary_start..self.current_index(true),
         ))
     }
 
-    fn parse_constant(&mut self) -> Result<Expression> {
+    fn parse_constant(&mut self) -> Result<Expression<()>> {
         let constant_start = self.current_index(false);
         let token = self.consume()?;
         let range = constant_start..self.current_index(true);
         match token.token_type {
             TokenType::IntegerLiteral => match token.value.parse() {
-                Ok(value) => {
-                    let bits = get_bits(value);
-                    match bits {
-                        8 => Ok(Expression::Literal(value, Type::UInt8(), range)),
-                        16 => Ok(Expression::Literal(value, Type::UInt16(), range)),
-                        32 => Ok(Expression::Literal(value, Type::UInt32(), range)),
-                        64 => Ok(Expression::Literal(value, Type::UInt64(), range)),
-                        _ => Err(Error::new(
-                            ErrorType::Parser,
-                            format!(
-                                "Integer literal is too big to fit into 64 bits ({}): {}",
-                                bits, token.value
-                            ),
-                            token.range.clone(),
-                            self.source_file.to_string(),
-                        )),
-                    }
-                }
+                Ok(value) => Ok(Expression::Literal(value, (), range)),
                 Err(_) => Err(Error::new(
                     ErrorType::Parser,
                     format!("Failed to parse '{}' to int", token.value),
@@ -252,6 +225,7 @@ impl<'a> Parser<'a> {
                     .replace("\\t", "\t")
                     .replace("\\r", "\r")
                     .replace("\\\"", "\""),
+                (),
                 constant_start..self.current_index(true),
             )),
             _ => Err(Error::new(
@@ -263,7 +237,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_parenthesized(&mut self) -> Result<Expression> {
+    fn parse_parenthesized(&mut self) -> Result<Expression<()>> {
         self.consume_assert(TokenType::LeftParen)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightParen)?;
@@ -273,9 +247,9 @@ impl<'a> Parser<'a> {
     fn parse_binary_operator(
         &mut self,
         start_index: usize,
-        left: Expression,
+        left: Expression<()>,
         precedence: usize,
-    ) -> Result<Expression> {
+    ) -> Result<Expression<()>> {
         let operator = self.consume()?;
 
         let op_type = BinaryOperatorType::from_token_type(operator.token_type);
@@ -284,11 +258,12 @@ impl<'a> Parser<'a> {
             op_type,
             Box::new(left),
             Box::new(right),
+            (),
             start_index..self.current_index(true),
         ))
     }
 
-    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression> {
+    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression<()>> {
         let exit_tokens = vec![
             TokenType::SemiColon,
             TokenType::RightParen,
@@ -346,18 +321,19 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_return_statement(&mut self) -> Result<Statement> {
+    fn parse_return_statement(&mut self) -> Result<Statement<()>> {
         let return_start = self.current_index(false);
         self.consume_assert(TokenType::Return)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
         Ok(Statement::Return(
             expr,
+            (),
             return_start..self.current_index(true),
         ))
     }
 
-    fn parse_let_statement(&mut self) -> Result<Statement> {
+    fn parse_let_statement(&mut self) -> Result<Statement<()>> {
         let let_start = self.current_index(false);
         self.consume_assert(TokenType::Let)?;
         let (variable_name, value_type) = self.parse_identifier_type()?;
@@ -374,15 +350,18 @@ impl<'a> Parser<'a> {
                     Statement::Declaration(
                         variable_name.clone(),
                         value_type,
+                        (),
                         let_start..decl_start,
                     ),
                     Statement::Assignment(
                         variable_name,
                         expr,
+                        (),
                         decl_start..self.current_index(true),
                     ),
                 ],
                 false,
+                (),
                 let_start..self.current_index(true),
             ));
         }
@@ -391,11 +370,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::Declaration(
             variable_name,
             value_type,
+            (),
             let_start..self.current_index(true),
         ))
     }
 
-    fn parse_assignment_statement(&mut self) -> Result<Statement> {
+    fn parse_assignment_statement(&mut self) -> Result<Statement<()>> {
         let assignment_start = self.current_index(false);
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Equals)?;
@@ -404,11 +384,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::Assignment(
             name.to_string(),
             expr,
+            (),
             assignment_start..self.current_index(true),
         ))
     }
 
-    fn parse_while_statement(&mut self) -> Result<Statement> {
+    fn parse_while_statement(&mut self) -> Result<Statement<()>> {
         let while_start = self.current_index(false);
         self.consume_assert(TokenType::While)?;
         let expr = self.parse_expression(0)?;
@@ -416,11 +397,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::While(
             expr,
             Box::new(statement),
+            (),
             while_start..self.current_index(true),
         ))
     }
 
-    fn parse_if_statement(&mut self) -> Result<Statement> {
+    fn parse_if_statement(&mut self) -> Result<Statement<()>> {
         let if_start = self.current_index(false);
         self.consume_assert(TokenType::If)?;
         let expr = self.parse_expression(0)?;
@@ -428,6 +410,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::If(
             expr,
             Box::new(statement),
+            (),
             if_start..self.current_index(true),
         ))
     }
@@ -439,7 +422,7 @@ impl<'a> Parser<'a> {
         Ok((identifier.to_string(), value_type))
     }
 
-    fn parse_function(&mut self) -> Result<Statement> {
+    fn parse_function(&mut self) -> Result<Statement<()>> {
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -480,11 +463,12 @@ impl<'a> Parser<'a> {
             args,
             return_type,
             Box::new(body),
+            (),
             function_start..self.current_index(true),
         ))
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement> {
+    pub fn parse_statement(&mut self) -> Result<Statement<()>> {
         let token = self.peek()?;
 
         match token.token_type {
@@ -502,6 +486,7 @@ impl<'a> Parser<'a> {
                 Ok(Statement::Block(
                     statements,
                     true,
+                    (),
                     block_start..self.current_index(true),
                 ))
             }
@@ -514,6 +499,7 @@ impl<'a> Parser<'a> {
                     let expr_start = self.current_index(false);
                     let result = Statement::Expression(
                         self.parse_expression(0)?,
+                        (),
                         expr_start..self.current_index(true) + 1,
                     );
                     self.consume_assert(TokenType::SemiColon)?;
@@ -542,7 +528,7 @@ mod tests {
     use super::*;
     use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
 
-    fn parse_statements(input: &str) -> Result<Vec<Statement>> {
+    fn parse_statements(input: &str) -> Result<Vec<Statement<()>>> {
         let tokens = tokenize(input, "test.dodo")?;
 
         let mut parser = Parser::new(&tokens, "test.dodo");
@@ -554,7 +540,7 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_expressions(input: &str) -> Result<Vec<Expression>> {
+    fn parse_expressions(input: &str) -> Result<Vec<Expression<()>>> {
         let tokens = tokenize(input, "test.dodo")?;
 
         let mut parser = Parser::new(&tokens, "test.dodo");
@@ -566,7 +552,7 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_function(input: &str) -> Result<Statement> {
+    fn parse_function(input: &str) -> Result<Statement<()>> {
         let tokens = tokenize(input, "test.dodo")?;
 
         let mut parser = Parser::new(&tokens, "test.dodo");
@@ -577,7 +563,7 @@ mod tests {
     fn parse_constant() -> Result<()> {
         let exprs = parse_expressions("123")?;
 
-        assert_eq!(exprs[0], Expression::Literal(123, Type::UInt8(), 0..3));
+        assert_eq!(exprs[0], Expression::Literal(123, (), 0..3));
 
         Ok(())
     }
@@ -590,7 +576,8 @@ mod tests {
             exprs[0],
             Expression::UnaryOperator(
                 UnaryOperatorType::Negate,
-                Box::new(Expression::Literal(123, Type::UInt8(), 1..4)),
+                Box::new(Expression::Literal(123, (), 1..4)),
+                (),
                 0..4
             )
         );
@@ -606,8 +593,9 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, Type::UInt16(), 0..3)),
-                Box::new(Expression::Literal(123, Type::UInt8(), 6..9)),
+                Box::new(Expression::Literal(456, (), 0..3)),
+                Box::new(Expression::Literal(123, (), 6..9)),
+                (),
                 0..9
             )
         );
@@ -623,13 +611,15 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, Type::UInt16(), 0..3)),
+                Box::new(Expression::Literal(456, (), 0..3)),
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Literal(123, Type::UInt8(), 6..9)),
-                    Box::new(Expression::Literal(789, Type::UInt16(), 12..15)),
+                    Box::new(Expression::Literal(123, (), 6..9)),
+                    Box::new(Expression::Literal(789, (), 12..15)),
+                    (),
                     6..15
                 )),
+                (),
                 0..15,
             )
         );
@@ -647,11 +637,13 @@ mod tests {
                 BinaryOperatorType::Subtract,
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Literal(456, Type::UInt16(), 0..3)),
-                    Box::new(Expression::Literal(123, Type::UInt8(), 6..9)),
+                    Box::new(Expression::Literal(456, (), 0..3)),
+                    Box::new(Expression::Literal(123, (), 6..9)),
+                    (),
                     0..9
                 )),
-                Box::new(Expression::Literal(789, Type::UInt16(), 12..15)),
+                Box::new(Expression::Literal(789, (), 12..15)),
+                (),
                 0..15
             )
         );
@@ -668,10 +660,12 @@ mod tests {
             Statement::Return(
                 Expression::BinaryOperator(
                     BinaryOperatorType::Subtract,
-                    Box::new(Expression::Literal(456, Type::UInt16(), 7..10)),
-                    Box::new(Expression::Literal(123, Type::UInt8(), 13..16)),
+                    Box::new(Expression::Literal(456, (), 7..10)),
+                    Box::new(Expression::Literal(123, (), 13..16)),
+                    (),
                     7..16
                 ),
+                (),
                 0..17
             )
         );
@@ -683,7 +677,7 @@ mod tests {
     fn parse_empty_block() -> Result<()> {
         let stmts = parse_statements("{}")?;
         assert_eq!(stmts.len(), 1);
-        assert_eq!(stmts[0], Statement::Block(vec![], true, 0..2));
+        assert_eq!(stmts[0], Statement::Block(vec![], true, (), 0..2));
 
         Ok(())
     }
@@ -696,11 +690,13 @@ mod tests {
             stmts[0],
             Statement::Block(
                 vec![Statement::Block(
-                    vec![Statement::Block(vec![], true, 2..4)],
+                    vec![Statement::Block(vec![], true, (), 2..4)],
                     true,
+                    (),
                     1..5
                 )],
                 true,
+                (),
                 0..6
             )
         );
@@ -718,12 +714,15 @@ mod tests {
                 Type::Void(),
                 Box::new(Statement::Block(
                     vec![Statement::Return(
-                        Expression::Literal(12, Type::UInt8(), 19..21),
+                        Expression::Literal(12, (), 19..21),
+                        (),
                         12..22
                     )],
                     true,
+                    (),
                     10..24
                 )),
+                (),
                 0..24
             )
         );
@@ -741,12 +740,15 @@ mod tests {
                 Type::UInt8(),
                 Box::new(Statement::Block(
                     vec![Statement::Return(
-                        Expression::Literal(12, Type::UInt8(), 22..24),
+                        Expression::Literal(12, (), 22..24),
+                        (),
                         15..25
                     )],
                     true,
+                    (),
                     13..27
                 )),
+                (),
                 0..27
             )
         );
@@ -758,7 +760,7 @@ mod tests {
         let call = parse_expressions("test()")?;
         assert_eq!(
             call[0],
-            Expression::FunctionCall("test".to_string(), vec![], Type::Unknown(), 0..6)
+            Expression::FunctionCall("test".to_string(), vec![], (), 0..6)
         );
         Ok(())
     }
@@ -768,7 +770,7 @@ mod tests {
         let string = parse_expressions("\"test\"")?;
         assert_eq!(
             string[0],
-            Expression::StringLiteral("test".to_string(), 0..6)
+            Expression::StringLiteral("test".to_string(), (), 0..6)
         );
         Ok(())
     }
@@ -778,7 +780,7 @@ mod tests {
         let string = parse_expressions("\"test\\t\\'test\\'\\n\"")?;
         assert_eq!(
             string[0],
-            Expression::StringLiteral("test\t\\'test\\'\n".to_string(), 0..18)
+            Expression::StringLiteral("test\t\\'test\\'\n".to_string(), (), 0..18)
         );
         Ok(())
     }
@@ -789,7 +791,8 @@ mod tests {
         assert_eq!(
             call[0],
             Statement::Expression(
-                Expression::FunctionCall("test".to_string(), vec![], Type::Unknown(), 0..6),
+                Expression::FunctionCall("test".to_string(), vec![], (), 0..6),
+                (),
                 0..7
             )
         );
@@ -804,10 +807,11 @@ mod tests {
             Statement::Expression(
                 Expression::FunctionCall(
                     "test".to_string(),
-                    vec![Expression::VariableRef("x".to_string(), 5..6)],
-                    Type::Unknown(),
+                    vec![Expression::VariableRef("x".to_string(), (), 5..6)],
+                    (),
                     0..7,
                 ),
+                (),
                 0..8
             )
         );

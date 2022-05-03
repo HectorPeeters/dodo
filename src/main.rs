@@ -39,9 +39,10 @@ fn main() -> Result<()> {
 
     let mut type_checker = TypeChecker::new(file);
 
-    for statement in &mut statements {
-        unwrap_or_error(type_checker.check(statement, &Type::Void()));
-        unwrap_or_error(generator.generate_statement(statement));
+    for statement in statements {
+        let typed_statement = unwrap_or_error(type_checker.check(statement, &Type::Void()));
+        println!("{:#?}", typed_statement);
+        unwrap_or_error(generator.generate_statement(typed_statement));
     }
 
     generator.write(&mut output);
