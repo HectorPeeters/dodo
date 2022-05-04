@@ -21,7 +21,7 @@ impl<'a, T: Clone> Scope<'a, T> {
                     Err(Error::new(
                         ErrorType::Scope,
                         format!("Identifier '{}' already defined in scope", name),
-                        range.clone(),
+                        *range,
                         self.source_file.to_string(),
                     ))
                 } else {
@@ -32,7 +32,7 @@ impl<'a, T: Clone> Scope<'a, T> {
             None => Err(Error::new(
                 ErrorType::Scope,
                 format!("Trying to insert '{}' into empty scope", name),
-                range.clone(),
+                *range,
                 self.source_file.to_string(),
             )),
         }
@@ -50,7 +50,7 @@ impl<'a, T: Clone> Scope<'a, T> {
                 Error::new(
                     ErrorType::Scope,
                     "Tried popping while scope stack was empty".to_string(),
-                    range.clone(),
+                    *range,
                     self.source_file.to_string(),
                 )
             })
@@ -67,7 +67,7 @@ impl<'a, T: Clone> Scope<'a, T> {
                 Error::new(
                     ErrorType::Scope,
                     format!("'{}' not found in scope", name),
-                    range.clone(),
+                    *range,
                     self.source_file.to_string(),
                 )
             })
@@ -86,9 +86,9 @@ mod tests {
     fn scope_simple() -> Result<()> {
         let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
-        scope.insert("test", 12, &(0..0))?;
-        assert_eq!(scope.find("test", &(0..0))?, 12);
-        scope.pop(&(0..0))?;
+        scope.insert("test", 12, &(0..0).into())?;
+        assert_eq!(scope.find("test", &(0..0).into())?, 12);
+        scope.pop(&(0..0).into())?;
         Ok(())
     }
 
@@ -96,11 +96,11 @@ mod tests {
     fn scope_multiple() -> Result<()> {
         let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
-        scope.insert("test", 12, &(0..0))?;
-        scope.insert("tast", 13, &(0..0))?;
-        assert_eq!(scope.find("test", &(0..0))?, 12);
-        assert_eq!(scope.find("tast", &(0..0))?, 13);
-        scope.pop(&(0..0))?;
+        scope.insert("test", 12, &(0..0).into())?;
+        scope.insert("tast", 13, &(0..0).into())?;
+        assert_eq!(scope.find("test", &(0..0).into())?, 12);
+        assert_eq!(scope.find("tast", &(0..0).into())?, 13);
+        scope.pop(&(0..0).into())?;
         Ok(())
     }
 
@@ -108,13 +108,13 @@ mod tests {
     fn scope_nested() -> Result<()> {
         let mut scope: Scope<u32> = Scope::new("test.dodo");
         scope.push();
-        scope.insert("test", 12, &(0..0))?;
+        scope.insert("test", 12, &(0..0).into())?;
         scope.push();
-        scope.insert("test", 13, &(0..0))?;
-        assert_eq!(scope.find("test", &(0..0))?, 13);
-        scope.pop(&(0..0))?;
-        assert_eq!(scope.find("test", &(0..0))?, 12);
-        scope.pop(&(0..0))?;
+        scope.insert("test", 13, &(0..0).into())?;
+        assert_eq!(scope.find("test", &(0..0).into())?, 13);
+        scope.pop(&(0..0).into())?;
+        assert_eq!(scope.find("test", &(0..0).into())?, 12);
+        scope.pop(&(0..0).into())?;
         Ok(())
     }
 }

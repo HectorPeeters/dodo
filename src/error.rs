@@ -42,7 +42,7 @@ impl Error {
         Report::build(ReportKind::Error, &self.source_file, 10)
             .with_message(format!("{:?} error encountered", self.error_type))
             .with_label(
-                Label::new((&self.source_file, self.range.clone()))
+                Label::new((&self.source_file, self.range.into()))
                     .with_message(&self.message)
                     .with_color(color_generator.next()),
             )

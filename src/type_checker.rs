@@ -103,7 +103,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                                 "Cannot widen from type {:?} to {:?}",
                                 checked_expr, destination_type
                             ),
-                            range.clone(),
+                            range,
                             self.source_file.to_string(),
                         )
                     })?;
@@ -111,7 +111,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 // TODO: get rid of this clone
                 if &new_type != checked_expr.data() {
                     checked_expr =
-                        Expression::Widen(Box::new(checked_expr), new_type.clone(), range.clone());
+                        Expression::Widen(Box::new(checked_expr), new_type.clone(), range);
                 }
 
                 Ok(Statement::Assignment(name, checked_expr, new_type, range))
@@ -222,8 +222,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     )),
                     Some(t) => {
                         if &t != checked_expr.data() {
-                            checked_expr =
-                                Expression::Widen(Box::new(checked_expr), t, range.clone());
+                            checked_expr = Expression::Widen(Box::new(checked_expr), t, range);
                         }
 
                         Ok(Statement::Return(
@@ -254,7 +253,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                         Box::new(Widen(
                             Box::new(checked_right),
                             checked_left.data().clone(),
-                            range.clone(),
+                            range,
                         )),
                         checked_left.data().clone(),
                         range,
@@ -264,19 +263,13 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 let mut result_type =
                     match checked_left.data().size().cmp(&checked_right.data().size()) {
                         Ordering::Greater => {
-                            checked_right = Widen(
-                                Box::new(checked_right),
-                                checked_left.data().clone(),
-                                range.clone(),
-                            );
+                            checked_right =
+                                Widen(Box::new(checked_right), checked_left.data().clone(), range);
                             checked_left.data().clone()
                         }
                         Ordering::Less => {
-                            checked_left = Widen(
-                                Box::new(checked_left),
-                                checked_right.data().clone(),
-                                range.clone(),
-                            );
+                            checked_left =
+                                Widen(Box::new(checked_left), checked_right.data().clone(), range);
                             checked_right.data().clone()
                         }
                         Ordering::Equal => checked_right.data().clone(),
@@ -346,7 +339,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                                         checked_arg.data(),
                                         expected_type
                                     ),
-                                    0..0,
+                                    range,
                                     self.source_file.to_string(),
                                 )
                             })?;
@@ -355,7 +348,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                             new_args.push(Expression::Widen(
                                 Box::new(checked_arg),
                                 new_type,
-                                range.clone(),
+                                range,
                             ));
                         } else {
                             new_args.push(checked_arg);

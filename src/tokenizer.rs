@@ -1,6 +1,6 @@
 use crate::error::{Error, ErrorType, Result};
 use regex::Regex;
-use std::ops::Range;
+use std::ops::{Add, Range};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
@@ -49,7 +49,40 @@ pub enum TokenType {
     RightBrace,
 }
 
-pub type SourceRange = Range<usize>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl SourceRange {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+}
+
+impl Add<usize> for SourceRange {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self::new(self.start + rhs, self.end + rhs)
+    }
+}
+
+impl From<Range<usize>> for SourceRange {
+    fn from(range: Range<usize>) -> Self {
+        Self {
+            start: range.start,
+            end: range.end,
+        }
+    }
+}
+
+impl From<SourceRange> for Range<usize> {
+    fn from(range: SourceRange) -> Self {
+        range.start..range.end
+    }
+}
 
 #[derive(Debug)]
 pub struct Token<'a> {
@@ -68,7 +101,7 @@ impl<'a> Token<'a> {
     }
 
     pub fn offset(&mut self, offset: usize) {
-        self.range = self.range.start + offset..self.range.end + offset;
+        self.range = SourceRange::new(self.range.start, self.range.end) + offset;
     }
 }
 
@@ -161,11 +194,7 @@ impl<'a> Lexer<'a> {
 
                 if let Some(x) = regex.find(&self.input[self.pointer..]) {
                     if x.start() == 0 {
-                        matches.push(Token::new(
-                            *token_type,
-                            x.as_str(),
-                            x.range().start..x.range().end,
-                        ));
+                        matches.push(Token::new(*token_type, x.as_str(), x.range().into()));
                     }
                 }
             }
@@ -174,7 +203,7 @@ impl<'a> Lexer<'a> {
                 return Err(Error::new(
                     ErrorType::Lexer,
                     "Unexpected character".to_string(),
-                    self.pointer..self.pointer + 1,
+                    SourceRange::new(self.pointer, self.pointer + 1),
                     self.input_file.to_string(),
                 ));
             }
@@ -249,10 +278,16 @@ mod tests {
     fn tokenizer_integer_literal() {
         let tokens = get_tokens("12 0 439394474 123");
 
-        assert_eq!(tokens[0], Token::new(IntegerLiteral, "12", 0..2));
-        assert_eq!(tokens[1], Token::new(IntegerLiteral, "0", 3..4));
-        assert_eq!(tokens[2], Token::new(IntegerLiteral, "439394474", 5..14));
-        assert_eq!(tokens[3], Token::new(IntegerLiteral, "123", 15..18));
+        assert_eq!(tokens[0], Token::new(IntegerLiteral, "12", (0..2).into()));
+        assert_eq!(tokens[1], Token::new(IntegerLiteral, "0", (3..4).into()));
+        assert_eq!(
+            tokens[2],
+            Token::new(IntegerLiteral, "439394474", (5..14).into())
+        );
+        assert_eq!(
+            tokens[3],
+            Token::new(IntegerLiteral, "123", (15..18).into())
+        );
     }
 
     #[test]
@@ -281,10 +316,10 @@ mod tests {
     fn tokenizer_identifier() {
         let tokens = get_tokens("test test_with_underscore");
 
-        assert_eq!(tokens[0], Token::new(Identifier, "test", 0..4));
+        assert_eq!(tokens[0], Token::new(Identifier, "test", (0..4).into()));
         assert_eq!(
             tokens[1],
-            Token::new(Identifier, "test_with_underscore", 5..25)
+            Token::new(Identifier, "test_with_underscore", (5..25).into())
         );
     }
 

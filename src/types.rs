@@ -6,6 +6,7 @@ pub enum Type {
     UInt64(),
     Bool(),
     Ref(Box<Type>),
+    Struct(String, Vec<(String, Type)>),
     Void(),
     Unknown(),
 }
@@ -20,6 +21,7 @@ impl Type {
             UInt64() => 64,
             Bool() => 8,
             Ref(_) => 64,
+            Struct(_, fields) => fields.iter().map(|(_, x)| x.size()).sum(),
             Void() => unreachable!(),
             Unknown() => unreachable!(),
         }
@@ -41,5 +43,36 @@ impl Type {
 
     pub fn is_ref(&self) -> bool {
         matches!(self, Type::Ref(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_struct_single_field_size() {
+        let struct_type = Type::Struct(
+            "TestStruct".to_string(),
+            vec![("a".to_string(), Type::UInt8())],
+        );
+
+        assert_eq!(struct_type.size(), Type::UInt8().size());
+    }
+
+    #[test]
+    fn test_struct_multiple_fields_size() {
+        let struct_type = Type::Struct(
+            "TestStruct".to_string(),
+            vec![
+                ("a".to_string(), Type::UInt8()),
+                ("b".to_string(), Type::Ref(Box::new(Type::Bool()))),
+            ],
+        );
+
+        assert_eq!(
+            struct_type.size(),
+            Type::UInt8().size() + Type::Ref(Box::new(Type::Bool())).size()
+        );
     }
 }

@@ -1,7 +1,6 @@
 use crate::error::Result;
-use crate::types::Type;
-
 use crate::tokenizer::{SourceRange, TokenType};
+use crate::types::Type;
 
 pub type TypedStatement = Statement<Type>;
 pub type TypedExpression = Expression<Type>;
