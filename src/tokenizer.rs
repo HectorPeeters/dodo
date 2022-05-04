@@ -1,52 +1,88 @@
 use crate::error::{Error, ErrorType, Result};
-use regex::Regex;
+use logos::Logos;
 use std::ops::{Add, Range};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Logos, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
+    #[regex("[ \t\n\r]+")]
     Whitespace,
+    #[regex("//[^\n]*")]
     Comment,
 
+    #[token("return")]
     Return,
+    #[token("fn")]
     Fn,
+    #[token("let")]
     Let,
+    #[token("while")]
     While,
+    #[token("if")]
     If,
 
+    #[token("u8")]
     UInt8,
+    #[token("u16")]
     UInt16,
+    #[token("u32")]
     UInt32,
+    #[token("u64")]
     UInt64,
+    #[token("bool")]
     Bool,
+    #[regex("\"[^\"]*\"")]
     StringLiteral,
+    #[regex("[0-9]+")]
     IntegerLiteral,
 
+    #[regex("[a-zA-Z][_0-9a-zA-Z]*")]
     Identifier,
 
+    #[token("+")]
     Plus,
+    #[token("-")]
     Minus,
+    #[token("*")]
     Asterisk,
+    #[token("/")]
     Slash,
+    #[token("==")]
     DoubleEqual,
+    #[token("!=")]
     NotEqual,
+    #[token("<")]
     LessThan,
+    #[token("<=")]
     LessThanEqual,
+    #[token(">")]
     GreaterThan,
+    #[token(">=")]
     GreaterThanEqual,
-
+    #[token("=")]
     Equals,
 
+    #[token("&")]
     Ampersand,
 
+    #[token(":")]
     Colon,
+    #[token(";")]
     SemiColon,
+    #[token(",")]
     Comma,
 
+    #[token("(")]
     LeftParen,
+    #[token(")")]
     RightParen,
 
+    #[token("{")]
     LeftBrace,
+    #[token("}")]
     RightBrace,
+
+    #[error]
+    Error,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,118 +154,27 @@ impl<'a> PartialEq<TokenType> for &Token<'a> {
     }
 }
 
-pub struct Lexer<'a> {
-    rules: Vec<(Regex, TokenType)>,
-    input: &'a str,
-    pointer: usize,
-    input_file: &'a str,
-}
+pub fn tokenize<'a>(input: &'a str, file: &'a str) -> Result<Vec<Token<'a>>> {
+    let mut lex = TokenType::lexer(input);
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str, input_file: &'a str) -> Self {
-        use TokenType::*;
+    let mut tokens = vec![];
 
-        let rules = vec![
-            (r"[ \t\n\f]+", Whitespace),
-            (r"//[^\n]*", Comment),
-            ("\"[^\"]*\"", StringLiteral),
-            (r"return", Return),
-            (r"let", Let),
-            (r"while", While),
-            (r"if", If),
-            (r"fn", Fn),
-            (r"u8", UInt8),
-            (r"u16", UInt16),
-            (r"u32", UInt32),
-            (r"u64", UInt64),
-            (r"bool", Bool),
-            (r"[a-zA-Z][_0-9a-zA-Z]*", Identifier),
-            (r"[0-9]+", IntegerLiteral),
-            (r"\+", Plus),
-            (r"-", Minus),
-            (r"\*", Asterisk),
-            (r"/", Slash),
-            (r"==", DoubleEqual),
-            (r"!=", NotEqual),
-            (r"<=", LessThanEqual),
-            (r"<", LessThan),
-            (r">=", GreaterThanEqual),
-            (r">", GreaterThan),
-            (r"=", Equals),
-            (r"&", Ampersand),
-            (r":", Colon),
-            (r";", SemiColon),
-            (r",", Comma),
-            (r"\(", LeftParen),
-            (r"\)", RightParen),
-            (r"\{", LeftBrace),
-            (r"\}", RightBrace),
-        ];
-
-        let rules = rules
-            .into_iter()
-            .map(|x| (Regex::new(x.0).unwrap(), x.1))
-            .collect();
-
-        Self {
-            rules,
-            input,
-            pointer: 0,
-            input_file,
-        }
-    }
-
-    pub fn get_tokens(&mut self) -> Result<Vec<Token<'a>>> {
-        let mut result = vec![];
-
-        loop {
-            if self.pointer >= self.input.len() {
-                break;
-            }
-
-            let mut matches = vec![];
-
-            for rule in &self.rules {
-                let (regex, token_type) = rule;
-
-                if let Some(x) = regex.find(&self.input[self.pointer..]) {
-                    if x.start() == 0 {
-                        matches.push(Token::new(*token_type, x.as_str(), x.range().into()));
-                    }
-                }
-            }
-
-            if matches.is_empty() {
+    while let Some(token_type) = lex.next() {
+        match token_type {
+            TokenType::Whitespace | TokenType::Comment => continue,
+            TokenType::Error => {
                 return Err(Error::new(
                     ErrorType::Lexer,
-                    "Unexpected character".to_string(),
-                    SourceRange::new(self.pointer, self.pointer + 1),
-                    self.input_file.to_string(),
-                ));
+                    "Unknown character".to_string(),
+                    lex.span().into(),
+                    file.to_string(),
+                ))
             }
-
-            matches
-                .sort_by(|a, b| (b.range.end - b.range.start).cmp(&(a.range.end - a.range.start)));
-
-            let mut best_match = matches.remove(0);
-            let match_size = best_match.range.end;
-            best_match.offset(self.pointer);
-            self.pointer += match_size;
-
-            result.push(best_match);
+            _ => tokens.push(Token::new(token_type, lex.slice(), lex.span().into())),
         }
-
-        Ok(result
-            .into_iter()
-            .filter(|x| x.token_type != TokenType::Whitespace)
-            .filter(|x| x.token_type != TokenType::Comment)
-            .collect())
     }
-}
 
-pub fn tokenize<'a>(input: &'a str, file: &'a str) -> Result<Vec<Token<'a>>> {
-    let mut lexer = Lexer::new(input, file);
-    lexer.get_tokens()
+    Ok(tokens)
 }
 
 #[cfg(test)]
