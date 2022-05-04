@@ -4,22 +4,86 @@ fn assert_eq(result: u32, expected: u32) {
         exit(1);
     }
 
-    printf("Success\n");
+}
+
+fn addition() {
+    assert_eq(12 + 0, 12);
+    assert_eq(0 + 12, 12);
+    assert_eq(12 + 12, 24);
+    assert_eq(8 + 4, 12);
+    assert_eq(4 + 8, 12);
+
+    printf("Addition success\n");
+}
+
+fn subtraction() {
+    assert_eq(12 - 0, 12);
+    assert_eq(12 - 12, 0);
+    assert_eq(8 - 4, 4);
+
+    printf("Subtraction success\n");
+}
+
+fn multiplication() {
+    let x: u32 = 12;
+    let y: u32 = 4;
+
+    assert_eq(x * 0, 0);
+    assert_eq(0 * x, 0);
+    assert_eq(y * 3, 12);
+    assert_eq(3 * y, 12);
+
+    printf("Multiplication success\n");
+}
+
+fn division() {
+    assert_eq(12 / 3, 4);
+    assert_eq(12 / 4, 3);
+    assert_eq(4 / 12, 0);
+
+    printf("Division success\n");
+}
+
+fn modulo() {
+    let x: u32 = 12;
+    assert_eq(x % 1, 0);
+    assert_eq(x % 2, 0);
+    assert_eq(x % 3, 0);
+    assert_eq(x % 4, 0);
+    assert_eq(x % 5, 2);
+    assert_eq(x % 6, 0);
+    assert_eq(x % 7, 5);
+    assert_eq(x % 8, 4);
+    assert_eq(x % 9, 3);
+    assert_eq(x % 10, 2);
+    assert_eq(x % 11, 1);
+    assert_eq(x % 12, 0);
+
+    printf("Modulo success\n");
+}
+
+fn precedence() {
+    let x: u32 = 12;
+    let y: u32 = 4;
+
+    assert_eq(x + y * 2, 20); 
+    assert_eq(x * y + 2, 50); 
+    
+    printf("Precedence success\n");
 }
 
 fn main() {
     let x: u32 = 12;
     let y: u32 = 4;
 
-    // basic math operations
-    assert_eq(x + y, 16);
-    assert_eq(x - y, 8);
-    assert_eq(x * y, 48);
-    assert_eq(x / y, 3);
+    addition();
+    subtraction();
+    multiplication();
+    division();
+    modulo();
+    precedence();
 
-    // test operator precedence
-    assert_eq(x + y * 2, 20); 
-    assert_eq(x * y + 2, 50); 
+    printf("Success\n");
     
     exit(0);
 }

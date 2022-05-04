@@ -46,6 +46,8 @@ pub enum TokenType {
     Asterisk,
     #[token("/")]
     Slash,
+    #[token("%")]
+    Percent,
     #[token("==")]
     DoubleEqual,
     #[token("!=")]

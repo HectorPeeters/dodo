@@ -1,6 +1,7 @@
-Success
-Success
-Success
-Success
-Success
+Addition success
+Subtraction success
+Multiplication success
+Division success
+Modulo success
+Precedence success
 Success

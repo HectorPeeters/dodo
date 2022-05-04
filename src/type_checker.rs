@@ -2,7 +2,8 @@ use std::cmp::Ordering;
 
 use crate::{
     ast::{
-        AstTransformer, Expression, Statement, TypedExpression, TypedStatement, UnaryOperatorType,
+        AstTransformer, BinaryOperatorType, Expression, Statement, TypedExpression, TypedStatement,
+        UnaryOperatorType,
     },
     error::{Error, ErrorType, Result},
     scope::Scope,
@@ -243,6 +244,22 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
             BinaryOperator(op, left, right, _, range) => {
                 let mut checked_left = self.transform_expression(*left)?;
                 let mut checked_right = self.transform_expression(*right)?;
+
+                // NOTE: We currently don't support this operation as for the eight bit variant,
+                // the remainder gets stored in the ah register instead of dl. When we can output
+                // assembly using the higher half eight bit registers, we can add this
+                // functionality.
+                if checked_left.data().size() == 8
+                    && checked_right.data().size() == 8
+                    && op == BinaryOperatorType::Modulo
+                {
+                    return Err(Error::new(
+                        ErrorType::TypeCheck,
+                        "Modulo of two 8 bit integers is currently not supported".to_string(),
+                        range,
+                        self.source_file.to_string(),
+                    ));
+                }
 
                 // TODO: this needs a thorough rework, comparing references won't work
                 if checked_left.data().is_ref() && !op.is_comparison() {

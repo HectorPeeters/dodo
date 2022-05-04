@@ -42,6 +42,7 @@ impl<'a> Parser<'a> {
         infix_fns.insert(TokenType::Minus, (Self::parse_binary_operator, 3));
         infix_fns.insert(TokenType::Asterisk, (Self::parse_binary_operator, 4));
         infix_fns.insert(TokenType::Slash, (Self::parse_binary_operator, 4));
+        infix_fns.insert(TokenType::Percent, (Self::parse_binary_operator, 4));
         infix_fns.insert(TokenType::DoubleEqual, (Self::parse_binary_operator, 5));
         infix_fns.insert(TokenType::NotEqual, (Self::parse_binary_operator, 5));
         infix_fns.insert(TokenType::LessThan, (Self::parse_binary_operator, 6));

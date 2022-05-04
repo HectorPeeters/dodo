@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use crate::{
     ast::{
         BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
@@ -8,9 +6,9 @@ use crate::{
     error::Result,
     scope::Scope,
     types::Type,
-    x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RSP},
+    x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RDX, RSP},
 };
-
+use std::io::Write;
 use X86Instruction::*;
 use X86Operand::*;
 use X86Register::*;
@@ -316,8 +314,15 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                     }
                     BinaryOperatorType::Divide => {
                         self.instr(Mov(Reg(Rax, left_size), left_op.clone()));
+                        self.instr(Mov(RDX, Constant(0)));
                         self.instr(Div(right_op));
                         self.instr(Mov(left_op, Reg(Rax, left_size)));
+                    }
+                    BinaryOperatorType::Modulo => {
+                        self.instr(Mov(Reg(Rax, left_size), left_op.clone()));
+                        self.instr(Mov(RDX, Constant(0)));
+                        self.instr(Div(right_op));
+                        self.instr(Mov(left_op, Reg(Rdx, left_size)));
                     }
                     BinaryOperatorType::Equal => {
                         self.instr(Cmp(left_op, right_op));

@@ -1,6 +1,7 @@
 use std::fmt;
 
 pub const RAX: X86Operand = X86Operand::Reg(X86Register::Rax, 64);
+pub const RDX: X86Operand = X86Operand::Reg(X86Register::Rdx, 64);
 pub const RBP: X86Operand = X86Operand::Reg(X86Register::Rbp, 64);
 pub const RSP: X86Operand = X86Operand::Reg(X86Register::Rsp, 64);
 
@@ -31,7 +32,7 @@ impl X86Register {
     }
 
     pub fn get_string(&self, size: usize) -> &'static str {
-        let names = [
+        const REGISTER_NAMES: [[&str; 16]; 4] = [
             [
                 "al", "bl", "cl", "dl", "sil", "dil", "spl", "bpl", "r8b", "r9b", "r10b", "r11b",
                 "r12b", "r13b", "r14b", "r15b",
@@ -50,7 +51,7 @@ impl X86Register {
             ],
         ];
 
-        names[(size.log2() - 3) as usize][*self as usize]
+        REGISTER_NAMES[(size.log2() - 3) as usize][*self as usize]
     }
 }
 
