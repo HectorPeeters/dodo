@@ -109,7 +109,6 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                         )
                     })?;
 
-                // TODO: get rid of this clone
                 if &new_type != checked_expr.data() {
                     checked_expr =
                         Expression::Widen(Box::new(checked_expr), new_type.clone(), range);

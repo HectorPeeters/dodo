@@ -38,13 +38,13 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
 
         let mut infix_fns: HashMap<_, (InfixParseFn<'a>, usize)> = HashMap::new();
-        infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 3));
-        infix_fns.insert(TokenType::Minus, (Self::parse_binary_operator, 3));
-        infix_fns.insert(TokenType::Asterisk, (Self::parse_binary_operator, 4));
-        infix_fns.insert(TokenType::Slash, (Self::parse_binary_operator, 4));
-        infix_fns.insert(TokenType::Percent, (Self::parse_binary_operator, 4));
-        infix_fns.insert(TokenType::DoubleEqual, (Self::parse_binary_operator, 5));
-        infix_fns.insert(TokenType::NotEqual, (Self::parse_binary_operator, 5));
+        infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 11));
+        infix_fns.insert(TokenType::Minus, (Self::parse_binary_operator, 11));
+        infix_fns.insert(TokenType::Asterisk, (Self::parse_binary_operator, 12));
+        infix_fns.insert(TokenType::Slash, (Self::parse_binary_operator, 12));
+        infix_fns.insert(TokenType::Percent, (Self::parse_binary_operator, 12));
+        infix_fns.insert(TokenType::DoubleEqual, (Self::parse_binary_operator, 6));
+        infix_fns.insert(TokenType::NotEqual, (Self::parse_binary_operator, 6));
         infix_fns.insert(TokenType::LessThan, (Self::parse_binary_operator, 6));
         infix_fns.insert(TokenType::LessThanEqual, (Self::parse_binary_operator, 6));
         infix_fns.insert(TokenType::GreaterThan, (Self::parse_binary_operator, 6));

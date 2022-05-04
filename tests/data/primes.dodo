@@ -7,7 +7,7 @@ fn main() {
         let p: u32 = 2;
         while p < n {
 
-            if (n % p) == 0 {
+            if n % p == 0 {
                 p = count + 1;
             }
 
