@@ -69,7 +69,6 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
             Statement::Block(statements, scoped, _, range) => {
                 if scoped {
                     self.scope.push();
-                    // defer self.scope.pop(range)?;
                 }
                 let children = statements
                     .into_iter()
@@ -276,24 +275,23 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     ));
                 }
 
-                let mut result_type =
-                    match checked_left.data().size().cmp(&checked_right.data().size()) {
-                        Ordering::Greater => {
-                            checked_right =
-                                Widen(Box::new(checked_right), checked_left.data().clone(), range);
-                            checked_left.data().clone()
-                        }
-                        Ordering::Less => {
-                            checked_left =
-                                Widen(Box::new(checked_left), checked_right.data().clone(), range);
-                            checked_right.data().clone()
-                        }
-                        Ordering::Equal => checked_right.data().clone(),
-                    };
+                match checked_left.data().size().cmp(&checked_right.data().size()) {
+                    Ordering::Greater => {
+                        checked_right =
+                            Widen(Box::new(checked_right), checked_left.data().clone(), range);
+                    }
+                    Ordering::Less => {
+                        checked_left =
+                            Widen(Box::new(checked_left), checked_right.data().clone(), range);
+                    }
+                    _ => {}
+                };
 
-                if op.is_comparison() {
-                    result_type = Type::Bool();
-                }
+                let result_type = if op.is_comparison() {
+                    Type::Bool()
+                } else {
+                    checked_left.data().clone()
+                };
 
                 Ok(BinaryOperator(
                     op,
