@@ -524,6 +524,17 @@ impl<'a> Parser<'a> {
     }
 }
 
+impl<'a> Iterator for Parser<'a> {
+    type Item = Result<Statement<()>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.eof() {
+            true => None,
+            false => Some(self.parse_statement()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
