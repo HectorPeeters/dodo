@@ -43,7 +43,6 @@ impl<'a, T: Clone> Scope<'a, T> {
     }
 
     pub fn pop(&mut self, range: &SourceRange) -> Result<()> {
-        assert!(self.items.len() >= 2);
         self.items
             .pop()
             .ok_or_else(|| {
@@ -115,6 +114,45 @@ mod tests {
         scope.pop(&(0..0).into())?;
         assert_eq!(scope.find("test", &(0..0).into())?, 12);
         scope.pop(&(0..0).into())?;
+        Ok(())
+    }
+
+    #[test]
+    fn scope_key_already_defined() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        scope.insert("test", 12, &(0..0).into())?;
+
+        assert!(scope.insert("test", 13, &(0..0).into()).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn scope_pop_empty() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
+
+        scope.pop(&(0..0).into())?;
+        assert!(scope.pop(&(0..0).into()).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn scope_insert_empty() -> Result<()> {
+        let mut scope: Scope<u32> = Scope::new("test.dodo");
+
+        scope.pop(&(0..0).into())?;
+        assert!(scope.insert("test", 12, &(0..0).into()).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn scope_find_non_existent() -> Result<()> {
+        let scope: Scope<u32> = Scope::new("test.dodo");
+
+        assert!(scope.find("test", &(0..0).into()).is_err());
+
         Ok(())
     }
 }

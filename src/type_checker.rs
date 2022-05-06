@@ -378,3 +378,81 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Result;
+
+    #[test]
+    fn widen_assignment() -> Result<()> {
+        let mut type_checker = TypeChecker::new("test.dodo");
+
+        type_checker.transform_statement(Statement::Declaration(
+            "test".to_string(),
+            Type::UInt16(),
+            (),
+            (0..0).into(),
+        ))?;
+
+        let ast = Statement::Assignment(
+            "test".to_string(),
+            Expression::Literal(12, (), (0..0).into()),
+            (),
+            (0..0).into(),
+        );
+
+        assert_eq!(
+            type_checker.transform_statement(ast)?,
+            Statement::Assignment(
+                "test".to_string(),
+                Expression::Widen(
+                    Box::new(Expression::Literal(12, Type::UInt8(), (0..0).into())),
+                    Type::UInt16(),
+                    (0..0).into()
+                ),
+                Type::UInt16(),
+                (0..0).into(),
+            )
+        );
+
+        let ast = Statement::Assignment(
+            "test".to_string(),
+            Expression::Literal(65536, (), (0..0).into()),
+            (),
+            (0..0).into(),
+        );
+
+        assert!(type_checker.transform_statement(ast).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn if_statement_condition_not_boolean() {
+        let mut type_checker = TypeChecker::new("test.dodo");
+
+        let ast = Statement::If(
+            Expression::Literal(12, (), (0..0).into()),
+            Box::new(Statement::Block(vec![], false, (), (0..0).into())),
+            (),
+            (0..0).into(),
+        );
+
+        assert!(type_checker.transform_statement(ast).is_err());
+    }
+
+    #[test]
+    fn while_statement_condition_not_boolean() {
+        let mut type_checker = TypeChecker::new("test.dodo");
+
+        let ast = Statement::While(
+            Expression::Literal(12, (), (0..0).into()),
+            Box::new(Statement::Block(vec![], false, (), (0..0).into())),
+            (),
+            (0..0).into(),
+        );
+
+        assert!(type_checker.transform_statement(ast).is_err());
+    }
+}
