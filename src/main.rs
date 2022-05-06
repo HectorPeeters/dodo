@@ -56,7 +56,13 @@ fn main() -> Result<()> {
 
     let step_start_time = Instant::now();
 
-    let source = std::fs::read_to_string(&args.source_path).unwrap();
+    let source = std::fs::read_to_string(&args.source_path);
+    if source.is_err() {
+        println!("Failed to read input file {:?}", args.source_path);
+        return Ok(());
+    }
+    let source = source.unwrap();
+
     let source_file = args.source_path.to_str().unwrap();
 
     timings.push(("Reading source", step_start_time.elapsed()));
