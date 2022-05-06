@@ -8,7 +8,7 @@ use dodo::x86_nasm::X86NasmGenerator;
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -48,21 +48,22 @@ fn unwrap_or_error<T>(result: Result<T>) -> T {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    let mut timings: Vec<(&'static str, Duration)> = vec![];
+
     // Reading source
 
-    let mut step_start_time = Instant::now();
+    let step_start_time = Instant::now();
 
     let source = std::fs::read_to_string(&args.source_path).unwrap();
     let source_file = args.source_path.to_str().unwrap();
 
-    let reading_source_duration = step_start_time.elapsed();
+    timings.push(("Reading source", step_start_time.elapsed()));
 
     // Tokenizing
 
-    step_start_time = Instant::now();
-
+    let step_start_time = Instant::now();
     let tokens = unwrap_or_error(tokenize(&source, source_file));
-    let tokenize_duration = step_start_time.elapsed();
+    timings.push(("Tokenizing", step_start_time.elapsed()));
 
     if args.print_tokens {
         println!("Tokens:");
@@ -71,12 +72,10 @@ fn main() -> Result<()> {
 
     // Parsing
 
-    step_start_time = Instant::now();
-
+    let step_start_time = Instant::now();
     let parser = Parser::new(&tokens, source_file);
     let statements = unwrap_or_error(parser.into_iter().collect::<Result<Vec<_>>>());
-
-    let parse_duration = step_start_time.elapsed();
+    timings.push(("Parsing", step_start_time.elapsed()));
 
     if args.print_ast {
         println!("Ast:");
@@ -85,16 +84,13 @@ fn main() -> Result<()> {
 
     // Type checking
 
+    let step_start_time = Instant::now();
     let mut type_checker = TypeChecker::new(source_file);
-
-    step_start_time = Instant::now();
-
     let statements = statements
         .into_iter()
         .map(|x| type_checker.transform_statement(x))
         .collect::<Result<Vec<_>>>()?;
-
-    let type_check_duration = step_start_time.elapsed();
+    timings.push(("Type checking", step_start_time.elapsed()));
 
     if args.print_typed_ast {
         println!("Typed ast:");
@@ -103,29 +99,22 @@ fn main() -> Result<()> {
 
     // Generating assembly
 
-    step_start_time = Instant::now();
-
+    let step_start_time = Instant::now();
     let assembly_file = &args
         .assembly_output
         .unwrap_or_else(|| PathBuf::from("output.asm"));
-
     let mut output = File::create(&assembly_file).unwrap();
     let mut generator = X86NasmGenerator::new(source_file);
-
     for statement in statements {
         unwrap_or_error(generator.visit_statement(statement));
     }
-
     generator.write(&mut output);
-
-    let assembly_generation_duration = step_start_time.elapsed();
+    timings.push(("Generating assembly", step_start_time.elapsed()));
 
     // Compiling assemlby
 
-    step_start_time = Instant::now();
-
+    let step_start_time = Instant::now();
     let object_file = std::env::temp_dir().join("output.o");
-
     Command::new(args.assembler_command)
         .args([
             "-f",
@@ -137,11 +126,11 @@ fn main() -> Result<()> {
         ])
         .output()
         .expect("Failed to execute assembler");
-
-    let compile_duration = step_start_time.elapsed();
+    timings.push(("Compiling", step_start_time.elapsed()));
 
     // Linking
 
+    let step_start_time = Instant::now();
     Command::new(args.linker_command)
         .args([
             "-o",
@@ -156,20 +145,11 @@ fn main() -> Result<()> {
         ])
         .output()
         .expect("Failed to execute linker");
+    timings.push(("Linking", step_start_time.elapsed()));
 
-    let linking_duration = step_start_time.elapsed();
+    // Reporting
 
     if args.include_timings {
-        let timings = vec![
-            ("Reading source", reading_source_duration),
-            ("Tokenizing", tokenize_duration),
-            ("Parsing", parse_duration),
-            ("Type checking", type_check_duration),
-            ("Generating assembly", assembly_generation_duration),
-            ("Compiling", compile_duration),
-            ("Linking", linking_duration),
-        ];
-
         for (name, duration) in &timings {
             println!("{}: {} ms", name, duration.as_micros() as f64 / 1000.0);
         }
