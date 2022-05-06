@@ -1,0 +1,7 @@
+fn test() u8 {
+    return 300;
+}
+
+fn main() {
+    test();
+}

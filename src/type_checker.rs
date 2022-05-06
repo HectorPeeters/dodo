@@ -103,7 +103,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                expr, destination_type
+                                expr.data(), destination_type
                             ),
                             range,
                             self.source_file.to_string(),
@@ -416,43 +416,6 @@ mod tests {
             )
         );
 
-        let ast = Statement::Assignment(
-            "test".to_string(),
-            Expression::Literal(65536, (), (0..0).into()),
-            (),
-            (0..0).into(),
-        );
-
-        assert!(type_checker.transform_statement(ast).is_err());
-
         Ok(())
-    }
-
-    #[test]
-    fn if_statement_condition_not_boolean() {
-        let mut type_checker = TypeChecker::new("test.dodo");
-
-        let ast = Statement::If(
-            Expression::Literal(12, (), (0..0).into()),
-            Box::new(Statement::Block(vec![], false, (), (0..0).into())),
-            (),
-            (0..0).into(),
-        );
-
-        assert!(type_checker.transform_statement(ast).is_err());
-    }
-
-    #[test]
-    fn while_statement_condition_not_boolean() {
-        let mut type_checker = TypeChecker::new("test.dodo");
-
-        let ast = Statement::While(
-            Expression::Literal(12, (), (0..0).into()),
-            Box::new(Statement::Block(vec![], false, (), (0..0).into())),
-            (),
-            (0..0).into(),
-        );
-
-        assert!(type_checker.transform_statement(ast).is_err());
     }
 }

@@ -9,7 +9,16 @@ use std::fs::File;
 use std::hash::{{Hash, Hasher}};
 use std::process::Command;
 
-fn run_test(file: &str, code: &str, expected: &str) -> Result<()> {{
+fn run_test(file: &str, code: &str, is_failing: bool, expected: &str) -> Result<()> {{
+    if is_failing {{
+        assert!(run_failing_test(file, code).is_err());
+        Ok(())
+    }} else {{
+        run_normal_test(file, code, expected)
+    }}
+}}
+
+fn run_normal_test(file: &str, code: &str, expected: &str) -> Result<()> {{
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
@@ -69,3 +78,35 @@ fn run_test(file: &str, code: &str, expected: &str) -> Result<()> {{
 
     Ok(())
 }}
+
+fn run_failing_test(file: &str, code: &str) -> Result<()> {{
+    let mut hasher = DefaultHasher::new();
+    file.hash(&mut hasher);
+    let test_code = hasher.finish();
+
+    let tokens = tokenize(&code, file)?;
+
+    let mut parser = Parser::new(&tokens, file);
+
+    let mut output = File::create(&format!("/tmp/output_{{}}.asm", test_code)).unwrap();
+    let mut generator = X86NasmGenerator::new(file);
+
+    let mut statements = vec![];
+
+    while !parser.eof() {{
+        let statement = parser.parse_statement()?;
+        statements.push(statement);
+    }}
+
+    let mut type_checker = TypeChecker::new(file);
+
+    for statement in statements {{
+        let typed_statement = type_checker.transform_statement(statement)?;
+        generator.visit_statement(typed_statement)?;
+    }}
+
+    generator.write(&mut output);
+
+    Ok(())
+}}
+

@@ -1,6 +1,6 @@
 use crate::error::{Error, ErrorType, Result};
 use logos::Logos;
-use std::ops::{Add, Range};
+use std::ops::Range;
 
 #[derive(Logos, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
@@ -99,14 +99,6 @@ impl SourceRange {
     }
 }
 
-impl Add<usize> for SourceRange {
-    type Output = Self;
-
-    fn add(self, rhs: usize) -> Self::Output {
-        Self::new(self.start + rhs, self.end + rhs)
-    }
-}
-
 impl From<Range<usize>> for SourceRange {
     fn from(range: Range<usize>) -> Self {
         Self {
@@ -136,10 +128,6 @@ impl<'a> Token<'a> {
             value,
             range,
         }
-    }
-
-    pub fn offset(&mut self, offset: usize) {
-        self.range = SourceRange::new(self.range.start, self.range.end) + offset;
     }
 }
 

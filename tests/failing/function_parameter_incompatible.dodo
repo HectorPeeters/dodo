@@ -1,0 +1,7 @@
+fn test(x: u8) {
+    printf("Data %d\n", x);
+}
+
+fn main() {
+    test(300);
+}

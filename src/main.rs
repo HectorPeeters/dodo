@@ -35,6 +35,7 @@ struct Args {
     include_timings: bool,
 }
 
+#[cfg(not(tarpaulin_include))]
 fn unwrap_or_error<T>(result: Result<T>) -> T {
     match result {
         Ok(x) => x,
@@ -45,6 +46,7 @@ fn unwrap_or_error<T>(result: Result<T>) -> T {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -86,10 +88,12 @@ fn main() -> Result<()> {
 
     let step_start_time = Instant::now();
     let mut type_checker = TypeChecker::new(source_file);
-    let statements = statements
-        .into_iter()
-        .map(|x| type_checker.transform_statement(x))
-        .collect::<Result<Vec<_>>>()?;
+    let statements = unwrap_or_error(
+        statements
+            .into_iter()
+            .map(|x| type_checker.transform_statement(x))
+            .collect::<Result<Vec<_>>>(),
+    );
     timings.push(("Type checking", step_start_time.elapsed()));
 
     if args.print_typed_ast {

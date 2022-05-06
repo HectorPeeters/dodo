@@ -35,6 +35,7 @@ impl Error {
         }
     }
 
+    #[cfg(not(tarpaulin_include))]
     pub fn print(&self) -> std::io::Result<()> {
         let source_code = std::fs::read_to_string(&self.source_file)?;
         let mut color_generator = ColorGenerator::new();

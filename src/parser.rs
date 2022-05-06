@@ -447,16 +447,11 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::RightParen)?;
 
-        let mut return_type = if self.peek()?.token_type == TokenType::LeftBrace {
+        let return_type = if self.peek()?.token_type == TokenType::LeftBrace {
             Type::Void()
         } else {
             self.parse_type()?
         };
-
-        if self.peek()?.token_type == TokenType::Colon {
-            self.consume_assert(TokenType::Colon)?;
-            return_type = self.parse_type()?;
-        }
 
         let body = self.parse_statement()?;
         Ok(Statement::Function(

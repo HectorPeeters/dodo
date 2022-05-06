@@ -145,3 +145,46 @@ pub trait ConsumingAstVisitor<T, RS, RE> {
 
     fn visit_expression(&mut self, expression: Expression<T>) -> Result<RE>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statement_data() -> Result<()> {
+        let expression = Expression::Literal(13, 14, (0..0).into());
+
+        let ast = Statement::Block(vec![], false, 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::Declaration("test".to_string(), Type::Void(), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::Assignment("test".to_string(), expression.clone(), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::Expression(expression.clone(), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::While(expression.clone(), Box::new(ast), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::If(expression.clone(), Box::new(ast), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::Return(expression.clone(), 12, (0..0).into());
+        assert_eq!(*ast.data(), 12);
+
+        let ast = Statement::Function(
+            "test".to_string(),
+            vec![],
+            Type::Void(),
+            Box::new(ast),
+            12,
+            (0..0).into(),
+        );
+        assert_eq!(*ast.data(), 12);
+
+        Ok(())
+    }
+}

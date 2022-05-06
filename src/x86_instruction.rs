@@ -196,3 +196,41 @@ impl X86Instruction {
         !matches!(self, X86Instruction::Label(_) | X86Instruction::Function(_))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn register_names() {
+        let regs: Vec<String> = (0..=15)
+            .into_iter()
+            .map(|i| {
+                let register: X86Register = i.into();
+                format!("{}", register)
+            })
+            .collect();
+
+        assert_eq!(
+            regs,
+            vec![
+                "rax".to_string(),
+                "rbx".to_string(),
+                "rcx".to_string(),
+                "rdx".to_string(),
+                "rsi".to_string(),
+                "rdi".to_string(),
+                "rsp".to_string(),
+                "rbp".to_string(),
+                "r8".to_string(),
+                "r9".to_string(),
+                "r10".to_string(),
+                "r11".to_string(),
+                "r12".to_string(),
+                "r13".to_string(),
+                "r14".to_string(),
+                "r15".to_string()
+            ]
+        );
+    }
+}

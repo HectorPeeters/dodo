@@ -1,0 +1,5 @@
+fn main() {
+    while 2 {
+        printf("This should not be printed\n");
+    }
+}

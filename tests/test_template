@@ -3,6 +3,7 @@ fn {name}() -> Result<()> {{
     match run_test(
         "{path}", 
         include_str!("{path}"),
+        {is_failing},
         "{expected}"
     ) {{
         Ok(_) => Ok(()),
