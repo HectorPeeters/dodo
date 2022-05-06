@@ -448,6 +448,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                 Ok(result_reg)
             }
             Expression::Widen(expr, widen_type, _range) => {
+                assert_ne!(widen_type, Type::UInt64());
                 let expr_size = expr.data().size();
                 assert!(expr_size < widen_type.size());
                 let expr_reg = self.visit_expression(*expr)?;

@@ -1,3 +1,5 @@
+#![feature(exit_status_error)]
+
 use clap::StructOpt;
 use dodo::ast::{AstTransformer, ConsumingAstVisitor};
 use dodo::error::Result;
@@ -125,7 +127,7 @@ fn main() -> Result<()> {
 
     let step_start_time = Instant::now();
     let object_file = std::env::temp_dir().join("output.o");
-    Command::new(args.assembler_command)
+    let assembler_output = Command::new(args.assembler_command)
         .args([
             "-f",
             "elf64",
@@ -136,12 +138,19 @@ fn main() -> Result<()> {
         ])
         .output()
         .expect("Failed to execute assembler");
+    if assembler_output.status.exit_ok().is_err() {
+        println!(
+            "Assembling failed\n\n{}",
+            String::from_utf8(assembler_output.stderr).unwrap()
+        );
+        return Ok(());
+    }
     timings.push(("Compiling", step_start_time.elapsed()));
 
     // Linking
 
     let step_start_time = Instant::now();
-    Command::new(args.linker_command)
+    let linker_output = Command::new(args.linker_command)
         .args([
             "-o",
             args.output
@@ -155,6 +164,13 @@ fn main() -> Result<()> {
         ])
         .output()
         .expect("Failed to execute linker");
+    if linker_output.status.exit_ok().is_err() {
+        println!(
+            "Linking failed\n\n{}",
+            String::from_utf8(assembler_output.stderr).unwrap()
+        );
+        return Ok(());
+    }
     timings.push(("Linking", step_start_time.elapsed()));
 
     // Reporting
