@@ -129,6 +129,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
         match statement {
             Statement::Declaration(name, _value_type, _, range) => {
                 self.scope.insert(&name, self.scope.size()?, &range)?;
+
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value, value_type, range) => {
@@ -146,10 +147,9 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
 
-                let cond_size = cond.data().size();
-
                 self.instr(Label(start_label));
 
+                let cond_size = cond.data().size();
                 let register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(register, cond_size), Constant(0)));
@@ -164,6 +164,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
             }
             Statement::If(cond, stmt, _, _range) => {
                 let end_label = self.get_new_label();
+
                 let cond_size = cond.data().size();
                 let cond_register = self.visit_expression(cond)?;
 
@@ -187,6 +188,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
             }
             Statement::Function(name, args, _ret_type, body, _value_type, range) => {
                 self.scope.push();
+
                 assert!(args.len() <= 6);
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
 
@@ -263,6 +265,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                     Expression::VariableRef(name, value_type, range) => {
                         let offset = self.scope.find(name, range)?;
                         let result_type = value_type.clone().get_ref();
+
                         self.instr(Lea(
                             Reg(result_reg, result_type.size()),
                             RegIndirect(Rbp, offset * 16),

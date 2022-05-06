@@ -105,7 +105,9 @@ fn main() -> Result<()> {
 
     step_start_time = Instant::now();
 
-    let assembly_file = &args.assembly_output.unwrap_or(PathBuf::from("output.asm"));
+    let assembly_file = &args
+        .assembly_output
+        .unwrap_or_else(|| PathBuf::from("output.asm"));
 
     let mut output = File::create(&assembly_file).unwrap();
     let mut generator = X86NasmGenerator::new(source_file);
@@ -144,7 +146,7 @@ fn main() -> Result<()> {
         .args([
             "-o",
             args.output
-                .unwrap_or(PathBuf::from("a.out"))
+                .unwrap_or_else(|| PathBuf::from("a.out"))
                 .to_str()
                 .unwrap(),
             object_file.to_str().unwrap(),

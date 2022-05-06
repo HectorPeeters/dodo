@@ -70,10 +70,12 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 if scoped {
                     self.scope.push();
                 }
+
                 let children = statements
                     .into_iter()
                     .map(|x| self.transform_statement(x))
                     .collect::<Result<Vec<_>>>()?;
+
                 if scoped {
                     self.scope.pop(&range)?;
                 }
@@ -92,46 +94,44 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 ))
             }
             Statement::Assignment(name, expr, _, range) => {
-                let mut checked_expr = self.transform_expression(expr)?;
+                let mut expr = self.transform_expression(expr)?;
                 let destination_type = self.get_scope_value_type(&name, &range)?;
 
-                let new_type = Self::widen_assignment(&destination_type, checked_expr.data())
-                    .ok_or_else(|| {
+                let new_type =
+                    Self::widen_assignment(&destination_type, expr.data()).ok_or_else(|| {
                         Error::new(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                checked_expr, destination_type
+                                expr, destination_type
                             ),
                             range,
                             self.source_file.to_string(),
                         )
                     })?;
 
-                if &new_type != checked_expr.data() {
-                    checked_expr =
-                        Expression::Widen(Box::new(checked_expr), new_type.clone(), range);
+                if &new_type != expr.data() {
+                    expr = Expression::Widen(Box::new(expr), new_type.clone(), range);
                 }
 
-                Ok(Statement::Assignment(name, checked_expr, new_type, range))
+                Ok(Statement::Assignment(name, expr, new_type, range))
             }
             Statement::Expression(expr, _, range) => {
-                let checked_expr = self.transform_expression(expr)?;
-                Ok(Statement::Expression(
-                    checked_expr.clone(),
-                    checked_expr.data().clone(),
-                    range,
-                ))
+                let expr = self.transform_expression(expr)?;
+                let expr_type = expr.data().clone();
+
+                Ok(Statement::Expression(expr, expr_type, range))
             }
             Statement::Function(name, args, return_type, body, _, range) => {
                 self.scope.insert(
                     &name,
                     TypeScopeEntry::Function(
-                        args.iter().map(|x| x.1.clone()).collect::<Vec<_>>(),
+                        args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
                         return_type.clone(),
                     ),
                     &range,
                 )?;
+
                 self.scope.push();
                 for (arg_name, arg_type) in &args {
                     self.scope
@@ -157,78 +157,67 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 ))
             }
             Statement::If(cond, body, _, range) => {
-                let checked_cond = self.transform_expression(cond)?;
-                if checked_cond.data() != &Type::Bool() {
+                let cond = self.transform_expression(cond)?;
+
+                if cond.data() != &Type::Bool() {
                     return Err(Error::new(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {:?}",
-                            checked_cond.data()
+                            cond.data()
                         ),
                         range,
                         self.source_file.to_string(),
                     ));
                 }
-                let checked_body = self.transform_statement(*body)?;
+                let body = self.transform_statement(*body)?;
+                let body_type = body.data().clone();
 
-                Ok(Statement::If(
-                    checked_cond,
-                    Box::new(checked_body.clone()),
-                    checked_body.data().clone(),
-                    range,
-                ))
+                Ok(Statement::If(cond, Box::new(body), body_type, range))
             }
             Statement::While(cond, body, _, range) => {
-                let checked_cond = self.transform_expression(cond)?;
-                if checked_cond.data() != &Type::Bool() {
+                let cond = self.transform_expression(cond)?;
+                if cond.data() != &Type::Bool() {
                     return Err(Error::new(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
-                            checked_cond.data()
+                            cond.data()
                         ),
                         range,
                         self.source_file.to_string(),
                     ));
                 }
 
-                let checked_body = self.transform_statement(*body)?;
+                let body = self.transform_statement(*body)?;
+                let body_type = body.data().clone();
 
-                Ok(Statement::While(
-                    checked_cond,
-                    Box::new(checked_body.clone()),
-                    checked_body.data().clone(),
-                    range,
-                ))
+                Ok(Statement::While(cond, Box::new(body), body_type, range))
             }
             Statement::Return(expr, _, range) => {
-                let mut checked_expr = self.transform_expression(expr)?;
+                let mut expr = self.transform_expression(expr)?;
+                let expr_type = expr.data().clone();
 
                 assert_ne!(self.current_function_return_type, Type::Unknown());
-                let new_actual_type =
-                    Self::widen_assignment(&self.current_function_return_type, checked_expr.data());
+                let actual_type =
+                    Self::widen_assignment(&self.current_function_return_type, &expr_type);
 
-                match new_actual_type {
+                match actual_type {
                     None => Err(Error::new(
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
-                            self.current_function_return_type,
-                            checked_expr.data()
+                            self.current_function_return_type, expr_type,
                         ),
                         range,
                         self.source_file.to_string(),
                     )),
                     Some(t) => {
-                        if &t != checked_expr.data() {
-                            checked_expr = Expression::Widen(Box::new(checked_expr), t, range);
+                        if t != expr_type {
+                            expr = Expression::Widen(Box::new(expr), t, range);
                         }
 
-                        Ok(Statement::Return(
-                            checked_expr.clone(),
-                            checked_expr.data().clone(),
-                            range,
-                        ))
+                        Ok(Statement::Return(expr, expr_type, range))
                     }
                 }
             }
@@ -240,15 +229,17 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
 
         match expression {
             BinaryOperator(op, left, right, _, range) => {
-                let mut checked_left = self.transform_expression(*left)?;
-                let mut checked_right = self.transform_expression(*right)?;
+                let mut left = self.transform_expression(*left)?;
+                let left_type = left.data().clone();
+                let mut right = self.transform_expression(*right)?;
+                let right_type = right.data().clone();
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
                 // the remainder gets stored in the ah register instead of dl. When we can output
                 // assembly using the higher half eight bit registers, we can add this
                 // functionality.
-                if checked_left.data().size() == 8
-                    && checked_right.data().size() == 8
+                if left_type.size() == 8
+                    && right_type.size() == 8
                     && op == BinaryOperatorType::Modulo
                 {
                     return Err(Error::new(
@@ -260,29 +251,23 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if checked_left.data().is_ref() && !op.is_comparison() {
+                if left_type.is_ref() && !op.is_comparison() {
                     // TODO: limit this to only addition and subtraction
                     return Ok(BinaryOperator(
                         op,
-                        Box::new(checked_left.clone()),
-                        Box::new(Widen(
-                            Box::new(checked_right),
-                            checked_left.data().clone(),
-                            range,
-                        )),
-                        checked_left.data().clone(),
+                        Box::new(left),
+                        Box::new(Widen(Box::new(right), left_type.clone(), range)),
+                        left_type,
                         range,
                     ));
                 }
 
-                match checked_left.data().size().cmp(&checked_right.data().size()) {
+                match left_type.size().cmp(&right_type.size()) {
                     Ordering::Greater => {
-                        checked_right =
-                            Widen(Box::new(checked_right), checked_left.data().clone(), range);
+                        right = Widen(Box::new(right), left_type.clone(), range);
                     }
                     Ordering::Less => {
-                        checked_left =
-                            Widen(Box::new(checked_left), checked_right.data().clone(), range);
+                        left = Widen(Box::new(left), right_type, range);
                     }
                     _ => {}
                 };
@@ -290,36 +275,38 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 let result_type = if op.is_comparison() {
                     Type::Bool()
                 } else {
-                    checked_left.data().clone()
+                    left_type
                 };
 
                 Ok(BinaryOperator(
                     op,
-                    Box::new(checked_left),
-                    Box::new(checked_right),
+                    Box::new(left),
+                    Box::new(right),
                     result_type,
                     range,
                 ))
             }
             UnaryOperator(op, expr, _, range) => {
-                let checked_expr = self.transform_expression(*expr)?;
+                let expr = self.transform_expression(*expr)?;
+                let expr_type = expr.data().clone();
+
                 match op {
                     UnaryOperatorType::Negate => Ok(UnaryOperator(
                         UnaryOperatorType::Negate,
-                        Box::new(checked_expr.clone()),
-                        checked_expr.data().clone(),
+                        Box::new(expr),
+                        expr_type,
                         range,
                     )),
                     UnaryOperatorType::Ref => Ok(UnaryOperator(
                         UnaryOperatorType::Ref,
-                        Box::new(checked_expr.clone()),
-                        checked_expr.data().clone().get_ref(),
+                        Box::new(expr),
+                        expr_type.get_ref(),
                         range,
                     )),
                     UnaryOperatorType::Deref => Ok(UnaryOperator(
                         UnaryOperatorType::Deref,
-                        Box::new(checked_expr.clone()),
-                        checked_expr.data().clone().get_deref(),
+                        Box::new(expr),
+                        expr_type.get_deref(),
                         range,
                     )),
                 }
@@ -341,31 +328,27 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
 
                     let mut new_args: Vec<TypedExpression> = vec![];
 
-                    for (arg_expr, expected_type) in args.into_iter().zip(arg_types.iter()) {
-                        let checked_arg = self.transform_expression(arg_expr)?;
+                    for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
+                        let arg = self.transform_expression(arg)?;
+                        let arg_type = arg.data().clone();
 
-                        let new_type = Self::widen_assignment(expected_type, checked_arg.data())
+                        let new_type = Self::widen_assignment(expected_type, &arg_type)
                             .ok_or_else(|| {
                                 Error::new(
                                     ErrorType::TypeCheck,
                                     format!(
                                         "Cannot widen from type {:?} to {:?}",
-                                        checked_arg.data(),
-                                        expected_type
+                                        arg_type, expected_type
                                     ),
                                     range,
                                     self.source_file.to_string(),
                                 )
                             })?;
 
-                        if &new_type != checked_arg.data() {
-                            new_args.push(Expression::Widen(
-                                Box::new(checked_arg),
-                                new_type,
-                                range,
-                            ));
+                        if new_type != arg_type {
+                            new_args.push(Expression::Widen(Box::new(arg), new_type, range));
                         } else {
-                            new_args.push(checked_arg);
+                            new_args.push(arg);
                         }
                     }
 
@@ -383,11 +366,11 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     Ok(Literal(value, Type::UInt64(), range))
                 }
             }
-            VariableRef(name, _, range) => Ok(VariableRef(
-                name.clone(),
-                self.get_scope_value_type(&name, &range)?,
-                range,
-            )),
+            VariableRef(name, _, range) => {
+                let value_type = self.get_scope_value_type(&name, &range)?;
+
+                Ok(VariableRef(name, value_type, range))
+            }
             StringLiteral(value, _, range) => {
                 Ok(StringLiteral(value, Type::UInt8().get_ref(), range))
             }
