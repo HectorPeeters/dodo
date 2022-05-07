@@ -1,0 +1,36 @@
+fn main() {
+    let upto: u32 = 100;
+
+    let total: u32 = 0;
+
+    let b: u32 = 1;
+    while b < upto {
+
+        let a: u32 = 1;
+        while a <= b {
+
+            let c: u32 = b;
+            while c < upto {
+                if a * a + b * b == c * c {
+                    if a + b + c == 1000 {
+                        printf("%d + %d + %d = 1000, product = %d\n", a, b, c, a * b * c);
+                    }
+
+                    total = total + 1;
+                    c = upto;
+                }
+
+                c = c + 1;
+            }
+
+            a = a + 1;
+        }
+
+        b = b + 1;
+    }
+
+    printf("Total: %d\n", total);
+
+    exit(0);
+}
+
