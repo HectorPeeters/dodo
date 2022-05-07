@@ -14,6 +14,7 @@ use X86Operand::*;
 use X86Register::*;
 
 const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
+const GENERAL_PURPOSE_REGISTER_COUNT: usize = 6;
 const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
 const STACK_OFFSET: usize = 16;
 
@@ -23,7 +24,7 @@ pub struct X86NasmGenerator<'a> {
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<'a, ScopeLocation>,
-    allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_OFFSET],
+    allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     strings: Vec<String>,
     current_function_end_label: usize,
 }
@@ -34,7 +35,7 @@ impl<'a> X86NasmGenerator<'a> {
             instructions: vec![],
             label_index: 0,
             scope: Scope::new(source_file),
-            allocated_registers: [false; GENERAL_PURPOSE_REGISTER_OFFSET],
+            allocated_registers: [false; GENERAL_PURPOSE_REGISTER_COUNT],
             strings: vec![],
             current_function_end_label: 0,
         }
@@ -417,12 +418,27 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                         self.free_register(arg_register);
                     }
 
+                    for reg in 0..GENERAL_PURPOSE_REGISTER_COUNT {
+                        if self.allocated_registers[reg] {
+                            let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
+                            self.instr(Push(Reg(reg, 64)));
+                        }
+                    }
+
                     // TODO: get rid of this disgusting hack
                     if name == "printf" {
                         self.instr(Mov(RAX, Constant(0)));
                     }
 
                     self.instr(Call(Reference(name)));
+
+                    for reg in (0..GENERAL_PURPOSE_REGISTER_COUNT).rev() {
+                        if self.allocated_registers[reg] {
+                            let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
+                            self.instr(Pop(Reg(reg, 64)));
+                        }
+                    }
+
                     let result_register = self.get_next_register();
 
                     if return_type != Type::Void() {

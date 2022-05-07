@@ -103,7 +103,8 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                expr.data(), destination_type
+                                expr.data(),
+                                destination_type
                             ),
                             range,
                             self.source_file.to_string(),
