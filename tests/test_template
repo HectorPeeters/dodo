@@ -8,7 +8,7 @@ fn {name}() -> Result<()> {{
     ) {{
         Ok(_) => Ok(()),
         Err(e) => {{
-            e.print().unwrap();
+            e.print("{path}").unwrap();
             Err(e)
         }}
     }}

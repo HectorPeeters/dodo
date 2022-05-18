@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn widen_assignment() -> Result<()> {
-        let mut type_checker = TypeChecker::new("test.dodo");
+        let mut type_checker = TypeChecker::new();
 
         type_checker.transform_statement(Statement::Declaration(
             "test".to_string(),

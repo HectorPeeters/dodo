@@ -6,10 +6,6 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::x86_nasm::X86NasmGenerator;
-use std::fs::File;
-use std::path::PathBuf;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 #[derive(clap::Parser, Debug)]
