@@ -89,6 +89,12 @@ impl<'a> IrBuilder<'a> {
     }
 }
 
+impl<'a> Default for IrBuilder<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
     fn visit_statement(&mut self, statement: Statement<Type>) -> Result<()> {
         use IrInstruction::*;
@@ -104,7 +110,7 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
                 }
 
                 if scoped {
-                    self.scope.pop().map_err(|x| x)?;
+                    self.scope.pop();
                 }
                 Ok(())
             }
@@ -140,7 +146,7 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
 
                 self.visit_statement(*body)?;
 
-                self.scope.pop().map_err(|x| x.with_range(range))?;
+                self.scope.pop();
 
                 Ok(())
             }

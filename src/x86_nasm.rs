@@ -125,6 +125,12 @@ section .data
     }
 }
 
+impl Default for X86NasmGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
     fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
         match statement {
@@ -229,11 +235,11 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 self.write_epilogue();
 
                 self.instr(Ret());
-                self.scope.pop().map_err(|x| x.with_range(range))?;
+                self.scope.pop();
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            Statement::Block(stmts, scoped, _, range) => {
+            Statement::Block(stmts, scoped, _, _) => {
                 if scoped {
                     self.scope.push();
                 }
@@ -243,7 +249,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 }
 
                 if scoped {
-                    self.scope.pop().map_err(|x| x.with_range(range))?;
+                    self.scope.pop();
                 }
             }
             Statement::Expression(expr, _expr_type, _range) => {

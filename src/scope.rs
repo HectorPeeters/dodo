@@ -36,16 +36,10 @@ impl<T: Clone> Scope<T> {
         self.items.push(HashMap::new());
     }
 
-    pub fn pop(&mut self) -> Result<()> {
+    pub fn pop(&mut self) {
         self.items
             .pop()
-            .ok_or_else(|| {
-                Error::new(
-                    ErrorType::Scope,
-                    "Tried popping while scope stack was empty".to_string(),
-                )
-            })
-            .map(|_| ())
+            .expect("Tried popping while scope stack was empty");
     }
 
     pub fn find(&self, name: &str) -> Result<T> {
@@ -62,6 +56,15 @@ impl<T: Clone> Scope<T> {
     }
 }
 
+impl<T> Default for Scope<T>
+where
+    T: Clone,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,7 +75,7 @@ mod tests {
         scope.push();
         scope.insert("test", 12)?;
         assert_eq!(scope.find("test")?, 12);
-        scope.pop()?;
+        scope.pop();
         Ok(())
     }
 
@@ -84,7 +87,7 @@ mod tests {
         scope.insert("tast", 13)?;
         assert_eq!(scope.find("test")?, 12);
         assert_eq!(scope.find("tast")?, 13);
-        scope.pop()?;
+        scope.pop();
         Ok(())
     }
 
@@ -96,9 +99,9 @@ mod tests {
         scope.push();
         scope.insert("test", 13)?;
         assert_eq!(scope.find("test")?, 13);
-        scope.pop()?;
+        scope.pop();
         assert_eq!(scope.find("test")?, 12);
-        scope.pop()?;
+        scope.pop();
         Ok(())
     }
 
@@ -113,20 +116,10 @@ mod tests {
     }
 
     #[test]
-    fn scope_pop_empty() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new();
-
-        scope.pop()?;
-        assert!(scope.pop().is_err());
-
-        Ok(())
-    }
-
-    #[test]
     fn scope_insert_empty() -> Result<()> {
         let mut scope: Scope<u32> = Scope::new();
 
-        scope.pop()?;
+        scope.pop();
         assert!(scope.insert("test", 12).is_err());
 
         Ok(())

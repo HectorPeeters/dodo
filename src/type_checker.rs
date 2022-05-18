@@ -61,6 +61,12 @@ impl TypeChecker {
     }
 }
 
+impl Default for TypeChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AstTransformer<(), Type> for TypeChecker {
     fn transform_statement(&mut self, statement: Statement<()>) -> Result<TypedStatement> {
         match statement {
@@ -75,7 +81,7 @@ impl AstTransformer<(), Type> for TypeChecker {
                     .collect::<Result<Vec<_>>>()?;
 
                 if scoped {
-                    self.scope.pop().map_err(|x| x.with_range(range))?;
+                    self.scope.pop();
                 }
 
                 Ok(Statement::Block(children, scoped, Type::Unknown(), range))
@@ -146,7 +152,7 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 self.current_function_return_type = Type::Unknown();
 
-                self.scope.pop()?;
+                self.scope.pop();
 
                 Ok(Statement::Function(
                     name.clone(),

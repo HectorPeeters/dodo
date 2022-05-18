@@ -144,7 +144,7 @@ impl<'a> PartialEq<TokenType> for &Token<'a> {
     }
 }
 
-pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>> {
+pub fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut lex = TokenType::lexer(input);
 
     let mut tokens = vec![];
