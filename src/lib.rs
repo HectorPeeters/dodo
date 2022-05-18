@@ -2,6 +2,7 @@
 
 pub mod ast;
 pub mod error;
+pub mod ir;
 pub mod parser;
 pub mod scope;
 pub mod tokenizer;
