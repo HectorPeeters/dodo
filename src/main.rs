@@ -38,11 +38,11 @@ struct Args {
 }
 
 #[cfg(not(tarpaulin_include))]
-fn unwrap_or_error<T>(result: Result<T>) -> T {
+fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
     match result {
         Ok(x) => x,
         Err(e) => {
-            e.print().unwrap();
+            e.print(source_file).unwrap();
             std::process::exit(1);
         }
     }
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     // Tokenizing
 
     let step_start_time = Instant::now();
-    let tokens = unwrap_or_error(tokenize(&source, source_file));
+    let tokens = unwrap_or_error(tokenize(&source), source_file);
     timings.push(("Tokenizing", step_start_time.elapsed()));
 
     if args.print_tokens {
@@ -85,8 +85,8 @@ fn main() -> Result<()> {
     // Parsing
 
     let step_start_time = Instant::now();
-    let parser = Parser::new(&tokens, source_file);
-    let statements = unwrap_or_error(parser.into_iter().collect::<Result<Vec<_>>>());
+    let parser = Parser::new(&tokens);
+    let statements = unwrap_or_error(parser.into_iter().collect::<Result<Vec<_>>>(), source_file);
     timings.push(("Parsing", step_start_time.elapsed()));
 
     if args.print_ast {
@@ -97,12 +97,13 @@ fn main() -> Result<()> {
     // Type checking
 
     let step_start_time = Instant::now();
-    let mut type_checker = TypeChecker::new(source_file);
+    let mut type_checker = TypeChecker::new();
     let statements = unwrap_or_error(
         statements
             .into_iter()
             .map(|x| type_checker.transform_statement(x))
             .collect::<Result<Vec<_>>>(),
+        source_file,
     );
     timings.push(("Type checking", step_start_time.elapsed()));
 

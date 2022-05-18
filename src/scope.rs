@@ -1,28 +1,24 @@
-use crate::{error::*, tokenizer::SourceRange};
+use crate::error::*;
 use std::collections::HashMap;
 
-pub struct Scope<'a, T> {
+pub struct Scope<T> {
     items: Vec<HashMap<String, T>>,
-    source_file: &'a str,
 }
 
-impl<'a, T: Clone> Scope<'a, T> {
-    pub fn new(source_file: &'a str) -> Self {
+impl<T: Clone> Scope<T> {
+    pub fn new() -> Self {
         Self {
             items: vec![HashMap::new()],
-            source_file,
         }
     }
 
-    pub fn insert(&mut self, name: &str, data: T, range: &SourceRange) -> Result<()> {
+    pub fn insert(&mut self, name: &str, data: T) -> Result<()> {
         match self.items.last_mut() {
             Some(last_scope) => {
                 if last_scope.contains_key(name) {
                     Err(Error::new(
                         ErrorType::Scope,
                         format!("Identifier '{}' already defined in scope", name),
-                        *range,
-                        self.source_file.to_string(),
                     ))
                 } else {
                     last_scope.insert(name.to_owned(), data);
@@ -32,8 +28,6 @@ impl<'a, T: Clone> Scope<'a, T> {
             None => Err(Error::new(
                 ErrorType::Scope,
                 format!("Trying to insert '{}' into empty scope", name),
-                *range,
-                self.source_file.to_string(),
             )),
         }
     }
@@ -42,34 +36,25 @@ impl<'a, T: Clone> Scope<'a, T> {
         self.items.push(HashMap::new());
     }
 
-    pub fn pop(&mut self, range: &SourceRange) -> Result<()> {
+    pub fn pop(&mut self) -> Result<()> {
         self.items
             .pop()
             .ok_or_else(|| {
                 Error::new(
                     ErrorType::Scope,
                     "Tried popping while scope stack was empty".to_string(),
-                    *range,
-                    self.source_file.to_string(),
                 )
             })
             .map(|_| ())
     }
 
-    pub fn find(&self, name: &str, range: &SourceRange) -> Result<T> {
+    pub fn find(&self, name: &str) -> Result<T> {
         self.items
             .iter()
             .rev()
             .find_map(|x| x.get(name))
             .cloned()
-            .ok_or_else(|| {
-                Error::new(
-                    ErrorType::Scope,
-                    format!("'{}' not found in scope", name),
-                    *range,
-                    self.source_file.to_string(),
-                )
-            })
+            .ok_or_else(|| Error::new(ErrorType::Scope, format!("'{}' not found in scope", name)))
     }
 
     pub fn size(&self) -> Result<usize> {
@@ -83,75 +68,75 @@ mod tests {
 
     #[test]
     fn scope_simple() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        let mut scope: Scope<u32> = Scope::new();
         scope.push();
-        scope.insert("test", 12, &(0..0).into())?;
-        assert_eq!(scope.find("test", &(0..0).into())?, 12);
-        scope.pop(&(0..0).into())?;
+        scope.insert("test", 12)?;
+        assert_eq!(scope.find("test")?, 12);
+        scope.pop()?;
         Ok(())
     }
 
     #[test]
     fn scope_multiple() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        let mut scope: Scope<u32> = Scope::new();
         scope.push();
-        scope.insert("test", 12, &(0..0).into())?;
-        scope.insert("tast", 13, &(0..0).into())?;
-        assert_eq!(scope.find("test", &(0..0).into())?, 12);
-        assert_eq!(scope.find("tast", &(0..0).into())?, 13);
-        scope.pop(&(0..0).into())?;
+        scope.insert("test", 12)?;
+        scope.insert("tast", 13)?;
+        assert_eq!(scope.find("test")?, 12);
+        assert_eq!(scope.find("tast")?, 13);
+        scope.pop()?;
         Ok(())
     }
 
     #[test]
     fn scope_nested() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        let mut scope: Scope<u32> = Scope::new();
         scope.push();
-        scope.insert("test", 12, &(0..0).into())?;
+        scope.insert("test", 12)?;
         scope.push();
-        scope.insert("test", 13, &(0..0).into())?;
-        assert_eq!(scope.find("test", &(0..0).into())?, 13);
-        scope.pop(&(0..0).into())?;
-        assert_eq!(scope.find("test", &(0..0).into())?, 12);
-        scope.pop(&(0..0).into())?;
+        scope.insert("test", 13)?;
+        assert_eq!(scope.find("test")?, 13);
+        scope.pop()?;
+        assert_eq!(scope.find("test")?, 12);
+        scope.pop()?;
         Ok(())
     }
 
     #[test]
     fn scope_key_already_defined() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
-        scope.insert("test", 12, &(0..0).into())?;
+        let mut scope: Scope<u32> = Scope::new();
+        scope.insert("test", 12)?;
 
-        assert!(scope.insert("test", 13, &(0..0).into()).is_err());
+        assert!(scope.insert("test", 13).is_err());
 
         Ok(())
     }
 
     #[test]
     fn scope_pop_empty() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        let mut scope: Scope<u32> = Scope::new();
 
-        scope.pop(&(0..0).into())?;
-        assert!(scope.pop(&(0..0).into()).is_err());
+        scope.pop()?;
+        assert!(scope.pop().is_err());
 
         Ok(())
     }
 
     #[test]
     fn scope_insert_empty() -> Result<()> {
-        let mut scope: Scope<u32> = Scope::new("test.dodo");
+        let mut scope: Scope<u32> = Scope::new();
 
-        scope.pop(&(0..0).into())?;
-        assert!(scope.insert("test", 12, &(0..0).into()).is_err());
+        scope.pop()?;
+        assert!(scope.insert("test", 12).is_err());
 
         Ok(())
     }
 
     #[test]
     fn scope_find_non_existent() -> Result<()> {
-        let scope: Scope<u32> = Scope::new("test.dodo");
+        let scope: Scope<u32> = Scope::new();
 
-        assert!(scope.find("test", &(0..0).into()).is_err());
+        assert!(scope.find("test").is_err());
 
         Ok(())
     }

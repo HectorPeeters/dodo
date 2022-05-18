@@ -44,7 +44,7 @@ impl IrBlock {
 pub struct IrBuilder<'a> {
     blocks: Vec<IrBlock>,
     strings: Vec<String>,
-    scope: Scope<'a, IrReg>,
+    scope: Scope<IrReg>,
     functions: HashMap<&'a str, usize>,
     index: usize,
 }
@@ -54,7 +54,7 @@ impl<'a> IrBuilder<'a> {
         Self {
             blocks: vec![],
             strings: vec![],
-            scope: Scope::new("ir_builder"),
+            scope: Scope::new(),
             functions: HashMap::new(),
             index: 0,
         }
@@ -104,7 +104,7 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
                 }
 
                 if scoped {
-                    self.scope.pop(&(0..0).into())?;
+                    self.scope.pop().map_err(|x| x)?;
                 }
                 Ok(())
             }
@@ -124,7 +124,7 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
 
                 Ok(())
             }
-            Statement::Function(name, args, return_type, body, _, _) => {
+            Statement::Function(name, args, return_type, body, _, range) => {
                 let fn_block = self.new_block(format!("fn_{}", name));
 
                 self.scope.push();
@@ -133,12 +133,14 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
                 for (arg_name, _) in &args {
                     let arg_index = self.index;
                     self.index += 1;
-                    self.scope.insert(arg_name, arg_index, &(0..0).into())?;
+                    self.scope
+                        .insert(arg_name, arg_index)
+                        .map_err(|x| x.with_range(range))?;
                 }
 
                 self.visit_statement(*body)?;
 
-                self.scope.pop(&(0..0).into())?;
+                self.scope.pop().map_err(|x| x.with_range(range))?;
 
                 Ok(())
             }
@@ -171,7 +173,9 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
 
                 Ok(reg)
             }
-            Expression::VariableRef(name, _, _) => self.scope.find(&name, &(0..0).into()),
+            Expression::VariableRef(name, _, range) => {
+                self.scope.find(&name).map_err(|x| x.with_range(range))
+            }
             Expression::StringLiteral(_, _, _) => todo!(),
             Expression::Widen(_, _, _) => todo!(),
         }

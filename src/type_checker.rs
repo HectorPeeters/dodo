@@ -17,24 +17,22 @@ pub enum TypeScopeEntry {
     Function(Vec<Type>, Type),
 }
 
-pub struct TypeChecker<'a> {
-    source_file: &'a str,
-    scope: Scope<'a, TypeScopeEntry>,
+pub struct TypeChecker {
+    scope: Scope<TypeScopeEntry>,
     current_function_return_type: Type,
 }
 
-impl<'a> TypeChecker<'a> {
-    pub fn new(source_file: &'a str) -> Self {
+impl TypeChecker {
+    pub fn new() -> Self {
         Self {
-            source_file,
-            scope: Scope::new(source_file),
+            scope: Scope::new(),
             current_function_return_type: Type::Unknown(),
         }
     }
 
     fn get_scope_value_type(&self, name: &str, range: &SourceRange) -> Result<Type> {
         use TypeScopeEntry::*;
-        match self.scope.find(name, range)? {
+        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
             Value(t) => Ok(t),
             Function(_, _) => {
                 unreachable!("Trying to get type of value with the name of a function")
@@ -48,7 +46,7 @@ impl<'a> TypeChecker<'a> {
         range: &SourceRange,
     ) -> Result<(Vec<Type>, Type)> {
         use TypeScopeEntry::*;
-        match self.scope.find(name, range)? {
+        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
             Value(_) => unreachable!("Trying to get type of function with the name of a value"),
             Function(arg_types, return_type) => Ok((arg_types, return_type)),
         }
@@ -63,7 +61,7 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
-impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
+impl AstTransformer<(), Type> for TypeChecker {
     fn transform_statement(&mut self, statement: Statement<()>) -> Result<TypedStatement> {
         match statement {
             Statement::Block(statements, scoped, _, range) => {
@@ -77,14 +75,15 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     .collect::<Result<Vec<_>>>()?;
 
                 if scoped {
-                    self.scope.pop(&range)?;
+                    self.scope.pop().map_err(|x| x.with_range(range))?;
                 }
 
                 Ok(Statement::Block(children, scoped, Type::Unknown(), range))
             }
             Statement::Declaration(name, variable_type, _, range) => {
                 self.scope
-                    .insert(&name, TypeScopeEntry::Value(variable_type.clone()), &range)?;
+                    .insert(&name, TypeScopeEntry::Value(variable_type.clone()))
+                    .map_err(|x| x.with_range(range))?;
 
                 Ok(Statement::Declaration(
                     name.clone(),
@@ -99,7 +98,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
 
                 let new_type =
                     Self::widen_assignment(&destination_type, expr.data()).ok_or_else(|| {
-                        Error::new(
+                        Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
@@ -107,7 +106,6 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                                 destination_type
                             ),
                             range,
-                            self.source_file.to_string(),
                         )
                     })?;
 
@@ -124,19 +122,21 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 Ok(Statement::Expression(expr, expr_type, range))
             }
             Statement::Function(name, args, return_type, body, _, range) => {
-                self.scope.insert(
-                    &name,
-                    TypeScopeEntry::Function(
-                        args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
-                        return_type.clone(),
-                    ),
-                    &range,
-                )?;
+                self.scope
+                    .insert(
+                        &name,
+                        TypeScopeEntry::Function(
+                            args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
+                            return_type.clone(),
+                        ),
+                    )
+                    .map_err(|x| x.with_range(range))?;
 
                 self.scope.push();
                 for (arg_name, arg_type) in &args {
                     self.scope
-                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()), &range)?;
+                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()))
+                        .map_err(|x| x.with_range(range))?;
                 }
 
                 assert_eq!(self.current_function_return_type, Type::Unknown());
@@ -146,7 +146,7 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
 
                 self.current_function_return_type = Type::Unknown();
 
-                self.scope.pop(&range)?;
+                self.scope.pop()?;
 
                 Ok(Statement::Function(
                     name.clone(),
@@ -161,14 +161,13 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                 let cond = self.transform_expression(cond)?;
 
                 if cond.data() != &Type::Bool() {
-                    return Err(Error::new(
+                    return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {:?}",
                             cond.data()
                         ),
                         range,
-                        self.source_file.to_string(),
                     ));
                 }
                 let body = self.transform_statement(*body)?;
@@ -179,14 +178,13 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
             Statement::While(cond, body, _, range) => {
                 let cond = self.transform_expression(cond)?;
                 if cond.data() != &Type::Bool() {
-                    return Err(Error::new(
+                    return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
                             cond.data()
                         ),
                         range,
-                        self.source_file.to_string(),
                     ));
                 }
 
@@ -204,14 +202,13 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     Self::widen_assignment(&self.current_function_return_type, &expr_type);
 
                 match actual_type {
-                    None => Err(Error::new(
+                    None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
                             self.current_function_return_type, expr_type,
                         ),
                         range,
-                        self.source_file.to_string(),
                     )),
                     Some(t) => {
                         if t != expr_type {
@@ -243,11 +240,10 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
                     && right_type.size() == 8
                     && op == BinaryOperatorType::Modulo
                 {
-                    return Err(Error::new(
+                    return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         "Modulo of two 8 bit integers is currently not supported".to_string(),
                         range,
-                        self.source_file.to_string(),
                     ));
                 }
 
@@ -335,14 +331,13 @@ impl<'a> AstTransformer<(), Type> for TypeChecker<'a> {
 
                         let new_type = Self::widen_assignment(expected_type, &arg_type)
                             .ok_or_else(|| {
-                                Error::new(
+                                Error::new_with_range(
                                     ErrorType::TypeCheck,
                                     format!(
                                         "Cannot widen from type {:?} to {:?}",
                                         arg_type, expected_type
                                     ),
                                     range,
-                                    self.source_file.to_string(),
                                 )
                             })?;
 

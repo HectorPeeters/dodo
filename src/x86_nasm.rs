@@ -20,21 +20,21 @@ const STACK_OFFSET: usize = 16;
 
 pub type ScopeLocation = usize;
 
-pub struct X86NasmGenerator<'a> {
+pub struct X86NasmGenerator {
     instructions: Vec<X86Instruction>,
     label_index: usize,
-    scope: Scope<'a, ScopeLocation>,
+    scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     strings: Vec<String>,
     current_function_end_label: usize,
 }
 
-impl<'a> X86NasmGenerator<'a> {
-    pub fn new(source_file: &'a str) -> Self {
+impl<'a> X86NasmGenerator {
+    pub fn new() -> Self {
         Self {
             instructions: vec![],
             label_index: 0,
-            scope: Scope::new(source_file),
+            scope: Scope::new(),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_COUNT],
             strings: vec![],
             current_function_end_label: 0,
@@ -125,16 +125,18 @@ section .data
     }
 }
 
-impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
+impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
     fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
         match statement {
             Statement::Declaration(name, _value_type, _, range) => {
-                self.scope.insert(&name, self.scope.size()?, &range)?;
+                self.scope
+                    .insert(&name, self.scope.size()?)
+                    .map_err(|x| x.with_range(range))?;
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value, value_type, range) => {
-                let offset = self.scope.find(&name, &range)?;
+                let offset = self.scope.find(&name).map_err(|x| x.with_range(range))?;
                 let value_reg = self.visit_expression(value)?;
 
                 self.instr(Mov(
@@ -210,7 +212,9 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
 
                 for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.size()?;
-                    self.scope.insert(arg_name, offset, &range)?;
+                    self.scope
+                        .insert(arg_name, offset)
+                        .map_err(|x| x.with_range(range))?;
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET),
                         Reg(arg_reg, arg_type.size()),
@@ -225,7 +229,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                 self.write_epilogue();
 
                 self.instr(Ret());
-                self.scope.pop(&range)?;
+                self.scope.pop().map_err(|x| x.with_range(range))?;
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
@@ -239,7 +243,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                 }
 
                 if scoped {
-                    self.scope.pop(&range)?;
+                    self.scope.pop().map_err(|x| x.with_range(range))?;
                 }
             }
             Statement::Expression(expr, _expr_type, _range) => {
@@ -264,7 +268,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
 
                 match &*expr {
                     Expression::VariableRef(name, value_type, range) => {
-                        let offset = self.scope.find(name, range)?;
+                        let offset = self.scope.find(name).map_err(|x| x.with_range(*range))?;
                         let result_type = value_type.clone().get_ref();
 
                         self.instr(Lea(
@@ -358,7 +362,7 @@ impl<'a> ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator<'a> {
                 Ok(left_reg)
             }
             Expression::VariableRef(name, value_type, range) => {
-                let offset = self.scope.find(&name, &range)?;
+                let offset = self.scope.find(&name).map_err(|x| x.with_range(range))?;
                 let register = self.get_next_register();
 
                 self.instr(Mov(

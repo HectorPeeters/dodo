@@ -20,11 +20,10 @@ pub struct Parser<'a> {
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
-    source_file: &'a str,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a [Token], source_file: &'a str) -> Self {
+    pub fn new(tokens: &'a [Token]) -> Self {
         let mut prefix_fns: HashMap<_, PrefixParseFn<'a>> = HashMap::new();
         prefix_fns.insert(
             TokenType::Identifier,
@@ -58,7 +57,6 @@ impl<'a> Parser<'a> {
             index: 0,
             prefix_fns,
             infix_fns,
-            source_file,
         }
     }
 
@@ -79,11 +77,10 @@ impl<'a> Parser<'a> {
 
     fn peek(&self) -> Result<&'a Token<'a>> {
         if self.eof() {
-            Err(Error::new(
+            Err(Error::new_with_range(
                 ErrorType::Parser,
                 "Token stream out of bounds".to_string(),
                 self.tokens.last().unwrap().range,
-                self.source_file.to_string(),
             ))
         } else {
             Ok(&self.tokens[self.index])
@@ -92,11 +89,10 @@ impl<'a> Parser<'a> {
 
     fn peeks(&self, i: usize) -> Result<&'a Token<'a>> {
         if self.index + i >= self.tokens.len() {
-            Err(Error::new(
+            Err(Error::new_with_range(
                 ErrorType::Parser,
                 "Token stream out of bounds".to_string(),
                 self.tokens.last().unwrap().range,
-                self.source_file.to_string(),
             ))
         } else {
             Ok(&self.tokens[self.index + i])
@@ -112,14 +108,13 @@ impl<'a> Parser<'a> {
     fn consume_assert(&mut self, token_type: TokenType) -> Result<&'a Token<'a>> {
         let token = self.consume()?;
         if token.token_type != token_type {
-            return Err(Error::new(
+            return Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!(
                     "Expected token {:?}, but got {:?}",
                     token_type, token.token_type
                 ),
                 token.range,
-                self.source_file.to_string(),
             ));
         }
         Ok(token)
@@ -133,11 +128,10 @@ impl<'a> Parser<'a> {
             TokenType::UInt32 => Ok(Type::UInt32()),
             TokenType::UInt64 => Ok(Type::UInt64()),
             TokenType::Bool => Ok(Type::Bool()),
-            _ => Err(Error::new(
+            _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Parsing type but got token {:?}", token.token_type),
                 token.range,
-                self.source_file.to_string(),
             )),
         };
 
@@ -212,11 +206,10 @@ impl<'a> Parser<'a> {
         match token.token_type {
             TokenType::IntegerLiteral => match token.value.parse() {
                 Ok(value) => Ok(Expression::Literal(value, (), range)),
-                Err(_) => Err(Error::new(
+                Err(_) => Err(Error::new_with_range(
                     ErrorType::Parser,
                     format!("Failed to parse '{}' to int", token.value),
                     token.range,
-                    self.source_file.to_string(),
                 )),
             },
             TokenType::StringLiteral => Ok(Expression::StringLiteral(
@@ -229,11 +222,10 @@ impl<'a> Parser<'a> {
                 (),
                 (constant_start..self.current_index(true)).into(),
             )),
-            _ => Err(Error::new(
+            _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Parsing constant but got token {:?}", token.token_type),
                 token.range,
-                self.source_file.to_string(),
             )),
         }
     }
@@ -277,14 +269,13 @@ impl<'a> Parser<'a> {
 
         let mut left = match self.prefix_fns.get(&token_type) {
             Some(func) => func(self),
-            None => Err(Error::new(
+            None => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!(
                     "Did not expect token '{:?}' while parsing prefix expression",
                     token_type
                 ),
                 self.peek()?.range,
-                self.source_file.to_string(),
             )),
         }?;
 
@@ -307,14 +298,13 @@ impl<'a> Parser<'a> {
                     }
                     func(self, start_index, left, prec)
                 }
-                None => Err(Error::new(
+                None => Err(Error::new_with_range(
                     ErrorType::Parser,
                     format!(
                         "Did not expect token '{:?}' while parsing infix expression",
                         token_type
                     ),
                     self.peek()?.range,
-                    self.source_file.to_string(),
                 )),
             }?;
         }
@@ -501,19 +491,17 @@ impl<'a> Parser<'a> {
                     self.consume_assert(TokenType::SemiColon)?;
                     Ok(result)
                 }
-                _ => Err(Error::new(
+                _ => Err(Error::new_with_range(
                     ErrorType::Parser,
                     format!("Unexpected token {:?}", token.token_type),
                     token.range,
-                    self.source_file.to_string(),
                 )),
             },
             TokenType::Fn => self.parse_function(),
-            _ => Err(Error::new(
+            _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Unexpected token {:?}", token.token_type),
                 token.range,
-                self.source_file.to_string(),
             )),
         }
     }
@@ -536,9 +524,9 @@ mod tests {
     use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
 
     fn parse_statements(input: &str) -> Result<Vec<Statement<()>>> {
-        let tokens = tokenize(input, "test.dodo")?;
+        let tokens = tokenize(input)?;
 
-        let mut parser = Parser::new(&tokens, "test.dodo");
+        let mut parser = Parser::new(&tokens);
         let mut result = vec![];
         while !parser.eof() {
             result.push(parser.parse_statement()?);
@@ -548,9 +536,9 @@ mod tests {
     }
 
     fn parse_expressions(input: &str) -> Result<Vec<Expression<()>>> {
-        let tokens = tokenize(input, "test.dodo")?;
+        let tokens = tokenize(input)?;
 
-        let mut parser = Parser::new(&tokens, "test.dodo");
+        let mut parser = Parser::new(&tokens);
         let mut result = vec![];
         while !parser.eof() {
             result.push(parser.parse_expression(0)?);
@@ -560,9 +548,9 @@ mod tests {
     }
 
     fn parse_function(input: &str) -> Result<Statement<()>> {
-        let tokens = tokenize(input, "test.dodo")?;
+        let tokens = tokenize(input)?;
 
-        let mut parser = Parser::new(&tokens, "test.dodo");
+        let mut parser = Parser::new(&tokens);
         parser.parse_function()
     }
 

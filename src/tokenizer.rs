@@ -144,7 +144,7 @@ impl<'a> PartialEq<TokenType> for &Token<'a> {
     }
 }
 
-pub fn tokenize<'a>(input: &'a str, file: &'a str) -> Result<Vec<Token<'a>>> {
+pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>> {
     let mut lex = TokenType::lexer(input);
 
     let mut tokens = vec![];
@@ -153,11 +153,10 @@ pub fn tokenize<'a>(input: &'a str, file: &'a str) -> Result<Vec<Token<'a>>> {
         match token_type {
             TokenType::Whitespace | TokenType::Comment => continue,
             TokenType::Error => {
-                return Err(Error::new(
+                return Err(Error::new_with_range(
                     ErrorType::Lexer,
                     "Unknown character".to_string(),
                     lex.span().into(),
-                    file.to_string(),
                 ))
             }
             _ => tokens.push(Token::new(token_type, lex.slice(), lex.span().into())),
@@ -173,7 +172,7 @@ mod tests {
     use super::*;
 
     fn get_tokens(input: &str) -> Vec<Token> {
-        let tokens = tokenize(input, "test.dodo");
+        let tokens = tokenize(input);
         assert!(tokens.is_ok());
         tokens.unwrap()
     }
@@ -260,14 +259,14 @@ mod tests {
 
     #[test]
     fn tokenizer_identifier_error() {
-        let tokens = tokenize("_identifier", "test.dodo");
+        let tokens = tokenize("_identifier");
 
         assert!(tokens.is_err());
     }
 
     #[test]
     fn tokenizer_test_error() {
-        let tokens = tokenize("return #;", "test.dodo");
+        let tokens = tokenize("return #;");
 
         assert!(tokens.is_err());
     }
