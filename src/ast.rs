@@ -41,7 +41,7 @@ impl<T> Statement<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinaryOperatorType {
     Add,
     Subtract,
@@ -83,7 +83,7 @@ impl BinaryOperatorType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperatorType {
     Negate,
     Ref,
@@ -172,7 +172,7 @@ mod tests {
         let ast = Statement::If(expression.clone(), Box::new(ast), 12, (0..0).into());
         assert_eq!(*ast.data(), 12);
 
-        let ast = Statement::Return(expression.clone(), 12, (0..0).into());
+        let ast = Statement::Return(expression, 12, (0..0).into());
         assert_eq!(*ast.data(), 12);
 
         let ast = Statement::Function(

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement},
     error::Result,
@@ -41,21 +39,19 @@ impl IrBlock {
     }
 }
 
-pub struct IrBuilder<'a> {
+pub struct IrBuilder {
     blocks: Vec<IrBlock>,
     strings: Vec<String>,
     scope: Scope<IrReg>,
-    functions: HashMap<&'a str, usize>,
     index: usize,
 }
 
-impl<'a> IrBuilder<'a> {
+impl IrBuilder {
     pub fn new() -> Self {
         Self {
             blocks: vec![],
             strings: vec![],
             scope: Scope::new(),
-            functions: HashMap::new(),
             index: 0,
         }
     }
@@ -89,13 +85,13 @@ impl<'a> IrBuilder<'a> {
     }
 }
 
-impl<'a> Default for IrBuilder<'a> {
+impl Default for IrBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
+impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
     fn visit_statement(&mut self, statement: Statement<Type>) -> Result<()> {
         use IrInstruction::*;
 
@@ -121,7 +117,7 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
                 Ok(())
             }
             Statement::While(_, _, _, _) => todo!(),
-            Statement::If(_, _, _, _) => todo!(),
+            Statement::If(_cond, _body, _, _) => todo!(),
             Statement::Return(expr, _, _) => {
                 let expr_reg = self.visit_expression(expr)?;
                 let block = self.current_block();
@@ -130,8 +126,8 @@ impl<'a> ConsumingAstVisitor<Type, (), IrReg> for IrBuilder<'a> {
 
                 Ok(())
             }
-            Statement::Function(name, args, return_type, body, _, range) => {
-                let fn_block = self.new_block(format!("fn_{}", name));
+            Statement::Function(name, args, _return_type, body, _, range) => {
+                let _fn_block = self.new_block(format!("fn_{}", name));
 
                 self.scope.push();
 
