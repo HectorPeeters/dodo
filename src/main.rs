@@ -1,16 +1,14 @@
 #![feature(exit_status_error)]
 
 use clap::StructOpt;
-use dodo::ast::{AstTransformer, ConsumingAstVisitor};
+use dodo::ast::AstTransformer;
+use dodo::ast::ConsumingAstVisitor;
+use dodo::backend::Backend;
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
 use dodo::x86_nasm::X86NasmGenerator;
-use std::fs::File;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::{Duration, Instant};
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -18,13 +16,6 @@ struct Args {
     source_path: std::path::PathBuf,
     #[clap(short, long)]
     output: Option<std::path::PathBuf>,
-    #[clap(long)]
-    assembly_output: Option<std::path::PathBuf>,
-
-    #[clap(short, long, default_value_t = String::from("nasm"))]
-    assembler_command: String,
-    #[clap(short, long, default_value_t = String::from("gcc"))]
-    linker_command: String,
 
     #[clap(long)]
     print_ast: bool,
@@ -50,13 +41,11 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
+    use std::path::PathBuf;
+
     let args = Args::parse();
 
-    let mut timings: Vec<(&'static str, Duration)> = vec![];
-
     // Reading source
-
-    let step_start_time = Instant::now();
 
     let source = std::fs::read_to_string(&args.source_path);
     if source.is_err() {
@@ -67,13 +56,9 @@ fn main() -> Result<()> {
 
     let source_file = args.source_path.to_str().unwrap();
 
-    timings.push(("Reading source", step_start_time.elapsed()));
-
     // Tokenizing
 
-    let step_start_time = Instant::now();
     let tokens = unwrap_or_error(tokenize(&source), source_file);
-    timings.push(("Tokenizing", step_start_time.elapsed()));
 
     if args.print_tokens {
         println!("Tokens:");
@@ -82,10 +67,8 @@ fn main() -> Result<()> {
 
     // Parsing
 
-    let step_start_time = Instant::now();
     let parser = Parser::new(&tokens);
     let statements = unwrap_or_error(parser.into_iter().collect::<Result<Vec<_>>>(), source_file);
-    timings.push(("Parsing", step_start_time.elapsed()));
 
     if args.print_ast {
         println!("Ast:");
@@ -94,7 +77,6 @@ fn main() -> Result<()> {
 
     // Type checking
 
-    let step_start_time = Instant::now();
     let mut type_checker = TypeChecker::new();
     let statements = unwrap_or_error(
         statements
@@ -103,96 +85,24 @@ fn main() -> Result<()> {
             .collect::<Result<Vec<_>>>(),
         source_file,
     );
-    timings.push(("Type checking", step_start_time.elapsed()));
 
     if args.print_typed_ast {
         println!("Typed ast:");
         println!("{:#?}", statements);
     }
 
-    // Generating assembly
+    // Backend
 
-    let step_start_time = Instant::now();
-    let assembly_file = &args
-        .assembly_output
-        .unwrap_or_else(|| PathBuf::from("output.asm"));
-    let mut output = File::create(&assembly_file).unwrap();
-    let mut generator = X86NasmGenerator::new();
+    let mut backend = X86NasmGenerator::new();
     unwrap_or_error(
         statements
             .into_iter()
-            .map(|x| generator.visit_statement(x))
+            .map(|x| backend.visit_statement(x))
             .collect::<Result<Vec<_>>>(),
         source_file,
     );
-    generator.write(&mut output);
-    timings.push(("Generating assembly", step_start_time.elapsed()));
 
-    // Compiling assemlby
-
-    let step_start_time = Instant::now();
-    let object_file = std::env::temp_dir().join("output.o");
-    let assembler_output = Command::new(args.assembler_command)
-        .args([
-            "-f",
-            "elf64",
-            assembly_file.to_str().unwrap(),
-            "-o",
-            object_file.to_str().unwrap(),
-            "-g",
-        ])
-        .output()
-        .expect("Failed to execute assembler");
-    if assembler_output.status.exit_ok().is_err() {
-        println!(
-            "Assembling failed\n\n{}",
-            String::from_utf8(assembler_output.stderr).unwrap()
-        );
-        return Ok(());
-    }
-    timings.push(("Compiling", step_start_time.elapsed()));
-
-    // Linking
-
-    let step_start_time = Instant::now();
-    let linker_output = Command::new(args.linker_command)
-        .args([
-            "-o",
-            args.output
-                .unwrap_or_else(|| PathBuf::from("a.out"))
-                .to_str()
-                .unwrap(),
-            object_file.to_str().unwrap(),
-            "-nostartfiles",
-            "-no-pie",
-            "-g",
-        ])
-        .output()
-        .expect("Failed to execute linker");
-    if linker_output.status.exit_ok().is_err() {
-        println!(
-            "Linking failed\n\n{}",
-            String::from_utf8(assembler_output.stderr).unwrap()
-        );
-        return Ok(());
-    }
-    timings.push(("Linking", step_start_time.elapsed()));
-
-    // Reporting
-
-    if args.include_timings {
-        for (name, duration) in &timings {
-            println!("{}: {} ms", name, duration.as_micros() as f64 / 1000.0);
-        }
-
-        println!(
-            "\nTotal: {} ms",
-            timings
-                .into_iter()
-                .map(|(_, duration)| duration.as_millis())
-                .sum::<u128>()
-        );
-    }
+    backend.finalize(&args.output.unwrap_or(PathBuf::from("a.out")))?;
 
     Ok(())
 }

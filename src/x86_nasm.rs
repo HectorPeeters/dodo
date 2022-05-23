@@ -3,12 +3,18 @@ use crate::{
         BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
         TypedStatement, UnaryOperatorType,
     },
-    error::Result,
+    backend::Backend,
+    error::{Error, ErrorType, Result},
     scope::Scope,
     types::Type,
     x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RDX, RSP},
 };
-use std::io::Write;
+use std::{
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use X86Instruction::*;
 use X86Operand::*;
 use X86Register::*;
@@ -89,7 +95,7 @@ impl<'a> X86NasmGenerator {
         self.instr(Pop(RBP));
     }
 
-    pub fn write<T: Write>(&'a self, writer: &'a mut T) {
+    fn write<T: Write>(&'a self, writer: &'a mut T) {
         writeln!(
             writer,
             r#"extern printf
@@ -122,6 +128,67 @@ section .data
                 .join("\n")
         )
         .unwrap();
+    }
+}
+
+impl Backend<(), X86Register> for X86NasmGenerator {
+    fn finalize(&mut self, output: &Path) -> Result<()> {
+        // Generating assembly
+
+        let assembly_file = PathBuf::from("output.asm");
+        let mut assembly_output = File::create(&assembly_file).unwrap();
+        self.write(&mut assembly_output);
+
+        // Compiling assemlby
+
+        let object_file = std::env::temp_dir().join("output.o");
+        let assembler_output = Command::new("nasm")
+            .args([
+                "-f",
+                "elf64",
+                assembly_file.to_str().unwrap(),
+                "-o",
+                object_file.to_str().unwrap(),
+                "-g",
+            ])
+            .output()
+            .expect("Failed to execute assembler");
+
+        assembler_output.status.exit_ok().map_err(|_| {
+            Error::new(
+                ErrorType::Postprocess,
+                format!(
+                    "Assembling failed\n\n{}",
+                    String::from_utf8(assembler_output.stderr).unwrap()
+                ),
+            )
+        })?;
+
+        // Linking
+
+        let linker_output = Command::new("gcc")
+            .args([
+                "-o",
+                output.to_str().unwrap(),
+                object_file.to_str().unwrap(),
+                "-nostartfiles",
+                "-no-pie",
+                "-g",
+            ])
+            .output()
+            .expect("Failed to execute linker");
+
+        linker_output.status.exit_ok().map_err(|_| {
+            Error::new(
+                ErrorType::Postprocess,
+                format!(
+                    "Linking failed\n\n{}",
+                    String::from_utf8(linker_output.stderr).unwrap()
+                ),
+            )
+        })?;
+
+        Ok(())
     }
 }
 

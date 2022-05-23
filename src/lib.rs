@@ -1,6 +1,8 @@
 #![feature(int_log)]
+#![feature(exit_status_error)]
 
 pub mod ast;
+pub mod backend;
 pub mod error;
 pub mod ir;
 pub mod parser;
