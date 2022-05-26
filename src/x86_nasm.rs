@@ -9,12 +9,7 @@ use crate::{
     types::Type,
     x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RDX, RSP},
 };
-use std::{
-    fs::File,
-    io::Write,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{fs::File, io::Write, path::Path, process::Command};
 use X86Instruction::*;
 use X86Operand::*;
 use X86Register::*;
@@ -131,11 +126,15 @@ section .data
     }
 }
 
-impl Backend<(), X86Register> for X86NasmGenerator {
+impl Backend for X86NasmGenerator {
+    fn process_statement(&mut self, statement: TypedStatement) -> Result<()> {
+        self.visit_statement(statement)
+    }
+
     fn finalize(&mut self, output: &Path) -> Result<()> {
         // Generating assembly
 
-        let assembly_file = PathBuf::from("output.asm");
+        let assembly_file = output.with_extension("asm");
         let mut assembly_output = File::create(&assembly_file).unwrap();
         self.write(&mut assembly_output);
 

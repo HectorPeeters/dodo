@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod backend;
+pub mod cpp;
 pub mod error;
 pub mod ir;
 pub mod parser;

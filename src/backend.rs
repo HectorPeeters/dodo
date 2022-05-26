@@ -1,7 +1,9 @@
 use std::path::Path;
 
-use crate::{ast::ConsumingAstVisitor, error::Result, types::Type};
+use crate::{ast::TypedStatement, error::Result};
 
-pub trait Backend<RS, RE>: ConsumingAstVisitor<Type, RS, RE> {
+pub trait Backend {
+    fn process_statement(&mut self, statement: TypedStatement) -> Result<()>;
+
     fn finalize(&mut self, output: &Path) -> Result<()>;
 }

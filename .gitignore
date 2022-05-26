@@ -1,4 +1,7 @@
 /target
 
+.vimspector.json
+
 *.asm
 *.out
+*.cpp

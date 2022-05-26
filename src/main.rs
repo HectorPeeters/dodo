@@ -1,14 +1,20 @@
-#![feature(exit_status_error)]
-
+use clap::ArgEnum;
 use clap::StructOpt;
 use dodo::ast::AstTransformer;
-use dodo::ast::ConsumingAstVisitor;
 use dodo::backend::Backend;
+use dodo::cpp::CppGenerator;
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
 use dodo::x86_nasm::X86NasmGenerator;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, ArgEnum)]
+pub enum Backends {
+    X86,
+    Cpp,
+}
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -17,15 +23,15 @@ struct Args {
     #[clap(short, long)]
     output: Option<std::path::PathBuf>,
 
+    #[clap(short, long, arg_enum)]
+    backend: Option<Backends>,
+
+    #[clap(long)]
+    print_tokens: bool,
     #[clap(long)]
     print_ast: bool,
     #[clap(long)]
     print_typed_ast: bool,
-    #[clap(long)]
-    print_tokens: bool,
-
-    #[clap(long)]
-    include_timings: bool,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -41,8 +47,6 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use std::path::PathBuf;
-
     let args = Args::parse();
 
     // Reading source
@@ -93,16 +97,20 @@ fn main() -> Result<()> {
 
     // Backend
 
-    let mut backend = X86NasmGenerator::new();
+    let mut backend: Box<dyn Backend> = match args.backend {
+        Some(Backends::X86) | None => Box::new(X86NasmGenerator::new()),
+        Some(Backends::Cpp) => Box::new(CppGenerator::new()),
+    };
+
     unwrap_or_error(
         statements
             .into_iter()
-            .map(|x| backend.visit_statement(x))
+            .map(|x| backend.process_statement(x))
             .collect::<Result<Vec<_>>>(),
         source_file,
     );
 
-    backend.finalize(&args.output.unwrap_or(PathBuf::from("a.out")))?;
+    backend.finalize(&args.output.unwrap_or_else(|| PathBuf::from("a.out")))?;
 
     Ok(())
 }
