@@ -51,6 +51,10 @@ impl Backend for CppGenerator {
 
         Ok(())
     }
+
+    fn name(&self) -> &'static str {
+        "c++"
+    }
 }
 
 fn to_cpp_type(type_: Type) -> String {

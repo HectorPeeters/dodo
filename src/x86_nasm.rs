@@ -140,7 +140,7 @@ impl Backend for X86NasmGenerator {
 
         // Compiling assemlby
 
-        let object_file = std::env::temp_dir().join("output.o");
+        let object_file = std::env::temp_dir().join(format!("{:?}.o", output.file_name().unwrap()));
         let assembler_output = Command::new("nasm")
             .args([
                 "-f",
@@ -188,6 +188,10 @@ impl Backend for X86NasmGenerator {
         })?;
 
         Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "nasm-x86_64"
     }
 }
 
@@ -444,7 +448,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 Ok(register)
             }
-            Expression::FunctionCall(name, mut args, return_type, _range) => {
+            Expression::FunctionCall(name, args, return_type, _range) => {
                 assert!(args.len() <= 6);
 
                 let arg_count = args.len();

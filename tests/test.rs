@@ -11,6 +11,8 @@ use dodo::{
 };
 
 fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
+    println!("RUNNING '{}' with backend '{}'...", file, backend.name());
+
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
