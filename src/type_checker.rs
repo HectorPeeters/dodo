@@ -315,7 +315,7 @@ impl AstTransformer<(), Type> for TypeChecker {
                 }
             }
             FunctionCall(name, args, _, range) => {
-                if name == "printf" || name == "exit" || name == "syscall" {
+                if name == "printf" || name == "exit" {
                     Ok(FunctionCall(
                         name,
                         args.into_iter()

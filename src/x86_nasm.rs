@@ -447,91 +447,56 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
             Expression::FunctionCall(name, mut args, return_type, _range) => {
                 assert!(args.len() <= 6);
 
-                if name.starts_with("syscall") {
-                    let syscall_num = args.remove(0);
-                    let arg_count = args.len();
-                    let syscall_num_reg = self.visit_expression(syscall_num)?;
+                let arg_count = args.len();
 
-                    for arg in args.into_iter().zip(&ARGUMENT_REGISTERS) {
-                        let arg_size = arg.0.data().size();
-                        let arg_register = self.visit_expression(arg.0)?;
-                        if arg.1.is_caller_saved() {
-                            self.instr(Push(Reg(*arg.1, 64)));
-                        }
-                        self.instr(Mov(Reg(*arg.1, arg_size), Reg(arg_register, arg_size)));
-                        self.free_register(arg_register);
+                for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
+                    let arg_size = expr.data().size();
+                    let arg_register = self.visit_expression(expr)?;
+
+                    if dest_reg.is_caller_saved() {
+                        self.instr(Push(Reg(*dest_reg, 64)));
                     }
+                    self.instr(Mov(Reg(*dest_reg, arg_size), Reg(arg_register, arg_size)));
+                    self.free_register(arg_register);
+                }
 
-                    self.instr(Mov(RAX, Reg(syscall_num_reg, 64)));
-                    self.instr(Syscall());
-
-                    self.free_register(syscall_num_reg);
-
-                    for i in (0..arg_count).rev() {
-                        if ARGUMENT_REGISTERS[i].is_caller_saved() {
-                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i], 64)));
-                        }
+                for reg in 0..GENERAL_PURPOSE_REGISTER_COUNT {
+                    if self.allocated_registers[reg] {
+                        let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
+                        self.instr(Push(Reg(reg, 64)));
                     }
+                }
 
-                    let result_reg = self.get_next_register();
+                // TODO: get rid of this disgusting hack
+                if name == "printf" {
+                    self.instr(Mov(RAX, Constant(0)));
+                }
+
+                self.instr(Call(Reference(name)));
+
+                for reg in (0..GENERAL_PURPOSE_REGISTER_COUNT).rev() {
+                    if self.allocated_registers[reg] {
+                        let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
+                        self.instr(Pop(Reg(reg, 64)));
+                    }
+                }
+
+                let result_register = self.get_next_register();
+
+                if return_type != Type::Void() {
                     self.instr(Mov(
-                        Reg(result_reg, return_type.size()),
+                        Reg(result_register, return_type.size()),
                         Reg(Rax, return_type.size()),
                     ));
-
-                    Ok(result_reg)
-                } else {
-                    let arg_count = args.len();
-
-                    for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
-                        let arg_size = expr.data().size();
-                        let arg_register = self.visit_expression(expr)?;
-
-                        if dest_reg.is_caller_saved() {
-                            self.instr(Push(Reg(*dest_reg, 64)));
-                        }
-                        self.instr(Mov(Reg(*dest_reg, arg_size), Reg(arg_register, arg_size)));
-                        self.free_register(arg_register);
-                    }
-
-                    for reg in 0..GENERAL_PURPOSE_REGISTER_COUNT {
-                        if self.allocated_registers[reg] {
-                            let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
-                            self.instr(Push(Reg(reg, 64)));
-                        }
-                    }
-
-                    // TODO: get rid of this disgusting hack
-                    if name == "printf" {
-                        self.instr(Mov(RAX, Constant(0)));
-                    }
-
-                    self.instr(Call(Reference(name)));
-
-                    for reg in (0..GENERAL_PURPOSE_REGISTER_COUNT).rev() {
-                        if self.allocated_registers[reg] {
-                            let reg = X86Register::from(reg + GENERAL_PURPOSE_REGISTER_OFFSET);
-                            self.instr(Pop(Reg(reg, 64)));
-                        }
-                    }
-
-                    let result_register = self.get_next_register();
-
-                    if return_type != Type::Void() {
-                        self.instr(Mov(
-                            Reg(result_register, return_type.size()),
-                            Reg(Rax, return_type.size()),
-                        ));
-                    }
-
-                    for i in (0..arg_count).rev() {
-                        if ARGUMENT_REGISTERS[i].is_caller_saved() {
-                            self.instr(Pop(Reg(ARGUMENT_REGISTERS[i], 64)));
-                        }
-                    }
-
-                    Ok(result_register)
                 }
+
+                for i in (0..arg_count).rev() {
+                    if ARGUMENT_REGISTERS[i].is_caller_saved() {
+                        self.instr(Pop(Reg(ARGUMENT_REGISTERS[i], 64)));
+                    }
+                }
+
+                Ok(result_register)
             }
             Expression::StringLiteral(value, _, _range) => {
                 let label = self.store_new_string(&value);

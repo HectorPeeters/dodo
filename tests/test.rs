@@ -129,11 +129,6 @@ fn test_string() -> Result<()> {
 }
 
 #[test]
-fn test_syscall() -> Result<()> {
-    test_for_all_backends("tests/data/syscall.dodo")
-}
-
-#[test]
 fn test_types() -> Result<()> {
     test_for_all_backends("tests/data/types.dodo")
 }
