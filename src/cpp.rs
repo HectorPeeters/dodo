@@ -198,6 +198,8 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
                     BinaryOperatorType::Multiply => format!("({} * {})", left, right),
                     BinaryOperatorType::Divide => format!("({} / {})", left, right),
                     BinaryOperatorType::Modulo => format!("({} % {})", left, right),
+                    BinaryOperatorType::ShiftLeft => format!("({} << {})", left, right),
+                    BinaryOperatorType::ShiftRight => format!("({} >> {})", left, right),
                     BinaryOperatorType::Equal => format!("({} == {})", left, right),
                     BinaryOperatorType::NotEqual => format!("({} != {})", left, right),
                     BinaryOperatorType::LessThan => format!("({} < {})", left, right),

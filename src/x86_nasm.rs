@@ -445,6 +445,16 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                         self.instr(Div(right_op));
                         self.instr(Mov(left_op, Reg(Rdx, left_size)));
                     }
+                    BinaryOperatorType::ShiftLeft => {
+                        // TODO: this could overwrite RCX
+                        self.instr(Mov(Reg(Rcx, right_size), right_op));
+                        self.instr(Shl(left_op, Reg(Rcx, 8)));
+                    }
+                    BinaryOperatorType::ShiftRight => {
+                        // TODO: this could overwrite RCX
+                        self.instr(Mov(Reg(Rcx, right_size), right_op));
+                        self.instr(Shr(left_op, Reg(Rcx, 8)));
+                    }
                     BinaryOperatorType::Equal => {
                         self.instr(Cmp(left_op, right_op));
                         self.instr(SetZ(Reg(left_reg, 8)));

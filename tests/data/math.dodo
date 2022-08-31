@@ -72,6 +72,14 @@ fn precedence() {
     printf("Precedence success\n");
 }
 
+fn shift() {
+    let x: u32 = 12;
+    assert_eq(x << 2, 48);
+    assert_eq(x >> 2, 3);
+
+    printf("Shift success\n");
+}
+
 fn main() {
     let x: u32 = 12;
     let y: u32 = 4;
@@ -82,6 +90,7 @@ fn main() {
     division();
     modulo();
     precedence();
+    shift();
 
     printf("Success\n");
     

@@ -144,6 +144,8 @@ pub enum X86Instruction {
     Sub(X86Operand, X86Operand),
     Mul(X86Operand, X86Operand),
     Div(X86Operand),
+    Shl(X86Operand, X86Operand),
+    Shr(X86Operand, X86Operand),
     Cmp(X86Operand, X86Operand),
     SetZ(X86Operand),
     SetNZ(X86Operand),
@@ -163,7 +165,6 @@ pub enum X86Instruction {
     Dd(Vec<u32>),
     Dq(Vec<u64>),
 }
-
 impl fmt::Display for X86Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use X86Instruction::*;
@@ -177,6 +178,8 @@ impl fmt::Display for X86Instruction {
             Sub(d, s) => write!(f, "sub {d}, {s}"),
             Mul(d, s) => write!(f, "imul {d}, {s}"),
             Div(x) => write!(f, "div {x}"),
+            Shl(a, b) => write!(f, "shl {a}, {b}"),
+            Shr(a, b) => write!(f, "shr {a}, {b}"),
             Cmp(a, b) => write!(f, "cmp {a}, {b}"),
             SetZ(x) => write!(f, "setz {x}"),
             SetNZ(x) => write!(f, "setnz {x}"),

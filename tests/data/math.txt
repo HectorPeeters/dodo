@@ -4,4 +4,5 @@ Multiplication success
 Division success
 Modulo success
 Precedence success
+Shift success
 Success

@@ -56,6 +56,11 @@ pub enum TokenType {
     Slash,
     #[token("%")]
     Percent,
+    #[token("<<")]
+    DoubleLessThan,
+    #[token(">>")]
+    DoubleGreaterThan,
+
     #[token("==")]
     DoubleEqual,
     #[token("!=")]
