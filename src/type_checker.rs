@@ -16,6 +16,7 @@ use crate::{
 pub enum TypeScopeEntry {
     Value(Type),
     Function(Vec<Type>, Type),
+    Global(Type),
 }
 
 pub struct TypeChecker {
@@ -38,6 +39,15 @@ impl TypeChecker {
             Function(_, _) => {
                 unreachable!("Trying to get type of value with the name of a function")
             }
+            Global(t) => Ok(t),
+        }
+    }
+
+    fn is_global(&self, name: &str, range: &SourceRange) -> Result<bool> {
+        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
+            TypeScopeEntry::Value(_) => Ok(false),
+            TypeScopeEntry::Function(_, _) => Ok(false),
+            TypeScopeEntry::Global(_) => Ok(true),
         }
     }
 
@@ -50,6 +60,9 @@ impl TypeChecker {
         match self.scope.find(name).map_err(|x| x.with_range(*range))? {
             Value(_) => unreachable!("Trying to get type of function with the name of a value"),
             Function(arg_types, return_type) => Ok((arg_types, return_type)),
+            Global(_) => {
+                unreachable!("Trying to get type of value with the name of a global")
+            }
         }
     }
 
@@ -134,7 +147,7 @@ impl AstTransformer<(), Type> for TypeChecker {
                 })?;
 
                 self.scope
-                    .insert(&name, TypeScopeEntry::Value(value_type.clone()))?;
+                    .insert(&name, TypeScopeEntry::Global(value_type.clone()))?;
 
                 Ok(UpperStatement::ConstDeclaration(
                     name, value_type, expr, range,
@@ -174,6 +187,14 @@ impl AstTransformer<(), Type> for TypeChecker {
                 ))
             }
             Statement::Assignment(name, expr, _, range) => {
+                if self.is_global(&name, &range)? {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Cannot assign to global constant '{}'", name),
+                        range,
+                    ));
+                }
+
                 let mut expr = self.transform_expression(expr)?;
                 let destination_type = self.get_scope_value_type(&name, &range)?;
 
