@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     UInt8(),
@@ -43,6 +45,22 @@ impl Type {
 
     pub fn is_ref(&self) -> bool {
         matches!(self, Type::Ref(_))
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::UInt8() => write!(f, "u8"),
+            Type::UInt16() => write!(f, "u16"),
+            Type::UInt32() => write!(f, "u32"),
+            Type::UInt64() => write!(f, "u64"),
+            Type::Bool() => write!(f, "bool"),
+            Type::Ref(x) => write!(f, "{x}*"),
+            Type::Struct(_, _) => todo!(),
+            Type::Void() => write!(f, "void"),
+            Type::Unknown() => write!(f, "unknown"),
+        }
     }
 }
 

@@ -113,7 +113,16 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            _ => todo!(),
+            UpperStatement::ConstDeclaration(name, value_type, value, _range) => {
+                let cpp_type = to_cpp_type(value_type);
+
+                let cpp_value = self.visit_expression(value)?;
+
+                self.buffer
+                    .push_str(&format!("const {} {} = {};\n", cpp_type, name, cpp_value));
+
+                Ok(())
+            }
         }
     }
 

@@ -32,7 +32,7 @@ pub struct X86NasmGenerator {
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     current_function_end_label: usize,
-    global_consts: Vec<(usize, TypedExpression)>,
+    global_consts: Vec<(usize, TypedExpression, Type)>,
 }
 
 impl<'a> X86NasmGenerator {
@@ -68,9 +68,9 @@ impl<'a> X86NasmGenerator {
         result
     }
 
-    fn store_global_const(&mut self, value: TypedExpression) -> usize {
+    fn store_global_const(&mut self, value: TypedExpression, value_type: Type) -> usize {
         let index = self.get_new_label();
-        self.global_consts.push((index, value));
+        self.global_consts.push((index, value, value_type));
         index
     }
 
@@ -93,9 +93,9 @@ impl<'a> X86NasmGenerator {
     fn write<T: Write>(&'a self, writer: &'a mut T) {
         writeln!(writer, "extern printf\nextern exit\n\nsection .data").unwrap();
 
-        for (index, value) in &self.global_consts {
+        for (index, value, value_type) in &self.global_consts {
             match value {
-                Expression::Literal(value, value_type, _) => {
+                Expression::Literal(value, _, _) => {
                     use X86Instruction::*;
 
                     let instruction = match value_type {
@@ -268,8 +268,8 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            UpperStatement::ConstDeclaration(name, _value_type, value, _range) => {
-                let position = self.store_global_const(value);
+            UpperStatement::ConstDeclaration(name, value_type, value, _range) => {
+                let position = self.store_global_const(value, value_type);
                 self.scope.insert(&name, ScopeLocation::Global(position))?;
             }
         }
@@ -484,7 +484,11 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        self.instr(Mov(Reg(register, value_type.size()), Label(index)))
+                        if value_type.is_ref() {
+                            self.instr(Mov(Reg(register, value_type.size()), Label(index)))
+                        } else {
+                            self.instr(Mov(Reg(register, value_type.size()), LabelIndirect(index)))
+                        }
                     }
                 }
 
@@ -545,11 +549,14 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 Ok(result_register)
             }
             Expression::StringLiteral(value, _, range) => {
-                let label = self.store_global_const(TypedExpression::StringLiteral(
-                    value,
+                let label = self.store_global_const(
+                    TypedExpression::StringLiteral(
+                        value,
+                        Type::Ref(Box::new(Type::UInt8())),
+                        range,
+                    ),
                     Type::Ref(Box::new(Type::UInt8())),
-                    range,
-                ));
+                );
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
