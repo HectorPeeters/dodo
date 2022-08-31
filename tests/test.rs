@@ -66,6 +66,7 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
 #[test_case("tests/data/pythagorean_triplets.dodo"; "pythagorean triplets")]
 #[test_case("tests/data/return.dodo"; "returns")]
 #[test_case("tests/data/scopes.dodo"; "scopes")]
+#[test_case("tests/data/section_annotation.dodo"; "annotations")]
 #[test_case("tests/data/string.dodo"; "string")]
 #[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {

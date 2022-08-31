@@ -265,7 +265,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.free_register(value_reg);
             }
-            Statement::Function(name, args, _ret_type, body, _annotations, _value_type, range) => {
+            Statement::Function(name, args, _ret_type, body, annotations, _value_type, range) => {
                 self.scope.push();
 
                 assert!(args.len() <= 6);
@@ -274,11 +274,22 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 assert_eq!(self.current_function_end_label, 0);
                 self.current_function_end_label = self.get_new_label();
 
-                self.instr(Function(if name == "main" {
-                    "_start".to_string()
-                } else {
-                    name
-                }));
+                let section_annotation = annotations
+                    .into_iter()
+                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Expression::StringLiteral(value, _, _) => value,
+                        _ => unreachable!()
+                    });
+
+                self.instr(Function(
+                    if name == "main" {
+                        "_start".to_string()
+                    } else {
+                        name
+                    },
+                    section_annotation,
+                ));
 
                 self.write_prologue();
 

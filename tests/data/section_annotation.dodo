@@ -1,0 +1,9 @@
+@section(".text")
+fn test() {
+    printf("Hello from the text section\n");
+}
+
+fn main() {
+    test();
+    exit(0);
+}

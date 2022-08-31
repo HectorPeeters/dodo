@@ -130,7 +130,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            Statement::Function(name, args, return_type, body, _annotations, _, _) => {
+            Statement::Function(name, args, return_type, body, annotations, _, _) => {
                 let mut name = name;
                 if name == "main" {
                     name = "dodo_main".to_string();
@@ -144,8 +144,23 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 let return_type = to_cpp_type(return_type);
 
-                self.buffer
-                    .push_str(&format!("{} {}({})\n", return_type, name, args));
+                let section_annotation = annotations
+                    .into_iter()
+                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Expression::StringLiteral(value, _, _) => value,
+                        _ => unreachable!()
+                    });
+
+                let section_attribute = match section_annotation {
+                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
+                    None => String::new(),
+                };
+
+                self.buffer.push_str(&format!(
+                    "{} {}({}) {}\n",
+                    return_type, name, args, section_attribute
+                ));
 
                 self.visit_statement(*body)?;
 
