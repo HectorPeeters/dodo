@@ -1,0 +1,16 @@
+fn assert_eq(result: u32, expected: u32) {
+    if result != expected {
+        printf("Failed: expected %d but got %d\n", expected, result);
+        exit(1);
+    }
+
+}
+
+fn main() {
+    assert_eq(0b0101, 5);
+    assert_eq(0B0101, 5);
+    assert_eq(0o7123, 3667);
+    assert_eq(0O7123, 3667);
+    assert_eq(0x1234, 4660);
+    assert_eq(0X1234, 4660);
+}

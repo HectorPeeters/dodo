@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType, UpperStatement},
     error::{Error, ErrorType, Result},
-    tokenizer::{Token, TokenType},
+    tokenizer::{SourceRange, Token, TokenType},
     types::Type,
 };
 
@@ -33,6 +33,9 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::Ampersand, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::Asterisk, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::BinaryIntegerLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::OctalIntegerLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::HexIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
 
@@ -199,19 +202,42 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn parse_integer_literal(
+        value: &str,
+        prefix: &str,
+        radix: u32,
+        range: SourceRange,
+    ) -> Result<Expression<()>> {
+        match u64::from_str_radix(
+            value
+                .trim_start_matches(prefix)
+                .trim_start_matches(&prefix.to_uppercase()),
+            radix,
+        ) {
+            Ok(value) => Ok(Expression::Literal(value, (), range)),
+            Err(_) => Err(Error::new_with_range(
+                ErrorType::Parser,
+                format!("Failed to parse '{}' to int", value),
+                range,
+            )),
+        }
+    }
+
     fn parse_constant(&mut self) -> Result<Expression<()>> {
         let constant_start = self.current_index(false);
         let token = self.consume()?;
         let range = (constant_start..self.current_index(true)).into();
         match token.token_type {
-            TokenType::IntegerLiteral => match token.value.parse() {
-                Ok(value) => Ok(Expression::Literal(value, (), range)),
-                Err(_) => Err(Error::new_with_range(
-                    ErrorType::Parser,
-                    format!("Failed to parse '{}' to int", token.value),
-                    token.range,
-                )),
-            },
+            TokenType::IntegerLiteral => Self::parse_integer_literal(token.value, "", 10, range),
+            TokenType::BinaryIntegerLiteral => {
+                Self::parse_integer_literal(token.value, "0b", 2, range)
+            }
+            TokenType::OctalIntegerLiteral => {
+                Self::parse_integer_literal(token.value, "0o", 8, range)
+            }
+            TokenType::HexIntegerLiteral => {
+                Self::parse_integer_literal(token.value, "0x", 16, range)
+            }
             TokenType::StringLiteral => Ok(Expression::StringLiteral(
                 token.value[1..token.value.len() - 1]
                     .to_string()

@@ -36,6 +36,12 @@ pub enum TokenType {
     StringLiteral,
     #[regex("[0-9]+")]
     IntegerLiteral,
+    #[regex("0[bB][0-1]+")]
+    BinaryIntegerLiteral,
+    #[regex("0[oO][0-8]+")]
+    OctalIntegerLiteral,
+    #[regex("0[xX][0-9a-fA-F]+")]
+    HexIntegerLiteral,
 
     #[regex("[a-zA-Z][_0-9a-zA-Z]*")]
     Identifier,
