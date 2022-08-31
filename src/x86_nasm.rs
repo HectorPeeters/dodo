@@ -265,7 +265,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.free_register(value_reg);
             }
-            Statement::Function(name, args, _ret_type, body, _value_type, range) => {
+            Statement::Function(name, args, _ret_type, body, _annotations, _value_type, range) => {
                 self.scope.push();
 
                 assert!(args.len() <= 6);

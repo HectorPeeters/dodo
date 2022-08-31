@@ -130,7 +130,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            Statement::Function(name, args, return_type, body, _, _) => {
+            Statement::Function(name, args, return_type, body, _annotations, _, _) => {
                 let mut name = name;
                 if name == "main" {
                     name = "dodo_main".to_string();

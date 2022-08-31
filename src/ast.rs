@@ -19,6 +19,7 @@ pub enum Statement<T> {
         Vec<(String, Type)>,
         Type,
         Box<Statement<T>>,
+        Vec<(String, Expression<T>)>,
         T,
         SourceRange,
     ),
@@ -36,7 +37,7 @@ impl<T> Statement<T> {
             While(_, _, t, _) => t,
             If(_, _, t, _) => t,
             Return(_, t, _) => t,
-            Function(_, _, _, _, t, _) => t,
+            Function(_, _, _, _, _, t, _) => t,
         }
     }
 }
@@ -180,6 +181,7 @@ mod tests {
             vec![],
             Type::Void(),
             Box::new(ast),
+            vec![],
             12,
             (0..0).into(),
         );

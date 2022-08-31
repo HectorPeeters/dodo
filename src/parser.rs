@@ -413,7 +413,25 @@ impl<'a> Parser<'a> {
         Ok((identifier.to_string(), value_type))
     }
 
+    fn parse_annotation(&mut self) -> Result<(String, Expression<()>)> {
+        self.consume_assert(TokenType::At)?;
+        let name = self.consume_assert(TokenType::Identifier)?;
+
+        self.consume_assert(TokenType::LeftParen)?;
+        let value = self.parse_expression(0)?;
+        self.consume_assert(TokenType::RightParen)?;
+
+        Ok((name.value.to_string(), value))
+    }
+
     fn parse_function(&mut self) -> Result<Statement<()>> {
+        let mut annotations = vec![];
+
+        while self.peek()?.token_type == TokenType::At {
+            let annotation = self.parse_annotation()?;
+            annotations.push(annotation);
+        }
+
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
         let identifier = self.consume_assert(TokenType::Identifier)?;
@@ -449,6 +467,7 @@ impl<'a> Parser<'a> {
             args,
             return_type,
             Box::new(body),
+            annotations,
             (),
             (function_start..self.current_index(true)).into(),
         ))
@@ -497,7 +516,7 @@ impl<'a> Parser<'a> {
                     token.range,
                 )),
             },
-            TokenType::Fn => self.parse_function(),
+            TokenType::Fn | TokenType::At => self.parse_function(),
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Unexpected token {:?}", token.token_type),
@@ -717,6 +736,7 @@ mod tests {
                     (),
                     (10..24).into()
                 )),
+                vec![],
                 (),
                 (0..24).into()
             )
@@ -743,6 +763,7 @@ mod tests {
                     (),
                     (13..27).into()
                 )),
+                vec![],
                 (),
                 (0..27).into()
             )

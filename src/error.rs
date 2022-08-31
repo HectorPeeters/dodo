@@ -4,7 +4,7 @@ use crate::tokenizer::SourceRange;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ErrorType {
     Lexer,
     Parser,
@@ -13,7 +13,7 @@ pub enum ErrorType {
     Postprocess,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Error {
     error_type: ErrorType,
     message: String,

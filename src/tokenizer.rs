@@ -65,6 +65,8 @@ pub enum TokenType {
 
     #[token("&")]
     Ampersand,
+    #[token("@")]
+    At,
 
     #[token(":")]
     Colon,

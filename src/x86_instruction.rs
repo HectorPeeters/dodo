@@ -51,7 +51,7 @@ impl X86Register {
             ],
         ];
 
-        REGISTER_NAMES[(size.log2() - 3) as usize][*self as usize]
+        REGISTER_NAMES[(size.ilog2() - 3) as usize][*self as usize]
     }
 }
 

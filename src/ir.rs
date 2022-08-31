@@ -126,7 +126,7 @@ impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
 
                 Ok(())
             }
-            Statement::Function(name, args, _return_type, body, _, range) => {
+            Statement::Function(name, args, _return_type, body, _annotations, _, range) => {
                 let _fn_block = self.new_block(format!("fn_{}", name));
 
                 self.scope.push();

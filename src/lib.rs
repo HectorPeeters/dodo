@@ -1,5 +1,6 @@
 #![feature(int_log)]
 #![feature(exit_status_error)]
+#![feature(custom_test_frameworks)]
 
 pub mod ast;
 pub mod backend;

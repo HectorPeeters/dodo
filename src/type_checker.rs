@@ -127,7 +127,7 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 Ok(Statement::Expression(expr, expr_type, range))
             }
-            Statement::Function(name, args, return_type, body, _, range) => {
+            Statement::Function(name, args, return_type, body, annotations, _, range) => {
                 self.scope
                     .insert(
                         &name,
@@ -154,11 +154,20 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 self.scope.pop();
 
+                let checked_annotations = annotations
+                    .into_iter()
+                    .map(|(name, value)| match self.transform_expression(value) {
+                        Ok(value) => Ok((name, value)),
+                        Err(error) => Err(error),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
                 Ok(Statement::Function(
                     name.clone(),
                     args.clone(),
                     return_type.clone(),
                     Box::new(checked_body),
+                    checked_annotations,
                     return_type,
                     range,
                 ))
