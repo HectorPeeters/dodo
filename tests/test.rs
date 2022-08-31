@@ -10,6 +10,8 @@ use dodo::{
     tokenizer::tokenize, type_checker::TypeChecker, x86_nasm::X86NasmGenerator,
 };
 
+use test_case::test_case;
+
 fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
     println!("RUNNING '{}' with backend '{}'...", file, backend.name());
 
@@ -52,6 +54,20 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
     Ok(())
 }
 
+#[test_case("tests/data/args.dodo"; "args")]
+#[test_case("tests/data/comparisons.dodo"; "commparisons")]
+#[test_case("tests/data/fibonacci.dodo"; "fibonacci")]
+#[test_case("tests/data/fibonacci_recursive.dodo"; "fibonacci recursive")]
+#[test_case("tests/data/math.dodo"; "math")]
+#[test_case("tests/data/nested.dodo"; "nested")]
+#[test_case("tests/data/pointers.dodo"; "pointers")]
+#[test_case("tests/data/primes.dodo"; "primes")]
+#[test_case("tests/data/print.dodo"; "print")]
+#[test_case("tests/data/pythagorean_triplets.dodo"; "pythagorean triplets")]
+#[test_case("tests/data/return.dodo"; "returns")]
+#[test_case("tests/data/scopes.dodo"; "scopes")]
+#[test_case("tests/data/string.dodo"; "string")]
+#[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {
     let backends: Vec<Box<dyn Backend>> = vec![
         Box::new(X86NasmGenerator::new()),
@@ -63,74 +79,4 @@ fn test_for_all_backends(path: &str) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[test]
-fn test_args() -> Result<()> {
-    test_for_all_backends("tests/data/args.dodo")
-}
-
-#[test]
-fn test_comparisons() -> Result<()> {
-    test_for_all_backends("tests/data/comparisons.dodo")
-}
-
-#[test]
-fn test_fibonacci() -> Result<()> {
-    test_for_all_backends("tests/data/fibonacci.dodo")
-}
-
-#[test]
-fn test_fibonacci_recursive() -> Result<()> {
-    test_for_all_backends("tests/data/fibonacci_recursive.dodo")
-}
-
-#[test]
-fn test_math() -> Result<()> {
-    test_for_all_backends("tests/data/math.dodo")
-}
-
-#[test]
-fn test_nested() -> Result<()> {
-    test_for_all_backends("tests/data/nested.dodo")
-}
-
-#[test]
-fn test_pointers() -> Result<()> {
-    test_for_all_backends("tests/data/pointers.dodo")
-}
-
-#[test]
-fn test_primes() -> Result<()> {
-    test_for_all_backends("tests/data/primes.dodo")
-}
-
-#[test]
-fn test_print() -> Result<()> {
-    test_for_all_backends("tests/data/print.dodo")
-}
-
-#[test]
-fn test_pythagorean_triplets() -> Result<()> {
-    test_for_all_backends("tests/data/pythagorean_triplets.dodo")
-}
-
-#[test]
-fn test_return() -> Result<()> {
-    test_for_all_backends("tests/data/return.dodo")
-}
-
-#[test]
-fn test_scopes() -> Result<()> {
-    test_for_all_backends("tests/data/scopes.dodo")
-}
-
-#[test]
-fn test_string() -> Result<()> {
-    test_for_all_backends("tests/data/string.dodo")
-}
-
-#[test]
-fn test_types() -> Result<()> {
-    test_for_all_backends("tests/data/types.dodo")
 }
