@@ -13,6 +13,8 @@ pub enum TokenType {
     Return,
     #[token("fn")]
     Fn,
+    #[token("const")]
+    Const,
     #[token("let")]
     Let,
     #[token("while")]

@@ -114,8 +114,8 @@ pub enum X86Operand {
     Reg(X86Register, usize),
     RegIndirect(X86Register, usize),
     Constant(u64),
-    JmpLabel(usize),
-    StringLabel(usize),
+    Label(usize),
+    LabelIndirect(usize),
     Reference(String),
 }
 
@@ -127,8 +127,8 @@ impl fmt::Display for X86Operand {
             Reg(r, s) => write!(f, "{}", r.get_string(*s)),
             RegIndirect(r, offset) => write!(f, "[{r} - {offset}]"),
             Constant(x) => write!(f, "0x{x:x}"),
-            JmpLabel(l) => write!(f, "L{l}"),
-            StringLabel(s) => write!(f, "S{s}"),
+            Label(l) => write!(f, "L{l}"),
+            LabelIndirect(l) => write!(f, "[L{l}]"),
             Reference(x) => write!(f, "{x}"),
         }
     }
@@ -156,8 +156,12 @@ pub enum X86Instruction {
     Call(X86Operand),
     Ret(),
     Syscall(),
-    Label(usize),
+    LabelDef(usize),
     Function(String, Option<String>),
+    Db(Vec<u8>),
+    Dw(Vec<u16>),
+    Dd(Vec<u32>),
+    Dq(Vec<u64>),
 }
 
 impl fmt::Display for X86Instruction {
@@ -185,11 +189,47 @@ impl fmt::Display for X86Instruction {
             Call(x) => write!(f, "call {x}"),
             Ret() => write!(f, "ret"),
             Syscall() => write!(f, "syscall"),
-            Label(l) => write!(f, "L{l}:"),
+            LabelDef(l) => write!(f, "L{l}:"),
             Function(x, section) => match section {
                 Some(sec) => write!(f, "section {sec}\n{x}:"),
                 None => write!(f, "{x}:"),
             },
+            Db(bytes) => write!(
+                f,
+                "db {}",
+                bytes
+                    .iter()
+                    .map(|x| format!("{:#04x}", x))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Dw(bytes) => write!(
+                f,
+                "dw {}",
+                bytes
+                    .iter()
+                    .map(|x| format!("{:#06x}", x))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Dd(bytes) => write!(
+                f,
+                "dd {}",
+                bytes
+                    .iter()
+                    .map(|x| format!("{:#08x}", x))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Dq(bytes) => write!(
+                f,
+                "dq {}",
+                bytes
+                    .iter()
+                    .map(|x| format!("{:#10x}", x))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
@@ -198,7 +238,7 @@ impl X86Instruction {
     pub fn should_indent(&self) -> bool {
         !matches!(
             self,
-            X86Instruction::Label(_) | X86Instruction::Function(_, _)
+            X86Instruction::LabelDef(_) | X86Instruction::Function(_, _)
         )
     }
 }

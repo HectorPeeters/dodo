@@ -20,15 +20,19 @@ const GENERAL_PURPOSE_REGISTER_COUNT: usize = 6;
 const GENERAL_PURPOSE_REGISTER_OFFSET: usize = 10;
 const STACK_OFFSET: usize = 16;
 
-pub type ScopeLocation = usize;
+#[derive(Debug, Copy, Clone)]
+pub enum ScopeLocation {
+    Stack(usize),
+    Global(usize),
+}
 
 pub struct X86NasmGenerator {
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
-    strings: Vec<String>,
     current_function_end_label: usize,
+    global_consts: Vec<(usize, TypedExpression)>,
 }
 
 impl<'a> X86NasmGenerator {
@@ -38,8 +42,8 @@ impl<'a> X86NasmGenerator {
             label_index: 0,
             scope: Scope::new(),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_COUNT],
-            strings: vec![],
             current_function_end_label: 0,
+            global_consts: vec![],
         }
     }
 
@@ -64,15 +68,10 @@ impl<'a> X86NasmGenerator {
         result
     }
 
-    fn store_new_string(&mut self, string: &str) -> usize {
-        let position = self.strings.iter().position(|x| x == string);
-        match position {
-            Some(x) => x,
-            None => {
-                self.strings.push(string.to_string());
-                self.strings.len() - 1
-            }
-        }
+    fn store_global_const(&mut self, value: TypedExpression) -> usize {
+        let index = self.get_new_label();
+        self.global_consts.push((index, value));
+        index
     }
 
     fn instr(&mut self, instr: X86Instruction) {
@@ -92,28 +91,37 @@ impl<'a> X86NasmGenerator {
     }
 
     fn write<T: Write>(&'a self, writer: &'a mut T) {
-        writeln!(
-            writer,
-            r#"extern printf
-extern exit
-section .data
-{}"#,
-            self.strings
-                .iter()
-                .enumerate()
-                .map(|(i, x)| format!("\tS{} db `{}`, 0", i, x.replace('\n', "\\n")))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-        .unwrap();
+        writeln!(writer, "extern printf\nextern exit\n\nsection .data").unwrap();
 
-        writeln!(
-            writer,
-            r#"section .text
-    global _start
-"#
-        )
-        .unwrap();
+        for (index, value) in &self.global_consts {
+            match value {
+                Expression::Literal(value, value_type, _) => {
+                    use X86Instruction::*;
+
+                    let instruction = match value_type {
+                        Type::UInt8() => Db(vec![*value as u8]),
+                        Type::UInt16() => Dw(vec![*value as u16]),
+                        Type::UInt32() => Dd(vec![*value as u32]),
+                        Type::UInt64() => Dq(vec![*value]),
+                        _ => unreachable!(),
+                    };
+
+                    writeln!(writer, "\tL{} {}", index, instruction).unwrap();
+                }
+                Expression::StringLiteral(value, _, _) => {
+                    writeln!(
+                        writer,
+                        "\tL{} db `{}`, 0",
+                        index,
+                        value.replace('\n', "\\n")
+                    )
+                    .unwrap();
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        writeln!(writer, "\nsection .text\nglobal _start").unwrap();
         writeln!(
             writer,
             "{}",
@@ -205,15 +213,7 @@ impl Default for X86NasmGenerator {
 impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
     fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
         match statement {
-            UpperStatement::Function(
-                name,
-                args,
-                _ret_type,
-                body,
-                annotations,
-                _value_type,
-                range,
-            ) => {
+            UpperStatement::Function(name, args, _ret_type, body, annotations, range) => {
                 self.scope.push();
 
                 assert!(args.len() <= 6);
@@ -248,7 +248,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.size()?;
                     self.scope
-                        .insert(arg_name, offset)
+                        .insert(arg_name, ScopeLocation::Stack(offset))
                         .map_err(|x| x.with_range(range))?;
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET),
@@ -258,7 +258,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.visit_statement(*body)?;
 
-                self.instr(Label(self.current_function_end_label));
+                self.instr(LabelDef(self.current_function_end_label));
                 self.current_function_end_label = 0;
 
                 self.write_epilogue();
@@ -267,6 +267,10 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 self.scope.pop();
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
+            }
+            UpperStatement::ConstDeclaration(name, _value_type, value, _range) => {
+                let position = self.store_global_const(value);
+                self.scope.insert(&name, ScopeLocation::Global(position))?;
             }
         }
 
@@ -277,19 +281,22 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
         match statement {
             Statement::Declaration(name, _value_type, _, range) => {
                 self.scope
-                    .insert(&name, self.scope.size()?)
+                    .insert(&name, ScopeLocation::Stack(self.scope.size()?))
                     .map_err(|x| x.with_range(range))?;
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(name, value, value_type, range) => {
-                let offset = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
                 let value_reg = self.visit_expression(value)?;
 
-                self.instr(Mov(
-                    RegIndirect(Rbp, offset * STACK_OFFSET),
-                    Reg(value_reg, value_type.size()),
-                ));
+                match location {
+                    ScopeLocation::Stack(offset) => self.instr(Mov(
+                        RegIndirect(Rbp, offset * STACK_OFFSET),
+                        Reg(value_reg, value_type.size()),
+                    )),
+                    ScopeLocation::Global(_) => todo!(),
+                }
 
                 self.free_register(value_reg);
             }
@@ -297,18 +304,18 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
 
-                self.instr(Label(start_label));
+                self.instr(LabelDef(start_label));
 
                 let cond_size = cond.data().size();
                 let register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(register, cond_size), Constant(0)));
-                self.instr(Jz(JmpLabel(end_label)));
+                self.instr(Jz(Label(end_label)));
 
                 self.visit_statement(*stmt)?;
 
-                self.instr(Jmp(JmpLabel(start_label)));
-                self.instr(Label(end_label));
+                self.instr(Jmp(Label(start_label)));
+                self.instr(LabelDef(end_label));
 
                 self.free_register(register);
             }
@@ -321,18 +328,18 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 self.instr(Cmp(Reg(cond_register, cond_size), Constant(0)));
                 self.free_register(cond_register);
 
-                self.instr(Jz(JmpLabel(end_label)));
+                self.instr(Jz(Label(end_label)));
 
                 self.visit_statement(*stmt)?;
 
-                self.instr(Label(end_label));
+                self.instr(LabelDef(end_label));
             }
             Statement::Return(expr, _, _range) => {
                 let expr_size = expr.data().size();
                 let value_reg = self.visit_expression(expr).unwrap();
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
-                self.instr(Jmp(JmpLabel(self.current_function_end_label)));
+                self.instr(Jmp(Label(self.current_function_end_label)));
 
                 self.free_register(value_reg);
             }
@@ -371,13 +378,16 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 match &*expr {
                     Expression::VariableRef(name, value_type, range) => {
-                        let offset = self.scope.find(name).map_err(|x| x.with_range(*range))?;
+                        let location = self.scope.find(name).map_err(|x| x.with_range(*range))?;
                         let result_type = value_type.clone().get_ref();
 
-                        self.instr(Lea(
-                            Reg(result_reg, result_type.size()),
-                            RegIndirect(Rbp, offset * 16),
-                        ));
+                        match location {
+                            ScopeLocation::Stack(offset) => self.instr(Lea(
+                                Reg(result_reg, result_type.size()),
+                                RegIndirect(Rbp, offset * 16),
+                            )),
+                            ScopeLocation::Global(_) => todo!(),
+                        }
                         Ok(result_reg)
                     }
                     _ => unreachable!(),
@@ -465,13 +475,18 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 Ok(left_reg)
             }
             Expression::VariableRef(name, value_type, range) => {
-                let offset = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
                 let register = self.get_next_register();
 
-                self.instr(Mov(
-                    Reg(register, value_type.size()),
-                    RegIndirect(Rbp, offset * 16),
-                ));
+                match location {
+                    ScopeLocation::Stack(offset) => self.instr(Mov(
+                        Reg(register, value_type.size()),
+                        RegIndirect(Rbp, offset * 16),
+                    )),
+                    ScopeLocation::Global(index) => {
+                        self.instr(Mov(Reg(register, value_type.size()), Label(index)))
+                    }
+                }
 
                 Ok(register)
             }
@@ -529,10 +544,14 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 Ok(result_register)
             }
-            Expression::StringLiteral(value, _, _range) => {
-                let label = self.store_new_string(&value);
+            Expression::StringLiteral(value, _, range) => {
+                let label = self.store_global_const(TypedExpression::StringLiteral(
+                    value,
+                    Type::Ref(Box::new(Type::UInt8())),
+                    range,
+                ));
                 let result_reg = self.get_next_register();
-                self.instr(Mov(Reg(result_reg, 64), StringLabel(label)));
+                self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
             }
             Expression::Widen(expr, widen_type, _range) => {

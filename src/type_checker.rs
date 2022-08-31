@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use crate::ast::UpperStatement;
 use crate::{
     ast::{
         AstTransformer, BinaryOperatorType, Expression, Statement, TypedExpression, TypedStatement,
@@ -10,7 +11,6 @@ use crate::{
     tokenizer::SourceRange,
     types::Type,
 };
-use crate::ast::UpperStatement;
 
 #[derive(Clone)]
 pub enum TypeScopeEntry {
@@ -69,9 +69,12 @@ impl Default for TypeChecker {
 }
 
 impl AstTransformer<(), Type> for TypeChecker {
-    fn transform_upper_statement(&mut self, statement: UpperStatement<()>) -> Result<UpperStatement<Type>> {
+    fn transform_upper_statement(
+        &mut self,
+        statement: UpperStatement<()>,
+    ) -> Result<UpperStatement<Type>> {
         match statement {
-            UpperStatement::Function(name, args, return_type, body, annotations, _, range) => {
+            UpperStatement::Function(name, args, return_type, body, annotations, range) => {
                 self.scope
                     .insert(
                         &name,
@@ -109,11 +112,32 @@ impl AstTransformer<(), Type> for TypeChecker {
                 Ok(UpperStatement::Function(
                     name.clone(),
                     args,
-                    return_type.clone(),
+                    return_type,
                     Box::new(checked_body),
                     checked_annotations,
-                    return_type,
                     range,
+                ))
+            }
+            UpperStatement::ConstDeclaration(name, value_type, expr, range) => {
+                let expr = self.transform_expression(expr)?;
+
+                Self::widen_assignment(&value_type, expr.data()).ok_or_else(|| {
+                    Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!(
+                            "Cannot widen const type {:?} to {:?}",
+                            expr.data(),
+                            value_type
+                        ),
+                        range,
+                    )
+                })?;
+
+                self.scope
+                    .insert(&name, TypeScopeEntry::Value(value_type.clone()))?;
+
+                Ok(UpperStatement::ConstDeclaration(
+                    name, value_type, expr, range,
                 ))
             }
         }

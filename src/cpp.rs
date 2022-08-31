@@ -75,7 +75,7 @@ fn to_cpp_type(type_: Type) -> String {
 impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
     fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
         match statement {
-            UpperStatement::Function(name, args, return_type, body, annotations, _, _) => {
+            UpperStatement::Function(name, args, return_type, body, annotations, _) => {
                 let mut name = name;
                 if name == "main" {
                     name = "dodo_main".to_string();
@@ -113,6 +113,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
+            _ => todo!(),
         }
     }
 

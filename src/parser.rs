@@ -71,7 +71,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn eof(&self) -> bool {
+    fn eof(&self) -> bool {
         self.index >= self.tokens.len()
     }
 
@@ -256,7 +256,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_expression(&mut self, precedence: usize) -> Result<Expression<()>> {
+    fn parse_expression(&mut self, precedence: usize) -> Result<Expression<()>> {
         let exit_tokens = vec![
             TokenType::SemiColon,
             TokenType::RightParen,
@@ -468,12 +468,11 @@ impl<'a> Parser<'a> {
             return_type,
             Box::new(body),
             annotations,
-            (),
             (function_start..self.current_index(true)).into(),
         ))
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_statement(&mut self) -> Result<Statement<()>> {
         let token = self.peek()?;
 
         match token.token_type {
@@ -524,11 +523,34 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_const_declaration(&mut self) -> Result<UpperStatement<()>> {
+        let start_index = self.current_index(false);
+
+        self.consume_assert(TokenType::Const)?;
+        let name = self.consume_assert(TokenType::Identifier)?;
+
+        self.consume_assert(TokenType::Colon)?;
+        let value_type = self.parse_type()?;
+
+        self.consume_assert(TokenType::Equals)?;
+        let value = self.parse_expression(0)?;
+
+        self.consume_assert(TokenType::SemiColon)?;
+
+        Ok(UpperStatement::ConstDeclaration(
+            name.value.to_string(),
+            value_type,
+            value,
+            (start_index..self.current_index(true)).into(),
+        ))
+    }
+
     pub fn parse_upper_statement(&mut self) -> Result<UpperStatement<()>> {
         let token = self.peek()?;
 
         match token.token_type {
             TokenType::Fn | TokenType::At => self.parse_function(),
+            TokenType::Const => self.parse_const_declaration(),
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!(
@@ -752,7 +774,6 @@ mod tests {
                     (10..24).into()
                 )),
                 vec![],
-                (),
                 (0..24).into()
             )
         );
@@ -779,7 +800,6 @@ mod tests {
                     (13..27).into()
                 )),
                 vec![],
-                (),
                 (0..27).into()
             )
         );

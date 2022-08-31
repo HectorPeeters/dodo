@@ -1,10 +1,10 @@
+use crate::ast::UpperStatement;
 use crate::{
     ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement},
     error::Result,
     scope::Scope,
     types::Type,
 };
-use crate::ast::UpperStatement;
 
 pub type IrReg = usize;
 pub type IrValue = u64;
@@ -95,7 +95,7 @@ impl Default for IrBuilder {
 impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
     fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
         match statement {
-            UpperStatement::Function(name, args, _return_type, body, _annotations, _, range) => {
+            UpperStatement::Function(name, args, _return_type, body, _annotations, range) => {
                 let _fn_block = self.new_block(format!("fn_{}", name));
 
                 self.scope.push();
@@ -115,6 +115,7 @@ impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
 
                 Ok(())
             }
+            _ => todo!(),
         }
     }
 

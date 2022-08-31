@@ -58,6 +58,7 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
 #[test_case("tests/data/comparisons.dodo"; "commparisons")]
 #[test_case("tests/data/fibonacci.dodo"; "fibonacci")]
 #[test_case("tests/data/fibonacci_recursive.dodo"; "fibonacci recursive")]
+#[test_case("tests/data/global_const.dodo"; "global constants")]
 #[test_case("tests/data/math.dodo"; "math")]
 #[test_case("tests/data/nested.dodo"; "nested")]
 #[test_case("tests/data/pointers.dodo"; "pointers")]

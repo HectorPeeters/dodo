@@ -1,0 +1,9 @@
+const greeting: u8* = "Hello world!";
+
+const number: u32 = 4321;
+
+fn main() {
+    printf("%s\n", greeting);
+    printf("The number is %u\n", number);
+    exit(0);
+}

@@ -14,17 +14,16 @@ pub enum UpperStatement<T> {
         Type,
         Box<Statement<T>>,
         Vec<(String, Expression<T>)>,
-        T,
         SourceRange,
     ),
+    ConstDeclaration(String, Type, Expression<T>, SourceRange),
 }
 
 impl<T> UpperStatement<T> {
-    pub fn data(&self) -> &T {
-        use UpperStatement::*;
-
+    pub fn get_type(&self) -> &Type {
         match self {
-            Function(_, _, _, _, _, t, _) => t,
+            UpperStatement::Function(_, _, t, _, _, _) => t,
+            UpperStatement::ConstDeclaration(_, t, _, _) => t,
         }
     }
 }
@@ -195,17 +194,6 @@ mod tests {
         assert_eq!(*ast.data(), 12);
 
         let ast = Statement::Return(expression, 12, (0..0).into());
-        assert_eq!(*ast.data(), 12);
-
-        let ast = UpperStatement::Function(
-            "test".to_string(),
-            vec![],
-            Type::Void(),
-            Box::new(ast),
-            vec![],
-            12,
-            (0..0).into(),
-        );
         assert_eq!(*ast.data(), 12);
 
         Ok(())
