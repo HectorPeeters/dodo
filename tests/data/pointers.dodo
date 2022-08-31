@@ -9,8 +9,8 @@ fn main() {
     let i: u8 = 0;
 
     while (*(string + i)) != 0 {
-        let char: u8 = *(string + i);
-        printf("%c", char);
+        let c: u8 = *(string + i);
+        printf("%c", c);
         i = i + 1;
     }
     printf("\n");

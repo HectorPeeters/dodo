@@ -61,7 +61,7 @@ fn to_cpp_type(type_: Type) -> String {
     use Type::*;
 
     match type_ {
-        UInt8() => "unsigned char".to_string(),
+        UInt8() => "char".to_string(),
         UInt16() => "unsigned short".to_string(),
         UInt32() => "unsigned int".to_string(),
         UInt64() => "unsigned long".to_string(),
