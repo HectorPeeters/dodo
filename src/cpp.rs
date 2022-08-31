@@ -109,7 +109,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 self.visit_statement(*body)?;
 
-                self.buffer.push_str("\n");
+                self.buffer.push('\n');
 
                 Ok(())
             }
@@ -154,7 +154,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 self.buffer.push_str(&format!("while ({}) {{", cond));
                 self.visit_statement(*body)?;
-                self.buffer.push_str("}");
+                self.buffer.push('}');
 
                 Ok(())
             }
@@ -163,7 +163,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 self.buffer.push_str(&format!("if ({}) {{", cond));
                 self.visit_statement(*body)?;
-                self.buffer.push_str("}");
+                self.buffer.push('}');
 
                 Ok(())
             }
@@ -215,13 +215,13 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
                 Ok(format!("{}({})", name, args))
             }
             Expression::Literal(value, _, _) => Ok(format!("{}", value)),
-            Expression::VariableRef(name, _, _) => Ok(format!("{}", name)),
+            Expression::VariableRef(name, _, _) => Ok(name),
             Expression::StringLiteral(value, _, _) => Ok(format!(
                 "\"{}\"",
                 value
-                    .replace("\n", "\\n")
-                    .replace("\t", "\\t")
-                    .replace("\"", "\\\"")
+                    .replace('\n', "\\n")
+                    .replace('\t', "\\t")
+                    .replace('\"', "\\\"")
             )),
             Expression::Widen(expr, _, _) => self.visit_expression(*expr),
         }

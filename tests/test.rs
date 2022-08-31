@@ -40,7 +40,7 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
 
     let executable_path = format!("/tmp/output_{}", test_code);
     let executable_path = Path::new(&executable_path);
-    backend.finalize(&executable_path)?;
+    backend.finalize(executable_path)?;
 
     let output = Command::new(executable_path)
         .output()

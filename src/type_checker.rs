@@ -108,7 +108,7 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 Ok(UpperStatement::Function(
                     name.clone(),
-                    args.clone(),
+                    args,
                     return_type.clone(),
                     Box::new(checked_body),
                     checked_annotations,
