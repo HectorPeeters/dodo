@@ -13,7 +13,7 @@ pub enum UpperStatement<T> {
         Vec<(String, Type)>,
         Type,
         Box<Statement<T>>,
-        Vec<(String, Expression<T>)>,
+        Vec<(String, Option<Expression<T>>)>,
         SourceRange,
     ),
     ConstDeclaration(String, Type, Expression<T>, SourceRange),

@@ -89,11 +89,21 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 let return_type = to_cpp_type(return_type);
 
+                let no_return = if annotations
+                    .iter()
+                    .find(|(name, _)| name == "noreturn")
+                    .is_some()
+                {
+                    "[[noreturn]]"
+                } else {
+                    ""
+                };
+
                 let section_annotation = annotations
                     .into_iter()
-                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
                     .map(|(_, value)| match value {
-                        Expression::StringLiteral(value, _, _) => value,
+                        Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
                     });
 
@@ -103,8 +113,8 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
                 };
 
                 self.buffer.push_str(&format!(
-                    "{} {}({}) {}\n",
-                    return_type, name, args, section_attribute
+                    "{} {} {}({}) {}\n",
+                    no_return, return_type, name, args, section_attribute
                 ));
 
                 self.visit_statement(*body)?;

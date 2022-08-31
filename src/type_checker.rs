@@ -116,9 +116,15 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 let checked_annotations = annotations
                     .into_iter()
-                    .map(|(name, value)| match self.transform_expression(value) {
-                        Ok(value) => Ok((name, value)),
-                        Err(error) => Err(error),
+                    .map(|(name, value)| {
+                        if let Some(value) = value {
+                            match self.transform_expression(value) {
+                                Ok(value) => Ok((name, Some(value))),
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            Ok((name, None))
+                        }
                     })
                     .collect::<Result<Vec<_>>>()?;
 

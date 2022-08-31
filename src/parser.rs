@@ -444,15 +444,19 @@ impl<'a> Parser<'a> {
         Ok((identifier.to_string(), value_type))
     }
 
-    fn parse_annotation(&mut self) -> Result<(String, Expression<()>)> {
+    fn parse_annotation(&mut self) -> Result<(String, Option<Expression<()>>)> {
         self.consume_assert(TokenType::At)?;
         let name = self.consume_assert(TokenType::Identifier)?;
+
+        if self.peek()?.token_type != TokenType::LeftParen {
+            return Ok((name.value.to_string(), None));
+        }
 
         self.consume_assert(TokenType::LeftParen)?;
         let value = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightParen)?;
 
-        Ok((name.value.to_string(), value))
+        Ok((name.value.to_string(), Some(value)))
     }
 
     fn parse_function(&mut self) -> Result<UpperStatement<()>> {

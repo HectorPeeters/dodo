@@ -222,11 +222,16 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 assert_eq!(self.current_function_end_label, 0);
                 self.current_function_end_label = self.get_new_label();
 
+                let no_return = annotations
+                    .iter()
+                    .find(|(name, _)| name == "noreturn")
+                    .is_some();
+
                 let section_annotation = annotations
                     .into_iter()
-                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
                     .map(|(_, value)| match value {
-                        Expression::StringLiteral(value, _, _) => value,
+                        Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
                     });
 
@@ -257,6 +262,10 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 }
 
                 self.visit_statement(*body)?;
+
+                if no_return {
+                    return Ok(());
+                }
 
                 self.instr(LabelDef(self.current_function_end_label));
                 self.current_function_end_label = 0;

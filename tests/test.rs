@@ -62,6 +62,7 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
 #[test_case("tests/data/int_radix.dodo"; "int radix")]
 #[test_case("tests/data/math.dodo"; "math")]
 #[test_case("tests/data/nested.dodo"; "nested")]
+#[test_case("tests/data/noreturn.dodo"; "no return")]
 #[test_case("tests/data/pointers.dodo"; "pointers")]
 #[test_case("tests/data/primes.dodo"; "primes")]
 #[test_case("tests/data/print.dodo"; "print")]
