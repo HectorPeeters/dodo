@@ -85,7 +85,7 @@ fn main() -> Result<()> {
     let statements = unwrap_or_error(
         statements
             .into_iter()
-            .map(|x| type_checker.transform_statement(x))
+            .map(|x| type_checker.transform_upper_statement(x))
             .collect::<Result<Vec<_>>>(),
         source_file,
     );
@@ -105,7 +105,7 @@ fn main() -> Result<()> {
     unwrap_or_error(
         statements
             .into_iter()
-            .map(|x| backend.process_statement(x))
+            .map(|x| backend.process_upper_statement(x))
             .collect::<Result<Vec<_>>>(),
         source_file,
     );

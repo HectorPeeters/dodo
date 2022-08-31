@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
-    TypedStatement, UnaryOperatorType,
+    TypedStatement, TypedUpperStatement, UnaryOperatorType, UpperStatement,
 };
 use crate::backend::Backend;
 use crate::error::{Error, ErrorType, Result};
@@ -21,8 +21,8 @@ impl CppGenerator {
 }
 
 impl Backend for CppGenerator {
-    fn process_statement(&mut self, statement: TypedStatement) -> Result<()> {
-        self.visit_statement(statement)
+    fn process_upper_statement(&mut self, statement: TypedUpperStatement) -> Result<()> {
+        self.visit_upper_statement(statement)
     }
 
     fn finalize(&mut self, output: &Path) -> Result<()> {
@@ -73,6 +73,49 @@ fn to_cpp_type(type_: Type) -> String {
 }
 
 impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
+        match statement {
+            UpperStatement::Function(name, args, return_type, body, annotations, _, _) => {
+                let mut name = name;
+                if name == "main" {
+                    name = "dodo_main".to_string();
+                }
+
+                let args = args
+                    .into_iter()
+                    .map(|(name, type_)| format!("{} {}", to_cpp_type(type_), name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let return_type = to_cpp_type(return_type);
+
+                let section_annotation = annotations
+                    .into_iter()
+                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Expression::StringLiteral(value, _, _) => value,
+                        _ => unreachable!()
+                    });
+
+                let section_attribute = match section_annotation {
+                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
+                    None => String::new(),
+                };
+
+                self.buffer.push_str(&format!(
+                    "{} {}({}) {}\n",
+                    return_type, name, args, section_attribute
+                ));
+
+                self.visit_statement(*body)?;
+
+                self.buffer.push_str("\n");
+
+                Ok(())
+            }
+        }
+    }
+
     fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
         match statement {
             Statement::Block(statements, scoped, _, _) => {
@@ -127,44 +170,6 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
             Statement::Return(expr, _, _) => {
                 let expr = self.visit_expression(expr)?;
                 self.buffer.push_str(&format!("return {};", expr));
-
-                Ok(())
-            }
-            Statement::Function(name, args, return_type, body, annotations, _, _) => {
-                let mut name = name;
-                if name == "main" {
-                    name = "dodo_main".to_string();
-                }
-
-                let args = args
-                    .into_iter()
-                    .map(|(name, type_)| format!("{} {}", to_cpp_type(type_), name))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                let return_type = to_cpp_type(return_type);
-
-                let section_annotation = annotations
-                    .into_iter()
-                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
-                    .map(|(_, value)| match value {
-                        Expression::StringLiteral(value, _, _) => value,
-                        _ => unreachable!()
-                    });
-
-                let section_attribute = match section_annotation {
-                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
-                    None => String::new(),
-                };
-
-                self.buffer.push_str(&format!(
-                    "{} {}({}) {}\n",
-                    return_type, name, args, section_attribute
-                ));
-
-                self.visit_statement(*body)?;
-
-                self.buffer.push_str("\n");
 
                 Ok(())
             }

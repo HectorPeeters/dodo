@@ -2,8 +2,32 @@ use crate::error::Result;
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::Type;
 
+pub type TypedUpperStatement = UpperStatement<Type>;
 pub type TypedStatement = Statement<Type>;
 pub type TypedExpression = Expression<Type>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpperStatement<T> {
+    Function(
+        String,
+        Vec<(String, Type)>,
+        Type,
+        Box<Statement<T>>,
+        Vec<(String, Expression<T>)>,
+        T,
+        SourceRange,
+    ),
+}
+
+impl<T> UpperStatement<T> {
+    pub fn data(&self) -> &T {
+        use UpperStatement::*;
+
+        match self {
+            Function(_, _, _, _, _, t, _) => t,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<T> {
@@ -14,15 +38,6 @@ pub enum Statement<T> {
     While(Expression<T>, Box<Statement<T>>, T, SourceRange),
     If(Expression<T>, Box<Statement<T>>, T, SourceRange),
     Return(Expression<T>, T, SourceRange),
-    Function(
-        String,
-        Vec<(String, Type)>,
-        Type,
-        Box<Statement<T>>,
-        Vec<(String, Expression<T>)>,
-        T,
-        SourceRange,
-    ),
 }
 
 impl<T> Statement<T> {
@@ -37,7 +52,6 @@ impl<T> Statement<T> {
             While(_, _, t, _) => t,
             If(_, _, t, _) => t,
             Return(_, t, _) => t,
-            Function(_, _, _, _, _, t, _) => t,
         }
     }
 }
@@ -136,12 +150,19 @@ impl<T> Expression<T> {
 }
 
 pub trait AstTransformer<S, T> {
+    fn transform_upper_statement(
+        &mut self,
+        statement: UpperStatement<S>,
+    ) -> Result<UpperStatement<T>>;
+
     fn transform_statement(&mut self, statement: Statement<S>) -> Result<Statement<T>>;
 
     fn transform_expression(&mut self, expression: Expression<S>) -> Result<Expression<T>>;
 }
 
 pub trait ConsumingAstVisitor<T, RS, RE> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<T>) -> Result<RS>;
+
     fn visit_statement(&mut self, statement: Statement<T>) -> Result<RS>;
 
     fn visit_expression(&mut self, expression: Expression<T>) -> Result<RE>;
@@ -176,7 +197,7 @@ mod tests {
         let ast = Statement::Return(expression, 12, (0..0).into());
         assert_eq!(*ast.data(), 12);
 
-        let ast = Statement::Function(
+        let ast = UpperStatement::Function(
             "test".to_string(),
             vec![],
             Type::Void(),

@@ -4,6 +4,7 @@ use crate::{
     scope::Scope,
     types::Type,
 };
+use crate::ast::UpperStatement;
 
 pub type IrReg = usize;
 pub type IrValue = u64;
@@ -92,6 +93,31 @@ impl Default for IrBuilder {
 }
 
 impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
+        match statement {
+            UpperStatement::Function(name, args, _return_type, body, _annotations, _, range) => {
+                let _fn_block = self.new_block(format!("fn_{}", name));
+
+                self.scope.push();
+
+                // Add scope entries for all the function arguments
+                for (arg_name, _) in &args {
+                    let arg_index = self.index;
+                    self.index += 1;
+                    self.scope
+                        .insert(arg_name, arg_index)
+                        .map_err(|x| x.with_range(range))?;
+                }
+
+                self.visit_statement(*body)?;
+
+                self.scope.pop();
+
+                Ok(())
+            }
+        }
+    }
+
     fn visit_statement(&mut self, statement: Statement<Type>) -> Result<()> {
         use IrInstruction::*;
 
@@ -123,26 +149,6 @@ impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
                 let block = self.current_block();
 
                 block.add(Ret(expr_reg));
-
-                Ok(())
-            }
-            Statement::Function(name, args, _return_type, body, _annotations, _, range) => {
-                let _fn_block = self.new_block(format!("fn_{}", name));
-
-                self.scope.push();
-
-                // Add scope entries for all the function arguments
-                for (arg_name, _) in &args {
-                    let arg_index = self.index;
-                    self.index += 1;
-                    self.scope
-                        .insert(arg_name, arg_index)
-                        .map_err(|x| x.with_range(range))?;
-                }
-
-                self.visit_statement(*body)?;
-
-                self.scope.pop();
 
                 Ok(())
             }

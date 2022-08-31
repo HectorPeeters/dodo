@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
+    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType, UpperStatement},
     error::{Error, ErrorType, Result},
     tokenizer::{Token, TokenType},
     types::Type,
@@ -424,7 +424,7 @@ impl<'a> Parser<'a> {
         Ok((name.value.to_string(), value))
     }
 
-    fn parse_function(&mut self) -> Result<Statement<()>> {
+    fn parse_function(&mut self) -> Result<UpperStatement<()>> {
         let mut annotations = vec![];
 
         while self.peek()?.token_type == TokenType::At {
@@ -462,7 +462,7 @@ impl<'a> Parser<'a> {
         };
 
         let body = self.parse_statement()?;
-        Ok(Statement::Function(
+        Ok(UpperStatement::Function(
             identifier.value.to_string(),
             args,
             return_type,
@@ -516,7 +516,6 @@ impl<'a> Parser<'a> {
                     token.range,
                 )),
             },
-            TokenType::Fn | TokenType::At => self.parse_function(),
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Unexpected token {:?}", token.token_type),
@@ -524,15 +523,31 @@ impl<'a> Parser<'a> {
             )),
         }
     }
+
+    pub fn parse_upper_statement(&mut self) -> Result<UpperStatement<()>> {
+        let token = self.peek()?;
+
+        match token.token_type {
+            TokenType::Fn | TokenType::At => self.parse_function(),
+            _ => Err(Error::new_with_range(
+                ErrorType::Parser,
+                format!(
+                    "Unexpected token {:?} for upper-level statement",
+                    token.token_type
+                ),
+                token.range,
+            )),
+        }
+    }
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = Result<Statement<()>>;
+    type Item = Result<UpperStatement<()>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.eof() {
             true => None,
-            false => Some(self.parse_statement()),
+            false => Some(self.parse_upper_statement()),
         }
     }
 }
@@ -566,7 +581,7 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_function(input: &str) -> Result<Statement<()>> {
+    fn parse_function(input: &str) -> Result<UpperStatement<()>> {
         let tokens = tokenize(input)?;
 
         let mut parser = Parser::new(&tokens);
@@ -722,7 +737,7 @@ mod tests {
         let func = parse_function("fn test() { return 12; }")?;
         assert_eq!(
             func,
-            Statement::Function(
+            UpperStatement::Function(
                 "test".to_string(),
                 vec![],
                 Type::Void(),
@@ -749,7 +764,7 @@ mod tests {
         let func = parse_function("fn test() u8 { return 12; }")?;
         assert_eq!(
             func,
-            Statement::Function(
+            UpperStatement::Function(
                 "test".to_string(),
                 vec![],
                 Type::UInt8(),

@@ -10,6 +10,7 @@ use crate::{
     tokenizer::SourceRange,
     types::Type,
 };
+use crate::ast::UpperStatement;
 
 #[derive(Clone)]
 pub enum TypeScopeEntry {
@@ -68,6 +69,56 @@ impl Default for TypeChecker {
 }
 
 impl AstTransformer<(), Type> for TypeChecker {
+    fn transform_upper_statement(&mut self, statement: UpperStatement<()>) -> Result<UpperStatement<Type>> {
+        match statement {
+            UpperStatement::Function(name, args, return_type, body, annotations, _, range) => {
+                self.scope
+                    .insert(
+                        &name,
+                        TypeScopeEntry::Function(
+                            args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
+                            return_type.clone(),
+                        ),
+                    )
+                    .map_err(|x| x.with_range(range))?;
+
+                self.scope.push();
+                for (arg_name, arg_type) in &args {
+                    self.scope
+                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()))
+                        .map_err(|x| x.with_range(range))?;
+                }
+
+                assert_eq!(self.current_function_return_type, Type::Unknown());
+                self.current_function_return_type = return_type.clone();
+
+                let checked_body = self.transform_statement(*body)?;
+
+                self.current_function_return_type = Type::Unknown();
+
+                self.scope.pop();
+
+                let checked_annotations = annotations
+                    .into_iter()
+                    .map(|(name, value)| match self.transform_expression(value) {
+                        Ok(value) => Ok((name, value)),
+                        Err(error) => Err(error),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(UpperStatement::Function(
+                    name.clone(),
+                    args.clone(),
+                    return_type.clone(),
+                    Box::new(checked_body),
+                    checked_annotations,
+                    return_type,
+                    range,
+                ))
+            }
+        }
+    }
+
     fn transform_statement(&mut self, statement: Statement<()>) -> Result<TypedStatement> {
         match statement {
             Statement::Block(statements, scoped, _, range) => {
@@ -126,51 +177,6 @@ impl AstTransformer<(), Type> for TypeChecker {
                 let expr_type = expr.data().clone();
 
                 Ok(Statement::Expression(expr, expr_type, range))
-            }
-            Statement::Function(name, args, return_type, body, annotations, _, range) => {
-                self.scope
-                    .insert(
-                        &name,
-                        TypeScopeEntry::Function(
-                            args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
-                            return_type.clone(),
-                        ),
-                    )
-                    .map_err(|x| x.with_range(range))?;
-
-                self.scope.push();
-                for (arg_name, arg_type) in &args {
-                    self.scope
-                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()))
-                        .map_err(|x| x.with_range(range))?;
-                }
-
-                assert_eq!(self.current_function_return_type, Type::Unknown());
-                self.current_function_return_type = return_type.clone();
-
-                let checked_body = self.transform_statement(*body)?;
-
-                self.current_function_return_type = Type::Unknown();
-
-                self.scope.pop();
-
-                let checked_annotations = annotations
-                    .into_iter()
-                    .map(|(name, value)| match self.transform_expression(value) {
-                        Ok(value) => Ok((name, value)),
-                        Err(error) => Err(error),
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-
-                Ok(Statement::Function(
-                    name.clone(),
-                    args.clone(),
-                    return_type.clone(),
-                    Box::new(checked_body),
-                    checked_annotations,
-                    return_type,
-                    range,
-                ))
             }
             Statement::If(cond, body, _, range) => {
                 let cond = self.transform_expression(cond)?;
@@ -420,7 +426,7 @@ mod tests {
                 Expression::Widen(
                     Box::new(Expression::Literal(12, Type::UInt8(), (0..0).into())),
                     Type::UInt16(),
-                    (0..0).into()
+                    (0..0).into(),
                 ),
                 Type::UInt16(),
                 (0..0).into(),

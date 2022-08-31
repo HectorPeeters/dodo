@@ -1,3 +1,4 @@
+use crate::ast::{TypedUpperStatement, UpperStatement};
 use crate::{
     ast::{
         BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
@@ -127,8 +128,8 @@ section .data
 }
 
 impl Backend for X86NasmGenerator {
-    fn process_statement(&mut self, statement: TypedStatement) -> Result<()> {
-        self.visit_statement(statement)
+    fn process_upper_statement(&mut self, statement: TypedUpperStatement) -> Result<()> {
+        self.visit_upper_statement(statement)
     }
 
     fn finalize(&mut self, output: &Path) -> Result<()> {
@@ -202,6 +203,76 @@ impl Default for X86NasmGenerator {
 }
 
 impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
+        match statement {
+            UpperStatement::Function(
+                name,
+                args,
+                _ret_type,
+                body,
+                annotations,
+                _value_type,
+                range,
+            ) => {
+                self.scope.push();
+
+                assert!(args.len() <= 6);
+                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
+
+                assert_eq!(self.current_function_end_label, 0);
+                self.current_function_end_label = self.get_new_label();
+
+                let section_annotation = annotations
+                    .into_iter()
+                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Expression::StringLiteral(value, _, _) => value,
+                        _ => unreachable!()
+                    });
+
+                self.instr(Function(
+                    if name == "main" {
+                        "_start".to_string()
+                    } else {
+                        name
+                    },
+                    section_annotation,
+                ));
+
+                self.write_prologue();
+
+                if !args.is_empty() {
+                    self.instr(Sub(RSP, Constant((STACK_OFFSET * args.len()) as u64)));
+                }
+
+                for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                    let offset = self.scope.size()?;
+                    self.scope
+                        .insert(arg_name, offset)
+                        .map_err(|x| x.with_range(range))?;
+                    self.instr(Mov(
+                        RegIndirect(Rbp, offset * STACK_OFFSET),
+                        Reg(arg_reg, arg_type.size()),
+                    ));
+                }
+
+                self.visit_statement(*body)?;
+
+                self.instr(Label(self.current_function_end_label));
+                self.current_function_end_label = 0;
+
+                self.write_epilogue();
+
+                self.instr(Ret());
+                self.scope.pop();
+
+                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
+            }
+        }
+
+        Ok(())
+    }
+
     fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
         match statement {
             Statement::Declaration(name, _value_type, _, range) => {
@@ -264,61 +335,6 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 self.instr(Jmp(JmpLabel(self.current_function_end_label)));
 
                 self.free_register(value_reg);
-            }
-            Statement::Function(name, args, _ret_type, body, annotations, _value_type, range) => {
-                self.scope.push();
-
-                assert!(args.len() <= 6);
-                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
-
-                assert_eq!(self.current_function_end_label, 0);
-                self.current_function_end_label = self.get_new_label();
-
-                let section_annotation = annotations
-                    .into_iter()
-                    .find(|(name, value)|  matches!(value, Expression::StringLiteral(..) if name == "section" ))
-                    .map(|(_, value)| match value {
-                        Expression::StringLiteral(value, _, _) => value,
-                        _ => unreachable!()
-                    });
-
-                self.instr(Function(
-                    if name == "main" {
-                        "_start".to_string()
-                    } else {
-                        name
-                    },
-                    section_annotation,
-                ));
-
-                self.write_prologue();
-
-                if !args.is_empty() {
-                    self.instr(Sub(RSP, Constant((STACK_OFFSET * args.len()) as u64)));
-                }
-
-                for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
-                    let offset = self.scope.size()?;
-                    self.scope
-                        .insert(arg_name, offset)
-                        .map_err(|x| x.with_range(range))?;
-                    self.instr(Mov(
-                        RegIndirect(Rbp, offset * STACK_OFFSET),
-                        Reg(arg_reg, arg_type.size()),
-                    ));
-                }
-
-                self.visit_statement(*body)?;
-
-                self.instr(Label(self.current_function_end_label));
-                self.current_function_end_label = 0;
-
-                self.write_epilogue();
-
-                self.instr(Ret());
-                self.scope.pop();
-
-                assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
             Statement::Block(stmts, scoped, _, _) => {
                 if scoped {

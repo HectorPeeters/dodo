@@ -30,12 +30,12 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
     let mut type_checker = TypeChecker::new();
     let statements = statements
         .into_iter()
-        .map(|x| type_checker.transform_statement(x))
+        .map(|x| type_checker.transform_upper_statement(x))
         .collect::<Result<Vec<_>>>()?;
 
     statements
         .into_iter()
-        .map(|x| backend.process_statement(x))
+        .map(|x| backend.process_upper_statement(x))
         .collect::<Result<Vec<_>>>()?;
 
     let executable_path = format!("/tmp/output_{}", test_code);

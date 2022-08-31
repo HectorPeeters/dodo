@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use crate::{ast::TypedStatement, error::Result};
+use crate::{ast::TypedUpperStatement, error::Result};
 
 pub trait Backend {
-    fn process_statement(&mut self, statement: TypedStatement) -> Result<()>;
+    fn process_upper_statement(&mut self, statement: TypedUpperStatement) -> Result<()>;
 
     fn finalize(&mut self, output: &Path) -> Result<()>;
 
