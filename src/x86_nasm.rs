@@ -37,14 +37,21 @@ pub struct X86NasmGenerator {
 
 impl<'a> X86NasmGenerator {
     pub fn new() -> Self {
-        Self {
+        let mut result = Self {
             instructions: vec![],
             label_index: 0,
             scope: Scope::new(),
             allocated_registers: [false; GENERAL_PURPOSE_REGISTER_COUNT],
             current_function_end_label: 0,
             global_consts: vec![],
-        }
+        };
+
+        result.instr(Extern("printf".to_string()));
+        result.instr(Extern("exit".to_string()));
+        result.instr(Section(".text".to_string()));
+        result.instr(Global("_start".to_string()));
+
+        result
     }
 
     fn get_next_register(&mut self) -> X86Register {
@@ -90,10 +97,14 @@ impl<'a> X86NasmGenerator {
         self.instr(Pop(RBP));
     }
 
-    fn write<T: Write>(&'a self, writer: &'a mut T) {
-        writeln!(writer, "extern printf\nextern exit\n\nsection .data").unwrap();
+    fn write_data<T: Write>(&'a mut self, writer: &'a mut T) {
+        self.instr(Section(".data".to_string()));
+
+        let mut queued_instructions = vec![];
 
         for (index, value, value_type) in &self.global_consts {
+            queued_instructions.push(LabelDef(*index));
+
             match value {
                 Expression::IntegerLiteral(value, _, _) => {
                     use X86Instruction::*;
@@ -106,22 +117,21 @@ impl<'a> X86NasmGenerator {
                         _ => unreachable!(),
                     };
 
-                    writeln!(writer, "\tL{} {}", index, instruction).unwrap();
+                    queued_instructions.push(instruction);
                 }
                 Expression::StringLiteral(value, _, _) => {
-                    writeln!(
-                        writer,
-                        "\tL{} db `{}`, 0",
-                        index,
-                        value.replace('\n', "\\n")
-                    )
-                    .unwrap();
+                    let mut string_bytes = value.as_bytes().to_vec();
+                    string_bytes.push(0);
+                    queued_instructions.push(Db(string_bytes));
                 }
                 _ => unreachable!(),
             }
         }
 
-        writeln!(writer, "\nsection .text\nglobal _start").unwrap();
+        for instr in queued_instructions {
+            self.instr(instr);
+        }
+
         writeln!(
             writer,
             "{}",
@@ -145,7 +155,7 @@ impl Backend for X86NasmGenerator {
 
         let assembly_file = output.with_extension("asm");
         let mut assembly_output = File::create(&assembly_file).unwrap();
-        self.write(&mut assembly_output);
+        self.write_data(&mut assembly_output);
 
         // Compiling assemlby
 
@@ -232,14 +242,15 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                         _ => unreachable!()
                     });
 
-                self.instr(Function(
-                    if name == "main" {
-                        "_start".to_string()
-                    } else {
-                        name
-                    },
-                    section_annotation,
-                ));
+                if let Some(section_name) = section_annotation {
+                    self.instr(Section(section_name));
+                }
+
+                self.instr(Function(if name == "main" {
+                    "_start".to_string()
+                } else {
+                    name
+                }));
 
                 self.write_prologue();
 

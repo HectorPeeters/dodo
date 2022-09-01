@@ -159,7 +159,10 @@ pub enum X86Instruction {
     Ret(),
     Syscall(),
     LabelDef(usize),
-    Function(String, Option<String>),
+    Section(String),
+    Global(String),
+    Extern(String),
+    Function(String),
     Db(Vec<u8>),
     Dw(Vec<u16>),
     Dd(Vec<u32>),
@@ -193,10 +196,10 @@ impl fmt::Display for X86Instruction {
             Ret() => write!(f, "ret"),
             Syscall() => write!(f, "syscall"),
             LabelDef(l) => write!(f, "L{l}:"),
-            Function(x, section) => match section {
-                Some(sec) => write!(f, "section {sec}\n{x}:"),
-                None => write!(f, "{x}:"),
-            },
+            Section(name) => write!(f, "section {name}"),
+            Global(name) => write!(f, "global {name}"),
+            Extern(name) => write!(f, "extern {name}"),
+            Function(x) => write!(f, "{x}:"),
             Db(bytes) => write!(
                 f,
                 "db {}",
@@ -241,7 +244,7 @@ impl X86Instruction {
     pub fn should_indent(&self) -> bool {
         !matches!(
             self,
-            X86Instruction::LabelDef(_) | X86Instruction::Function(_, _)
+            X86Instruction::LabelDef(_) | X86Instruction::Function(_)
         )
     }
 }
