@@ -32,6 +32,8 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::Minus, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::Ampersand, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::Asterisk, Self::parse_unary_expression);
+        prefix_fns.insert(TokenType::True, Self::parse_constant);
+        prefix_fns.insert(TokenType::False, Self::parse_constant);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::BinaryIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::OctalIntegerLiteral, Self::parse_constant);
@@ -219,7 +221,7 @@ impl<'a> Parser<'a> {
                 .trim_start_matches(&prefix.to_uppercase()),
             radix,
         ) {
-            Ok(value) => Ok(Expression::Literal(value, (), range)),
+            Ok(value) => Ok(Expression::IntegerLiteral(value, (), range)),
             Err(_) => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Failed to parse '{}' to int", value),
@@ -233,6 +235,16 @@ impl<'a> Parser<'a> {
         let token = self.consume()?;
         let range = (constant_start..self.current_index(true)).into();
         match token.token_type {
+            TokenType::True => Ok(Expression::BooleanLiteral(
+                true,
+                (),
+                (constant_start..self.current_index(true)).into(),
+            )),
+            TokenType::False => Ok(Expression::BooleanLiteral(
+                false,
+                (),
+                (constant_start..self.current_index(true)).into(),
+            )),
             TokenType::IntegerLiteral => Self::parse_integer_literal(token.value, "", 10, range),
             TokenType::BinaryIntegerLiteral => {
                 Self::parse_integer_literal(token.value, "0b", 2, range)
@@ -646,7 +658,7 @@ mod tests {
     fn parse_constant() -> Result<()> {
         let exprs = parse_expressions("123")?;
 
-        assert_eq!(exprs[0], Expression::Literal(123, (), (0..3).into()));
+        assert_eq!(exprs[0], Expression::IntegerLiteral(123, (), (0..3).into()));
 
         Ok(())
     }
@@ -659,7 +671,7 @@ mod tests {
             exprs[0],
             Expression::UnaryOperator(
                 UnaryOperatorType::Negate,
-                Box::new(Expression::Literal(123, (), (1..4).into())),
+                Box::new(Expression::IntegerLiteral(123, (), (1..4).into())),
                 (),
                 (0..4).into()
             )
@@ -676,8 +688,8 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, (), (0..3).into())),
-                Box::new(Expression::Literal(123, (), (6..9).into())),
+                Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
+                Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
                 (),
                 (0..9).into()
             )
@@ -694,11 +706,11 @@ mod tests {
             exprs[0],
             Expression::BinaryOperator(
                 BinaryOperatorType::Subtract,
-                Box::new(Expression::Literal(456, (), (0..3).into())),
+                Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Literal(123, (), (6..9).into())),
-                    Box::new(Expression::Literal(789, (), (12..15).into())),
+                    Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
+                    Box::new(Expression::IntegerLiteral(789, (), (12..15).into())),
                     (),
                     (6..15).into()
                 )),
@@ -720,12 +732,12 @@ mod tests {
                 BinaryOperatorType::Subtract,
                 Box::new(Expression::BinaryOperator(
                     BinaryOperatorType::Multiply,
-                    Box::new(Expression::Literal(456, (), (0..3).into())),
-                    Box::new(Expression::Literal(123, (), (6..9).into())),
+                    Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
+                    Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
                     (),
                     (0..9).into()
                 )),
-                Box::new(Expression::Literal(789, (), (12..15).into())),
+                Box::new(Expression::IntegerLiteral(789, (), (12..15).into())),
                 (),
                 (0..15).into()
             )
@@ -743,8 +755,8 @@ mod tests {
             Statement::Return(
                 Expression::BinaryOperator(
                     BinaryOperatorType::Subtract,
-                    Box::new(Expression::Literal(456, (), (7..10).into())),
-                    Box::new(Expression::Literal(123, (), (13..16).into())),
+                    Box::new(Expression::IntegerLiteral(456, (), (7..10).into())),
+                    Box::new(Expression::IntegerLiteral(123, (), (13..16).into())),
                     (),
                     (7..16).into()
                 ),
@@ -797,7 +809,7 @@ mod tests {
                 Type::Void(),
                 Box::new(Statement::Block(
                     vec![Statement::Return(
-                        Expression::Literal(12, (), (19..21).into()),
+                        Expression::IntegerLiteral(12, (), (19..21).into()),
                         (),
                         (12..22).into()
                     )],
@@ -823,7 +835,7 @@ mod tests {
                 Type::UInt8(),
                 Box::new(Statement::Block(
                     vec![Statement::Return(
-                        Expression::Literal(12, (), (22..24).into()),
+                        Expression::IntegerLiteral(12, (), (22..24).into()),
                         (),
                         (15..25).into()
                     )],

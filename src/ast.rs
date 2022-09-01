@@ -130,7 +130,8 @@ pub enum Expression<T> {
     ),
     UnaryOperator(UnaryOperatorType, Box<Expression<T>>, T, SourceRange),
     FunctionCall(String, Vec<Expression<T>>, T, SourceRange),
-    Literal(u64, T, SourceRange),
+    IntegerLiteral(u64, T, SourceRange),
+    BooleanLiteral(bool, T, SourceRange),
     VariableRef(String, T, SourceRange),
     StringLiteral(String, T, SourceRange),
     Widen(Box<Expression<T>>, T, SourceRange),
@@ -144,7 +145,8 @@ impl<T> Expression<T> {
             BinaryOperator(_, _, _, t, _) => t,
             UnaryOperator(_, _, t, _) => t,
             FunctionCall(_, _, t, _) => t,
-            Literal(_, t, _) => t,
+            IntegerLiteral(_, t, _) => t,
+            BooleanLiteral(_, t, _) => t,
             VariableRef(_, t, _) => t,
             StringLiteral(_, t, _) => t,
             Widen(_, t, _) => t,
@@ -158,7 +160,8 @@ impl<T> Expression<T> {
             BinaryOperator(_, _, _, _, r) => r,
             UnaryOperator(_, _, _, r) => r,
             FunctionCall(_, _, _, r) => r,
-            Literal(_, _, r) => r,
+            IntegerLiteral(_, _, r) => r,
+            BooleanLiteral(_, _, r) => r,
             VariableRef(_, _, r) => r,
             StringLiteral(_, _, r) => r,
             Widen(_, _, r) => r,
@@ -191,7 +194,7 @@ mod tests {
 
     #[test]
     fn statement_data() -> Result<()> {
-        let expression = Expression::Literal(13, 14, (0..0).into());
+        let expression = Expression::IntegerLiteral(13, 14, (0..0).into());
 
         let ast = Statement::Block(vec![], false, 12, (0..0).into());
         assert_eq!(*ast.data(), 12);

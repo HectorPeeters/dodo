@@ -173,7 +173,7 @@ impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
             }
             Expression::UnaryOperator(_, _, _, _) => todo!(),
             Expression::FunctionCall(_, _, _, _) => Ok(100000),
-            Expression::Literal(value, _, _) => {
+            Expression::IntegerLiteral(value, _, _) => {
                 let reg = self.index;
                 self.index += 1;
 
@@ -181,6 +181,9 @@ impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
                 block.add(MovImm(reg, value));
 
                 Ok(reg)
+            }
+            Expression::BooleanLiteral(_value, _, _) => {
+                todo!();
             }
             Expression::VariableRef(name, _, range) => {
                 self.scope.find(&name).map_err(|x| x.with_range(range))

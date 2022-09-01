@@ -233,7 +233,8 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(format!("{}({})", name, args))
             }
-            Expression::Literal(value, _, _) => Ok(format!("{}", value)),
+            Expression::IntegerLiteral(value, _, _) => Ok(format!("{}", value)),
+            Expression::BooleanLiteral(value, _, _) => Ok(format!("{}", value)),
             Expression::VariableRef(name, _, _) => Ok(name),
             Expression::StringLiteral(value, _, _) => Ok(format!(
                 "\"{}\"",

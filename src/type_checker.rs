@@ -422,17 +422,18 @@ impl AstTransformer<(), Type> for TypeChecker {
                     Ok(FunctionCall(name, new_args, return_type, range))
                 }
             }
-            Literal(value, _, range) => {
+            IntegerLiteral(value, _, range) => {
                 if value <= 255 {
-                    Ok(Literal(value, Type::UInt8(), range))
+                    Ok(IntegerLiteral(value, Type::UInt8(), range))
                 } else if value <= 65535 {
-                    Ok(Literal(value, Type::UInt16(), range))
+                    Ok(IntegerLiteral(value, Type::UInt16(), range))
                 } else if value <= 4294967295 {
-                    Ok(Literal(value, Type::UInt32(), range))
+                    Ok(IntegerLiteral(value, Type::UInt32(), range))
                 } else {
-                    Ok(Literal(value, Type::UInt64(), range))
+                    Ok(IntegerLiteral(value, Type::UInt64(), range))
                 }
             }
+            BooleanLiteral(value, _, range) => Ok(BooleanLiteral(value, Type::Bool(), range)),
             VariableRef(name, _, range) => {
                 let value_type = self.get_scope_value_type(&name, &range)?;
 
@@ -464,7 +465,7 @@ mod tests {
 
         let ast = Statement::Assignment(
             Expression::VariableRef("test".to_string(), (), (0..0).into()),
-            Expression::Literal(12, (), (0..0).into()),
+            Expression::IntegerLiteral(12, (), (0..0).into()),
             (),
             (0..0).into(),
         );
@@ -474,7 +475,7 @@ mod tests {
             Statement::Assignment(
                 Expression::VariableRef("test".to_string(), Type::UInt16(), (0..0).into()),
                 Expression::Widen(
-                    Box::new(Expression::Literal(12, Type::UInt8(), (0..0).into())),
+                    Box::new(Expression::IntegerLiteral(12, Type::UInt8(), (0..0).into())),
                     Type::UInt16(),
                     (0..0).into(),
                 ),

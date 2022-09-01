@@ -22,6 +22,11 @@ pub enum TokenType {
     #[token("if")]
     If,
 
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
+
     #[token("u8")]
     UInt8,
     #[token("u16")]

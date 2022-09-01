@@ -95,7 +95,7 @@ impl<'a> X86NasmGenerator {
 
         for (index, value, value_type) in &self.global_consts {
             match value {
-                Expression::Literal(value, _, _) => {
+                Expression::IntegerLiteral(value, _, _) => {
                     use X86Instruction::*;
 
                     let instruction = match value_type {
@@ -386,10 +386,17 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
     fn visit_expression(&mut self, expression: TypedExpression) -> Result<X86Register> {
         match expression {
-            Expression::Literal(value, value_type, _range) => {
+            Expression::IntegerLiteral(value, value_type, _range) => {
                 let register = self.get_next_register();
 
                 self.instr(Mov(Reg(register, value_type.size()), Constant(value)));
+
+                Ok(register)
+            }
+            Expression::BooleanLiteral(value, _, _range) => {
+                let register = self.get_next_register();
+
+                self.instr(Mov(Reg(register, 8), Constant(if value { 1 } else { 0 })));
 
                 Ok(register)
             }

@@ -2,7 +2,7 @@
 fn does_not_return() {
     printf("This function will not return\n");
 
-    while 1 == 1 {}
+    while true {}
 }
 
 fn main() {}
