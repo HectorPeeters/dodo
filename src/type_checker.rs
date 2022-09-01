@@ -43,14 +43,6 @@ impl TypeChecker {
         }
     }
 
-    fn is_global(&self, name: &str, range: &SourceRange) -> Result<bool> {
-        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
-            TypeScopeEntry::Value(_) => Ok(false),
-            TypeScopeEntry::Function(_, _) => Ok(false),
-            TypeScopeEntry::Global(_) => Ok(true),
-        }
-    }
-
     fn get_scope_function_type(
         &self,
         name: &str,
@@ -192,36 +184,43 @@ impl AstTransformer<(), Type> for TypeChecker {
                     range,
                 ))
             }
-            Statement::Assignment(name, expr, _, range) => {
-                if self.is_global(&name, &range)? {
-                    return Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!("Cannot assign to global constant '{}'", name),
+            Statement::Assignment(lhs, rhs, _, range) => {
+                let lhs_checked = self.transform_expression(lhs)?;
+                let mut rhs_checked = self.transform_expression(rhs)?;
+
+                if lhs_checked.data() == rhs_checked.data() {
+                    let resulting_type = lhs_checked.data().clone();
+                    return Ok(Statement::Assignment(
+                        lhs_checked,
+                        rhs_checked,
+                        resulting_type,
                         range,
                     ));
                 }
 
-                let mut expr = self.transform_expression(expr)?;
-                let destination_type = self.get_scope_value_type(&name, &range)?;
-
-                let new_type =
-                    Self::widen_assignment(&destination_type, expr.data()).ok_or_else(|| {
+                let new_type = Self::widen_assignment(lhs_checked.data(), rhs_checked.data())
+                    .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                expr.data(),
-                                destination_type
+                                rhs_checked.data(),
+                                lhs_checked.data(),
                             ),
                             range,
                         )
                     })?;
 
-                if &new_type != expr.data() {
-                    expr = Expression::Widen(Box::new(expr), new_type.clone(), range);
+                if &new_type != rhs_checked.data() {
+                    rhs_checked = Expression::Widen(Box::new(rhs_checked), new_type.clone(), range);
                 }
 
-                Ok(Statement::Assignment(name, expr, new_type, range))
+                Ok(Statement::Assignment(
+                    lhs_checked,
+                    rhs_checked,
+                    new_type,
+                    range,
+                ))
             }
             Statement::Expression(expr, _, range) => {
                 let expr = self.transform_expression(expr)?;
@@ -464,7 +463,7 @@ mod tests {
         ))?;
 
         let ast = Statement::Assignment(
-            "test".to_string(),
+            Expression::VariableRef("test".to_string(), (), (0..0).into()),
             Expression::Literal(12, (), (0..0).into()),
             (),
             (0..0).into(),
@@ -473,7 +472,7 @@ mod tests {
         assert_eq!(
             type_checker.transform_statement(ast)?,
             Statement::Assignment(
-                "test".to_string(),
+                Expression::VariableRef("test".to_string(), Type::UInt16(), (0..0).into()),
                 Expression::Widen(
                     Box::new(Expression::Literal(12, Type::UInt8(), (0..0).into())),
                     Type::UInt16(),

@@ -1,8 +1,10 @@
 fn main() {
     let x: u8 = 12;
     let addr_x: u8* = &x;
-    let y: u8 = *addr_x;
+    printf("%hhu\n", x);
 
+    *addr_x = 13;
+    let y: u8 = *addr_x;
     printf("%hhu\n%hhu\n", x, y);
 
     let string: u8* = "test";

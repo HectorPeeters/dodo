@@ -222,10 +222,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 assert_eq!(self.current_function_end_label, 0);
                 self.current_function_end_label = self.get_new_label();
 
-                let no_return = annotations
-                    .iter()
-                    .find(|(name, _)| name == "noreturn")
-                    .is_some();
+                let no_return = annotations.iter().any(|(name, _)| name == "noreturn");
 
                 let section_annotation = annotations
                     .into_iter()
@@ -295,20 +292,34 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
-            Statement::Assignment(name, value, value_type, range) => {
-                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
-                let value_reg = self.visit_expression(value)?;
+            Statement::Assignment(lhs, rhs, value_type, range) => match lhs {
+                Expression::VariableRef(name, _, _) => {
+                    let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+                    let value_reg = self.visit_expression(rhs)?;
 
-                match location {
-                    ScopeLocation::Stack(offset) => self.instr(Mov(
-                        RegIndirect(Rbp, offset * STACK_OFFSET),
-                        Reg(value_reg, value_type.size()),
-                    )),
-                    ScopeLocation::Global(_) => todo!(),
+                    match location {
+                        ScopeLocation::Stack(offset) => self.instr(Mov(
+                            RegIndirect(Rbp, offset * STACK_OFFSET),
+                            Reg(value_reg, value_type.size()),
+                        )),
+                        ScopeLocation::Global(_) => todo!(),
+                    }
+
+                    self.free_register(value_reg);
                 }
+                Expression::UnaryOperator(UnaryOperatorType::Deref, expr, value_type, _) => {
+                    let reg = self.visit_expression(rhs)?;
 
-                self.free_register(value_reg);
-            }
+                    let value_type_size = value_type.size();
+                    let dest_reg = self.visit_expression(*expr)?;
+
+                    self.instr(Mov(RegIndirect(dest_reg, 0), Reg(reg, value_type_size)));
+
+                    self.free_register(reg);
+                    self.free_register(dest_reg);
+                }
+                _ => todo!(),
+            },
             Statement::While(cond, stmt, _, _range) => {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();

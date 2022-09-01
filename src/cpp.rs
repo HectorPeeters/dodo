@@ -89,11 +89,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 let return_type = to_cpp_type(return_type);
 
-                let no_return = if annotations
-                    .iter()
-                    .find(|(name, _)| name == "noreturn")
-                    .is_some()
-                {
+                let no_return = if annotations.iter().any(|(name, _)| name == "noreturn") {
                     "[[noreturn]]"
                 } else {
                     ""
@@ -158,9 +154,10 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
                     .push_str(&format!("{} {};\n", to_cpp_type(type_), name));
                 Ok(())
             }
-            Statement::Assignment(name, value, _, _) => {
-                let value = self.visit_expression(value)?;
-                self.buffer.push_str(&format!("{} = {};\n", name, value));
+            Statement::Assignment(lhs, rhs, _, _) => {
+                let lhs = self.visit_expression(lhs)?;
+                let rhs = self.visit_expression(rhs)?;
+                self.buffer.push_str(&format!("{} = {};\n", lhs, rhs));
                 Ok(())
             }
             Statement::Expression(expr, _, _) => {

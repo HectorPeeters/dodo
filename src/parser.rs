@@ -293,6 +293,7 @@ impl<'a> Parser<'a> {
             TokenType::RightParen,
             TokenType::LeftBrace,
             TokenType::Comma,
+            TokenType::Equals,
         ];
 
         let token_type = self.peek()?.token_type;
@@ -376,7 +377,11 @@ impl<'a> Parser<'a> {
                         (let_start..decl_start).into(),
                     ),
                     Statement::Assignment(
-                        variable_name,
+                        Expression::VariableRef(
+                            variable_name,
+                            (),
+                            (decl_start..self.current_index(true)).into(),
+                        ),
                         expr,
                         (),
                         (decl_start..self.current_index(true)).into(),
@@ -399,12 +404,13 @@ impl<'a> Parser<'a> {
 
     fn parse_assignment_statement(&mut self) -> Result<Statement<()>> {
         let assignment_start = self.current_index(false);
-        let name = self.consume_assert(TokenType::Identifier)?.value;
+        let lhs = self.parse_expression(0)?;
+
         self.consume_assert(TokenType::Equals)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
         Ok(Statement::Assignment(
-            name.to_string(),
+            lhs,
             expr,
             (),
             (assignment_start..self.current_index(true)).into(),
@@ -533,7 +539,6 @@ impl<'a> Parser<'a> {
             TokenType::While => self.parse_while_statement(),
             TokenType::If => self.parse_if_statement(),
             TokenType::Identifier => match self.peeks(1)?.token_type {
-                TokenType::Equals => self.parse_assignment_statement(),
                 TokenType::LeftParen => {
                     let expr_start = self.current_index(false);
                     let result = Statement::Expression(
@@ -544,17 +549,9 @@ impl<'a> Parser<'a> {
                     self.consume_assert(TokenType::SemiColon)?;
                     Ok(result)
                 }
-                _ => Err(Error::new_with_range(
-                    ErrorType::Parser,
-                    format!("Unexpected token {:?}", token.token_type),
-                    token.range,
-                )),
+                _ => self.parse_assignment_statement(),
             },
-            _ => Err(Error::new_with_range(
-                ErrorType::Parser,
-                format!("Unexpected token {:?}", token.token_type),
-                token.range,
-            )),
+            _ => self.parse_assignment_statement(),
         }
     }
 

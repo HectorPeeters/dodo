@@ -32,7 +32,7 @@ impl<T> UpperStatement<T> {
 pub enum Statement<T> {
     Block(Vec<Statement<T>>, bool, T, SourceRange),
     Declaration(String, Type, T, SourceRange),
-    Assignment(String, Expression<T>, T, SourceRange),
+    Assignment(Expression<T>, Expression<T>, T, SourceRange),
     Expression(Expression<T>, T, SourceRange),
     While(Expression<T>, Box<Statement<T>>, T, SourceRange),
     If(Expression<T>, Box<Statement<T>>, T, SourceRange),
@@ -150,6 +150,20 @@ impl<T> Expression<T> {
             Widen(_, t, _) => t,
         }
     }
+
+    pub fn range(&self) -> &SourceRange {
+        use Expression::*;
+
+        match self {
+            BinaryOperator(_, _, _, _, r) => r,
+            UnaryOperator(_, _, _, r) => r,
+            FunctionCall(_, _, _, r) => r,
+            Literal(_, _, r) => r,
+            VariableRef(_, _, r) => r,
+            StringLiteral(_, _, r) => r,
+            Widen(_, _, r) => r,
+        }
+    }
 }
 
 pub trait AstTransformer<S, T> {
@@ -185,7 +199,12 @@ mod tests {
         let ast = Statement::Declaration("test".to_string(), Type::Void(), 12, (0..0).into());
         assert_eq!(*ast.data(), 12);
 
-        let ast = Statement::Assignment("test".to_string(), expression.clone(), 12, (0..0).into());
+        let ast = Statement::Assignment(
+            Expression::VariableRef("test".to_string(), 13, (0..0).into()),
+            expression.clone(),
+            12,
+            (0..0).into(),
+        );
         assert_eq!(*ast.data(), 12);
 
         let ast = Statement::Expression(expression.clone(), 12, (0..0).into());
