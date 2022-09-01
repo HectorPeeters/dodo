@@ -1,25 +1,23 @@
-use crate::ast::UpperStatement;
-use crate::{
-    ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement},
-    error::Result,
-    scope::Scope,
-    types::Type,
-};
+pub type IrString = usize;
+pub type IrBlockIndex = usize;
+pub type IrRegister = usize;
 
-pub type IrReg = usize;
-pub type IrValue = u64;
-pub type IrLocation = usize;
-pub type IrStringIndex = usize;
+pub enum IrValue {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u32),
+    Bool(bool),
+}
 
-#[derive(Debug, Clone)]
 pub enum IrInstruction {
-    Mov(IrReg, IrReg),
-    MovImm(IrReg, IrValue),
-    Add(IrReg, IrReg, IrReg),
-    Sub(IrReg, IrReg, IrReg),
-    Ret(IrReg),
-    Jmp(IrLocation),
-    Call(IrStringIndex),
+    Jmp(IrBlockIndex),
+    MovImm(IrRegister, IrValue),
+    Add(IrRegister, IrRegister, IrRegister),
+    Push(IrRegister),
+    Pop(IrRegister),
+    Call(IrBlockIndex),
+    Ret(),
 }
 
 pub struct IrBlock {
@@ -28,168 +26,151 @@ pub struct IrBlock {
 }
 
 impl IrBlock {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
-            name,
+            name: name.to_string(),
             instructions: vec![],
         }
     }
 
-    pub fn add(&mut self, instr: IrInstruction) {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn add_instruction(&mut self, instr: IrInstruction) {
         self.instructions.push(instr);
     }
 }
 
 pub struct IrBuilder {
     blocks: Vec<IrBlock>,
-    strings: Vec<String>,
-    scope: Scope<IrReg>,
-    index: usize,
+    register_index: IrRegister,
 }
 
 impl IrBuilder {
     pub fn new() -> Self {
         Self {
             blocks: vec![],
-            strings: vec![],
-            scope: Scope::new(),
-            index: 0,
+            register_index: 0,
         }
     }
 
-    pub fn new_block(&mut self, name: String) -> &mut IrBlock {
+    pub fn new_register(&mut self) -> IrRegister {
+        self.register_index += 1;
+        self.register_index - 1
+    }
+
+    pub fn add_block(&mut self, name: &str) -> IrBlockIndex {
         let block = IrBlock::new(name);
         self.blocks.push(block);
-        self.blocks.last_mut().unwrap()
+        self.blocks.len() - 1
     }
 
-    pub fn add_string(&mut self, value: String) -> usize {
-        self.strings.push(value);
-        self.strings.len() - 1
+    pub fn add_instruction(&mut self, block_index: IrBlockIndex, instr: IrInstruction) {
+        self.blocks[block_index].add_instruction(instr);
     }
 
-    pub fn current_block(&mut self) -> &mut IrBlock {
-        self.blocks.last_mut().unwrap()
-    }
+    pub fn can_reach_blocks(&mut self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
+        let mut result = vec![];
 
-    pub fn new_reg(&mut self) -> IrReg {
-        let reg = self.index;
-        self.index += 1;
-        reg
-    }
-
-    pub fn print_blocks(&self) {
-        for block in &self.blocks {
-            println!("=== {} ===", block.name);
-            println!("{:?}", block.instructions);
+        for instr in &self.blocks[block_index].instructions {
+            match instr {
+                IrInstruction::Jmp(target) => result.push(*target),
+                IrInstruction::Call(target) => result.push(*target),
+                _ => {}
+            }
         }
+
+        result
     }
 }
 
-impl Default for IrBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl ConsumingAstVisitor<Type, (), IrReg> for IrBuilder {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
-        match statement {
-            UpperStatement::Function(name, args, _return_type, body, _annotations, range) => {
-                let _fn_block = self.new_block(format!("fn_{}", name));
-
-                self.scope.push();
-
-                // Add scope entries for all the function arguments
-                for (arg_name, _) in &args {
-                    let arg_index = self.index;
-                    self.index += 1;
-                    self.scope
-                        .insert(arg_name, arg_index)
-                        .map_err(|x| x.with_range(range))?;
-                }
-
-                self.visit_statement(*body)?;
-
-                self.scope.pop();
-
-                Ok(())
-            }
-            _ => todo!(),
-        }
+    #[test]
+    fn simple_block() {
+        let mut builder = IrBuilder::new();
+        let main_block = builder.add_block("main");
+        assert_eq!(main_block, 0);
     }
 
-    fn visit_statement(&mut self, statement: Statement<Type>) -> Result<()> {
+    #[test]
+    fn jump_block() {
+        let mut builder = IrBuilder::new();
+        let main_block = builder.add_block("main");
+
+        let target_block = builder.add_block("target");
+        builder.add_instruction(main_block, IrInstruction::Jmp(target_block));
+
+        assert_eq!(builder.can_reach_blocks(main_block), vec![1]);
+        assert_eq!(builder.can_reach_blocks(target_block), vec![]);
+    }
+
+    #[test]
+    fn cyclic_jump_block() {
+        let mut builder = IrBuilder::new();
+        let main_block = builder.add_block("main");
+
+        let target_block = builder.add_block("target");
+        builder.add_instruction(main_block, IrInstruction::Jmp(target_block));
+        builder.add_instruction(target_block, IrInstruction::Jmp(main_block));
+
+        assert_eq!(builder.can_reach_blocks(main_block), vec![target_block]);
+        assert_eq!(builder.can_reach_blocks(target_block), vec![main_block]);
+    }
+
+    #[test]
+    fn add_two_numbers() {
         use IrInstruction::*;
 
-        match statement {
-            Statement::Block(statements, scoped, _, _) => {
-                if scoped {
-                    self.scope.push();
-                }
+        let mut builder = IrBuilder::new();
 
-                for stmt in statements {
-                    self.visit_statement(stmt)?;
-                }
+        let main_block = builder.add_block("main");
 
-                if scoped {
-                    self.scope.pop();
-                }
-                Ok(())
-            }
-            Statement::Declaration(_, _, _, _) => todo!(),
-            Statement::Assignment(_, _, _, _) => todo!(),
-            Statement::Expression(expr, _, _) => {
-                self.visit_expression(expr)?;
-                Ok(())
-            }
-            Statement::While(_, _, _, _) => todo!(),
-            Statement::If(_cond, _body, _, _) => todo!(),
-            Statement::Return(expr, _, _) => {
-                let expr_reg = self.visit_expression(expr)?;
-                let block = self.current_block();
+        let a_register = builder.new_register();
+        builder.add_instruction(main_block, MovImm(a_register, IrValue::U32(12)));
+        let b_register = builder.new_register();
+        builder.add_instruction(main_block, MovImm(b_register, IrValue::U32(13)));
 
-                block.add(Ret(expr_reg));
-
-                Ok(())
-            }
-        }
+        let result_register = builder.new_register();
+        builder.add_instruction(main_block, Add(result_register, a_register, b_register));
     }
 
-    fn visit_expression(&mut self, expression: Expression<Type>) -> Result<IrReg> {
+    #[test]
+    fn add_number_function() {
         use IrInstruction::*;
 
-        match expression {
-            Expression::BinaryOperator(op, left, right, _, _) => {
-                let left_reg = self.visit_expression(*left)?;
-                let right_reg = self.visit_expression(*right)?;
-                assert_eq!(op, BinaryOperatorType::Add);
+        let mut builder = IrBuilder::new();
 
-                let result_reg = self.new_reg();
-                let block = self.current_block();
-                block.add(Add(left_reg, right_reg, result_reg));
+        let add_block = builder.add_block("add");
 
-                Ok(result_reg)
-            }
-            Expression::UnaryOperator(_, _, _, _) => todo!(),
-            Expression::FunctionCall(_, _, _, _) => Ok(100000),
-            Expression::IntegerLiteral(value, _, _) => {
-                let reg = self.index;
-                self.index += 1;
+        let a_reg = builder.new_register();
+        builder.add_instruction(add_block, Pop(a_reg));
 
-                let block = self.current_block();
-                block.add(MovImm(reg, value));
+        let b_reg = builder.new_register();
+        builder.add_instruction(add_block, Pop(b_reg));
 
-                Ok(reg)
-            }
-            Expression::BooleanLiteral(_value, _, _) => {
-                todo!();
-            }
-            Expression::VariableRef(name, _, range) => {
-                self.scope.find(&name).map_err(|x| x.with_range(range))
-            }
-            Expression::StringLiteral(_, _, _) => todo!(),
-            Expression::Widen(_, _, _) => todo!(),
-        }
+        let result_reg = builder.new_register();
+        builder.add_instruction(add_block, Add(result_reg, a_reg, b_reg));
+
+        builder.add_instruction(add_block, Push(result_reg));
+        builder.add_instruction(add_block, Ret());
+
+        let main_block = builder.add_block("main");
+
+        let arg1_reg = builder.new_register();
+        builder.add_instruction(main_block, MovImm(arg1_reg, IrValue::U32(12)));
+
+        let arg2_reg = builder.new_register();
+        builder.add_instruction(main_block, MovImm(arg2_reg, IrValue::U32(13)));
+
+        builder.add_instruction(main_block, Push(arg1_reg));
+        builder.add_instruction(main_block, Push(arg2_reg));
+        builder.add_instruction(main_block, Call(add_block));
+
+        let final_result_reg = builder.new_register();
+        builder.add_instruction(main_block, Pop(final_result_reg));
     }
 }
