@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 fn assert_eq(result: u32, expected: u32) {
     if result != expected {
         printf("Failed: expected %d but got %d\n", expected, result);

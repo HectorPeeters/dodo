@@ -17,15 +17,7 @@ pub enum UpperStatement<T> {
         SourceRange,
     ),
     ConstDeclaration(String, Type, Expression<T>, SourceRange),
-}
-
-impl<T> UpperStatement<T> {
-    pub fn get_type(&self) -> &Type {
-        match self {
-            UpperStatement::Function(_, _, t, _, _, _) => t,
-            UpperStatement::ConstDeclaration(_, t, _, _) => t,
-        }
-    }
+    ExternDeclaration(String, SourceRange),
 }
 
 #[derive(Debug, Clone, PartialEq)]

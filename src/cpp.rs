@@ -15,7 +15,7 @@ pub struct CppGenerator {
 impl CppGenerator {
     pub fn new() -> Self {
         Self {
-            buffer: "#include \"runtime.h\"\n\n".to_string(),
+            buffer: "#include <stdio.h>\n#include<stdlib.h>\n\n".to_string(),
         }
     }
 }
@@ -30,12 +30,7 @@ impl Backend for CppGenerator {
         std::fs::write(&cpp_file, &self.buffer).unwrap();
 
         let compile_output = Command::new("clang++")
-            .args([
-                cpp_file.to_str().unwrap(),
-                "-o",
-                output.to_str().unwrap(),
-                "-Iruntime",
-            ])
+            .args([cpp_file.to_str().unwrap(), "-o", output.to_str().unwrap()])
             .output()
             .expect("Failed to execute cpp compiler");
 
@@ -75,19 +70,19 @@ fn to_cpp_type(type_: Type) -> String {
 impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
     fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
         match statement {
+            UpperStatement::ExternDeclaration(_, _) => Ok(()),
             UpperStatement::Function(name, args, return_type, body, annotations, _) => {
-                let mut name = name;
-                if name == "main" {
-                    name = "dodo_main".to_string();
-                }
-
                 let args = args
                     .into_iter()
                     .map(|(name, type_)| format!("{} {}", to_cpp_type(type_), name))
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                let return_type = to_cpp_type(return_type);
+                let return_type = if name == "main" {
+                    "int".to_string()
+                } else {
+                    to_cpp_type(return_type)
+                };
 
                 let no_return = if annotations.iter().any(|(name, _)| name == "noreturn") {
                     "[[noreturn]]"

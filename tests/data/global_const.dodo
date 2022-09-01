@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 const greeting: u8* = "Hello world!";
 
 const number: u32 = 4321;

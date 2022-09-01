@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 fn main() {
     let x: u8 = 0;
     x = x - 1;

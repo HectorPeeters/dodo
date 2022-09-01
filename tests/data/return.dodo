@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 fn test() u32 {
     return 12;
 }

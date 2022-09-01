@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 @section(".text")
 fn test() {
     printf("Hello from the text section\n");

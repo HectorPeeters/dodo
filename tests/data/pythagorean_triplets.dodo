@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 fn main() {
     let upto: u32 = 100;
 

@@ -589,10 +589,24 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn parse_extern(&mut self) -> Result<UpperStatement<()>> {
+        let start_index = self.current_index(false);
+
+        self.consume_assert(TokenType::Extern)?;
+        let symbol = self.consume_assert(TokenType::StringLiteral)?.value;
+        self.consume_assert(TokenType::SemiColon)?;
+
+        Ok(UpperStatement::ExternDeclaration(
+            symbol[1..symbol.len() - 1].to_string(),
+            (start_index..self.current_index(true)).into(),
+        ))
+    }
+
     pub fn parse_upper_statement(&mut self) -> Result<UpperStatement<()>> {
         let token = self.peek()?;
 
         match token.token_type {
+            TokenType::Extern => self.parse_extern(),
             TokenType::Fn | TokenType::At => self.parse_function(),
             TokenType::Const => self.parse_const_declaration(),
             _ => Err(Error::new_with_range(

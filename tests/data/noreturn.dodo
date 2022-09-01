@@ -1,3 +1,6 @@
+extern "printf";
+extern "exit";
+
 @noreturn
 fn does_not_return() {
     printf("This function will not return\n");
@@ -5,4 +8,6 @@ fn does_not_return() {
     while true {}
 }
 
-fn main() {}
+fn main() {
+    exit(0);
+}

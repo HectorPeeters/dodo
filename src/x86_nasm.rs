@@ -46,8 +46,6 @@ impl<'a> X86NasmGenerator {
             global_consts: vec![],
         };
 
-        result.instr(Extern("printf".to_string()));
-        result.instr(Extern("exit".to_string()));
         result.instr(Section(".text".to_string()));
         result.instr(Global("_start".to_string()));
 
@@ -223,6 +221,9 @@ impl Default for X86NasmGenerator {
 impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
     fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
         match statement {
+            UpperStatement::ExternDeclaration(symbol, _) => {
+                self.instr(Extern(symbol));
+            }
             UpperStatement::Function(name, args, _ret_type, body, annotations, range) => {
                 self.scope.push();
 

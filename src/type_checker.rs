@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::ast::UpperStatement;
 use crate::{
     ast::{
@@ -11,12 +9,14 @@ use crate::{
     tokenizer::SourceRange,
     types::Type,
 };
+use std::cmp::Ordering;
 
 #[derive(Clone)]
 pub enum TypeScopeEntry {
     Value(Type),
     Function(Vec<Type>, Type),
     Global(Type),
+    ExternalFuction(),
 }
 
 pub struct TypeChecker {
@@ -40,6 +40,7 @@ impl TypeChecker {
                 unreachable!("Trying to get type of value with the name of a function")
             }
             Global(t) => Ok(t),
+            ExternalFuction() => unreachable!(),
         }
     }
 
@@ -55,6 +56,15 @@ impl TypeChecker {
             Global(_) => {
                 unreachable!("Trying to get type of value with the name of a global")
             }
+            ExternalFuction() => unreachable!(),
+        }
+    }
+
+    fn is_external_function(&self, name: &str, range: &SourceRange) -> Result<bool> {
+        use TypeScopeEntry::*;
+        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
+            ExternalFuction() => Ok(true),
+            _ => Ok(false),
         }
     }
 
@@ -79,6 +89,11 @@ impl AstTransformer<(), Type> for TypeChecker {
         statement: UpperStatement<()>,
     ) -> Result<UpperStatement<Type>> {
         match statement {
+            UpperStatement::ExternDeclaration(name, range) => {
+                self.scope
+                    .insert(&name, TypeScopeEntry::ExternalFuction())?;
+                Ok(UpperStatement::ExternDeclaration(name, range))
+            }
             UpperStatement::Function(name, args, return_type, body, annotations, range) => {
                 self.scope
                     .insert(
@@ -380,47 +395,47 @@ impl AstTransformer<(), Type> for TypeChecker {
                 }
             }
             FunctionCall(name, args, _, range) => {
-                if name == "printf" || name == "exit" {
-                    Ok(FunctionCall(
+                if self.is_external_function(&name, &range)? {
+                    return Ok(FunctionCall(
                         name,
                         args.into_iter()
                             .map(|arg| self.transform_expression(arg))
                             .collect::<Result<Vec<_>>>()?,
                         Type::UInt64(),
                         range,
-                    ))
-                } else {
-                    let (arg_types, return_type) = self.get_scope_function_type(&name, &range)?;
-
-                    assert_eq!(args.len(), arg_types.len());
-
-                    let mut new_args: Vec<TypedExpression> = vec![];
-
-                    for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
-                        let arg = self.transform_expression(arg)?;
-                        let arg_type = arg.data().clone();
-
-                        let new_type = Self::widen_assignment(expected_type, &arg_type)
-                            .ok_or_else(|| {
-                                Error::new_with_range(
-                                    ErrorType::TypeCheck,
-                                    format!(
-                                        "Cannot widen from type {:?} to {:?}",
-                                        arg_type, expected_type
-                                    ),
-                                    range,
-                                )
-                            })?;
-
-                        if new_type != arg_type {
-                            new_args.push(Expression::Widen(Box::new(arg), new_type, range));
-                        } else {
-                            new_args.push(arg);
-                        }
-                    }
-
-                    Ok(FunctionCall(name, new_args, return_type, range))
+                    ));
                 }
+
+                let (arg_types, return_type) = self.get_scope_function_type(&name, &range)?;
+
+                assert_eq!(args.len(), arg_types.len());
+
+                let mut new_args: Vec<TypedExpression> = vec![];
+
+                for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
+                    let arg = self.transform_expression(arg)?;
+                    let arg_type = arg.data().clone();
+
+                    let new_type =
+                        Self::widen_assignment(expected_type, &arg_type).ok_or_else(|| {
+                            Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!(
+                                    "Cannot widen from type {:?} to {:?}",
+                                    arg_type, expected_type
+                                ),
+                                range,
+                            )
+                        })?;
+
+                    if new_type != arg_type {
+                        new_args.push(Expression::Widen(Box::new(arg), new_type, range));
+                    } else {
+                        new_args.push(arg);
+                    }
+                }
+
+                Ok(FunctionCall(name, new_args, return_type, range))
             }
             IntegerLiteral(value, _, range) => {
                 if value <= 255 {
