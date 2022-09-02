@@ -8,7 +8,7 @@ use crate::project::{
     Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
     BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
 };
-use crate::types::{Type, TypeId};
+use crate::types::TypeId;
 use std::path::Path;
 use std::process::Command;
 
@@ -67,10 +67,7 @@ impl<'a> CppGenerator<'a> {
             BUILTIN_TYPE_U64 => "unsigned long".to_string(),
             BUILTIN_TYPE_BOOL => "bool".to_string(),
             BUILTIN_TYPE_VOID => "void".to_string(),
-            _ => match self.project.get_type(id) {
-                Type::Ptr(inner) => format!("{}*", self.to_cpp_type(*inner)),
-                _ => unreachable!(),
-            },
+            _ => format!("{}*", self.to_cpp_type(self.project.get_inner_type(id))),
         }
     }
 }

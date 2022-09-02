@@ -74,8 +74,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn widen_assignment(&self, left: TypeId, right: TypeId) -> Option<TypeId> {
-        let left_size = self.project.get_type(left).size();
-        let right_size = self.project.get_type(right).size();
+        let left_size = self.project.get_type_size(left);
+        let right_size = self.project.get_type_size(right);
 
         if left_size < right_size {
             None
@@ -84,20 +84,9 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn is_ref_type(&self, id: TypeId) -> bool {
-        self.project.get_type(id).is_ptr()
-    }
-
-    fn get_inner_type(&self, id: TypeId) -> TypeId {
-        match self.project.get_type(id) {
-            Type::Ptr(x) => *x,
-            _ => unreachable!("Getting inner type of non-ref type"),
-        }
-    }
-
     fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
         match parsed_type {
-            ParsedType::Named(name) => self.project.lookup_type(name).ok_or_else(|| {
+            ParsedType::Named(name) => self.project.lookup_builtin_type(name).ok_or_else(|| {
                 // TODO: add range
                 Error::new(
                     ErrorType::TypeCheck,
@@ -397,7 +386,7 @@ impl<'a> TypeChecker<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if self.is_ref_type(left_type) && !op_type.is_comparison() {
+                if self.project.is_ptr_type(left_type) && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
                     return Ok(Expression::BinaryOperator(
                         op_type,
@@ -456,7 +445,7 @@ impl<'a> TypeChecker<'a> {
                     UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(
                         UnaryOperatorType::Deref,
                         Box::new(expr),
-                        self.get_inner_type(expr_type),
+                        self.project.get_inner_type(expr_type),
                         range,
                     )),
                 }

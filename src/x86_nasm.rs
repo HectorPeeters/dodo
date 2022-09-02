@@ -538,7 +538,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        if self.project.get_type(value_type).is_ptr() {
+                        if self.project.is_ptr_type(value_type) {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
                             self.instr(Mov(Reg(register, value_size), LabelIndirect(index)))

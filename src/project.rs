@@ -34,7 +34,7 @@ impl Project {
         self.types.len() - 1
     }
 
-    pub fn lookup_type(&mut self, name: &str) -> Option<TypeId> {
+    pub fn lookup_builtin_type(&mut self, name: &str) -> Option<TypeId> {
         match name {
             "void" => Some(BUILTIN_TYPE_VOID),
             "u8" => Some(BUILTIN_TYPE_U8),
@@ -46,8 +46,15 @@ impl Project {
         }
     }
 
-    pub fn get_type(&self, id: TypeId) -> &Type {
-        &self.types[id]
+    pub fn is_ptr_type(&self, id: TypeId) -> bool {
+        matches!(self.types[id], Type::Ptr(_))
+    }
+
+    pub fn get_inner_type(&self, id: TypeId) -> TypeId {
+        match self.types[id] {
+            Type::Ptr(inner) => inner,
+            _ => unreachable!(),
+        }
     }
 
     pub fn find_or_add_type(&mut self, t: Type) -> TypeId {
