@@ -29,16 +29,6 @@ pub enum TokenType {
     #[token("false")]
     False,
 
-    #[token("u8")]
-    UInt8,
-    #[token("u16")]
-    UInt16,
-    #[token("u32")]
-    UInt32,
-    #[token("u64")]
-    UInt64,
-    #[token("bool")]
-    Bool,
     #[regex("\"[^\"]*\"")]
     StringLiteral,
     #[regex("[0-9]+")]
@@ -203,16 +193,6 @@ mod tests {
     fn tokenizer_empty() {
         let tokens = get_tokens("");
         assert_eq!(tokens.len(), 0);
-    }
-
-    #[test]
-    fn tokenizer_types() {
-        let tokens = get_tokens("u8 u16 u32 bool");
-
-        assert_eq!(tokens[0].token_type, UInt8);
-        assert_eq!(tokens[1].token_type, UInt16);
-        assert_eq!(tokens[2].token_type, UInt32);
-        assert_eq!(tokens[3].token_type, Bool);
     }
 
     #[test]

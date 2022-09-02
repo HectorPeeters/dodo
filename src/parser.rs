@@ -1,25 +1,129 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType, UpperStatement},
+    ast::{BinaryOperatorType, UnaryOperatorType},
     error::{Error, ErrorType, Result},
     tokenizer::{SourceRange, Token, TokenType},
-    types::Type,
 };
 
-type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<Expression<()>>;
+type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpression>;
+
 type InfixParseFn<'a> = fn(
     &mut Parser<'a>,
     start_index: usize,
-    left: Expression<()>,
+    left: ParsedExpression,
     precedence: usize,
-) -> Result<Expression<()>>;
+) -> Result<ParsedExpression>;
 
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ParsedType {
+    Named(String),
+    Ref(Box<ParsedType>),
+}
+
+pub type ParsedAnnotations = Vec<(String, Option<ParsedExpression>)>;
+pub type ParsedFunctionParameters = Vec<(String, ParsedType)>;
+
+#[derive(Debug, PartialEq)]
+pub enum ParsedUpperStatement {
+    Function {
+        name: String,
+        parameters: ParsedFunctionParameters,
+        return_type: ParsedType,
+        body: ParsedStatement,
+        annotations: ParsedAnnotations,
+        range: SourceRange,
+    },
+    ConstDeclaration {
+        name: String,
+        value_type: ParsedType,
+        value: ParsedExpression,
+        range: SourceRange,
+    },
+    ExternDeclaration {
+        name: String,
+        range: SourceRange,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ParsedStatement {
+    Block {
+        children: Vec<ParsedStatement>,
+        scoped: bool,
+        range: SourceRange,
+    },
+    Declaration {
+        name: String,
+        value_type: ParsedType,
+        range: SourceRange,
+    },
+    Assignment {
+        left: ParsedExpression,
+        right: ParsedExpression,
+        range: SourceRange,
+    },
+    Expression {
+        expr: ParsedExpression,
+        range: SourceRange,
+    },
+    While {
+        condition: ParsedExpression,
+        body: Box<ParsedStatement>,
+        range: SourceRange,
+    },
+    If {
+        condition: ParsedExpression,
+        body: Box<ParsedStatement>,
+        range: SourceRange,
+    },
+    Return {
+        value: ParsedExpression,
+        range: SourceRange,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ParsedExpression {
+    BinaryOperator {
+        op_type: BinaryOperatorType,
+        left: Box<ParsedExpression>,
+        right: Box<ParsedExpression>,
+        range: SourceRange,
+    },
+    UnaryOperator {
+        op_type: UnaryOperatorType,
+        expr: Box<ParsedExpression>,
+        range: SourceRange,
+    },
+    FunctionCall {
+        name: String,
+        arguments: Vec<ParsedExpression>,
+        range: SourceRange,
+    },
+    IntegerLiteral {
+        value: u64,
+        range: SourceRange,
+    },
+    BooleanLiteral {
+        value: bool,
+        range: SourceRange,
+    },
+    VariableRef {
+        name: String,
+        range: SourceRange,
+    },
+    StringLiteral {
+        value: String,
+        range: SourceRange,
+    },
 }
 
 impl<'a> Parser<'a> {
@@ -130,41 +234,37 @@ impl<'a> Parser<'a> {
         Ok(token)
     }
 
-    fn parse_type(&mut self) -> Result<Type> {
-        let token = self.consume()?;
-        let mut result = match token.token_type {
-            TokenType::UInt8 => Ok(Type::UInt8()),
-            TokenType::UInt16 => Ok(Type::UInt16()),
-            TokenType::UInt32 => Ok(Type::UInt32()),
-            TokenType::UInt64 => Ok(Type::UInt64()),
-            TokenType::Bool => Ok(Type::Bool()),
-            _ => Err(Error::new_with_range(
-                ErrorType::Parser,
-                format!("Parsing type but got token {:?}", token.token_type),
-                token.range,
-            )),
-        };
+    fn parse_type(&mut self) -> Result<ParsedType> {
+        let mut result = ParsedType::Named(
+            self.consume_assert(TokenType::Identifier)?
+                .value
+                .to_string(),
+        );
 
         if self.peek()?.token_type == TokenType::Asterisk {
             self.consume()?;
-            result = Ok(result?.get_ref());
+
+            result = ParsedType::Ref(Box::new(result));
         }
 
-        result
+        Ok(result)
     }
 
-    fn parse_function_call(&mut self) -> Result<Expression<()>> {
+    fn parse_function_call(&mut self) -> Result<ParsedExpression> {
         let function_start = self.current_index(false);
-        let name = self.consume_assert(TokenType::Identifier)?.value;
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
         self.consume_assert(TokenType::LeftParen)?;
 
-        let mut args = vec![];
+        let mut arguments = vec![];
         loop {
             if self.peek()?.token_type == TokenType::RightParen {
                 break;
             }
 
-            args.push(self.parse_expression(0)?);
+            arguments.push(self.parse_expression(0)?);
 
             if self.peek()?.token_type == TokenType::RightParen {
                 break;
@@ -174,39 +274,41 @@ impl<'a> Parser<'a> {
         }
 
         self.consume_assert(TokenType::RightParen)?;
-        Ok(Expression::FunctionCall(
-            name.to_string(),
-            args,
-            (),
-            (function_start..self.current_index(true)).into(),
-        ))
+        Ok(ParsedExpression::FunctionCall {
+            name,
+            arguments,
+            range: (function_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_identifier_or_function_call(&mut self) -> Result<Expression<()>> {
+    fn parse_identifier_or_function_call(&mut self) -> Result<ParsedExpression> {
         let identifier_start = self.current_index(false);
         if self.peeks(1)?.token_type == TokenType::LeftParen {
             self.parse_function_call()
         } else {
-            let name = self.consume_assert(TokenType::Identifier)?.value;
-            Ok(Expression::VariableRef(
-                name.to_string(),
-                (),
-                (identifier_start..self.current_index(true)).into(),
-            ))
+            let name = self
+                .consume_assert(TokenType::Identifier)?
+                .value
+                .to_string();
+
+            Ok(ParsedExpression::VariableRef {
+                name,
+                range: (identifier_start..self.current_index(true)).into(),
+            })
         }
     }
 
-    fn parse_unary_expression(&mut self) -> Result<Expression<()>> {
+    fn parse_unary_expression(&mut self) -> Result<ParsedExpression> {
         let unary_start = self.current_index(false);
         let token = self.consume()?;
-        let unop_type = UnaryOperatorType::from_token_type(token.token_type);
+        let op_type = UnaryOperatorType::from_token_type(token.token_type);
         let expression = self.parse_expression(0)?;
-        Ok(Expression::UnaryOperator(
-            unop_type,
-            Box::new(expression),
-            (),
-            (unary_start..self.current_index(true)).into(),
-        ))
+
+        Ok(ParsedExpression::UnaryOperator {
+            op_type,
+            expr: Box::new(expression),
+            range: (unary_start..self.current_index(true)).into(),
+        })
     }
 
     fn parse_integer_literal(
@@ -214,14 +316,14 @@ impl<'a> Parser<'a> {
         prefix: &str,
         radix: u32,
         range: SourceRange,
-    ) -> Result<Expression<()>> {
+    ) -> Result<ParsedExpression> {
         match u64::from_str_radix(
             value
                 .trim_start_matches(prefix)
                 .trim_start_matches(&prefix.to_uppercase()),
             radix,
         ) {
-            Ok(value) => Ok(Expression::IntegerLiteral(value, (), range)),
+            Ok(value) => Ok(ParsedExpression::IntegerLiteral { value, range }),
             Err(_) => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Failed to parse '{}' to int", value),
@@ -230,21 +332,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_constant(&mut self) -> Result<Expression<()>> {
+    fn parse_constant(&mut self) -> Result<ParsedExpression> {
         let constant_start = self.current_index(false);
         let token = self.consume()?;
         let range = (constant_start..self.current_index(true)).into();
         match token.token_type {
-            TokenType::True => Ok(Expression::BooleanLiteral(
-                true,
-                (),
-                (constant_start..self.current_index(true)).into(),
-            )),
-            TokenType::False => Ok(Expression::BooleanLiteral(
-                false,
-                (),
-                (constant_start..self.current_index(true)).into(),
-            )),
+            TokenType::True => Ok(ParsedExpression::BooleanLiteral { value: true, range }),
+            TokenType::False => Ok(ParsedExpression::BooleanLiteral {
+                value: false,
+                range,
+            }),
             TokenType::IntegerLiteral => Self::parse_integer_literal(token.value, "", 10, range),
             TokenType::BinaryIntegerLiteral => {
                 Self::parse_integer_literal(token.value, "0b", 2, range)
@@ -255,16 +352,15 @@ impl<'a> Parser<'a> {
             TokenType::HexIntegerLiteral => {
                 Self::parse_integer_literal(token.value, "0x", 16, range)
             }
-            TokenType::StringLiteral => Ok(Expression::StringLiteral(
-                token.value[1..token.value.len() - 1]
+            TokenType::StringLiteral => Ok(ParsedExpression::StringLiteral {
+                value: token.value[1..token.value.len() - 1]
                     .to_string()
                     .replace("\\n", "\n")
                     .replace("\\t", "\t")
                     .replace("\\r", "\r")
                     .replace("\\\"", "\""),
-                (),
-                (constant_start..self.current_index(true)).into(),
-            )),
+                range,
+            }),
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Parsing constant but got token {:?}", token.token_type),
@@ -273,7 +369,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_parenthesized(&mut self) -> Result<Expression<()>> {
+    fn parse_parenthesized(&mut self) -> Result<ParsedExpression> {
         self.consume_assert(TokenType::LeftParen)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightParen)?;
@@ -283,23 +379,22 @@ impl<'a> Parser<'a> {
     fn parse_binary_operator(
         &mut self,
         start_index: usize,
-        left: Expression<()>,
+        left: ParsedExpression,
         precedence: usize,
-    ) -> Result<Expression<()>> {
+    ) -> Result<ParsedExpression> {
         let operator = self.consume()?;
 
         let op_type = BinaryOperatorType::from_token_type(operator.token_type);
         let right = self.parse_expression(precedence)?;
-        Ok(Expression::BinaryOperator(
+        Ok(ParsedExpression::BinaryOperator {
             op_type,
-            Box::new(left),
-            Box::new(right),
-            (),
-            (start_index..self.current_index(true)).into(),
-        ))
+            left: Box::new(left),
+            right: Box::new(right),
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_expression(&mut self, precedence: usize) -> Result<Expression<()>> {
+    fn parse_expression(&mut self, precedence: usize) -> Result<ParsedExpression> {
         let exit_tokens = vec![
             TokenType::SemiColon,
             TokenType::RightParen,
@@ -356,22 +451,23 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_return_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_return_statement(&mut self) -> Result<ParsedStatement> {
         let return_start = self.current_index(false);
         self.consume_assert(TokenType::Return)?;
-        let expr = self.parse_expression(0)?;
+
+        let value = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Return(
-            expr,
-            (),
-            (return_start..self.current_index(true)).into(),
-        ))
+
+        Ok(ParsedStatement::Return {
+            value,
+            range: (return_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_let_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_let_statement(&mut self) -> Result<ParsedStatement> {
         let let_start = self.current_index(false);
         self.consume_assert(TokenType::Let)?;
-        let (variable_name, value_type) = self.parse_identifier_type()?;
+        let (name, value_type) = self.parse_identifier_type()?;
 
         if self.peek()?.token_type == TokenType::Equals {
             // We have a declaration and assignment combined
@@ -380,89 +476,89 @@ impl<'a> Parser<'a> {
             let expr = self.parse_expression(0)?;
             self.consume_assert(TokenType::SemiColon)?;
 
-            return Ok(Statement::Block(
-                vec![
-                    Statement::Declaration(
-                        variable_name.clone(),
+            return Ok(ParsedStatement::Block {
+                children: vec![
+                    ParsedStatement::Declaration {
+                        name: name.clone(),
                         value_type,
-                        (),
-                        (let_start..decl_start).into(),
-                    ),
-                    Statement::Assignment(
-                        Expression::VariableRef(
-                            variable_name,
-                            (),
-                            (decl_start..self.current_index(true)).into(),
-                        ),
-                        expr,
-                        (),
-                        (decl_start..self.current_index(true)).into(),
-                    ),
+                        range: (let_start..decl_start).into(),
+                    },
+                    ParsedStatement::Assignment {
+                        left: ParsedExpression::VariableRef {
+                            name,
+                            range: (decl_start..self.current_index(true)).into(),
+                        },
+                        right: expr,
+                        range: (decl_start..self.current_index(true)).into(),
+                    },
                 ],
-                false,
-                (),
-                (let_start..self.current_index(true)).into(),
-            ));
+                scoped: false,
+                range: (let_start..self.current_index(true)).into(),
+            });
         }
 
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Declaration(
-            variable_name,
+
+        Ok(ParsedStatement::Declaration {
+            name,
             value_type,
-            (),
-            (let_start..self.current_index(true)).into(),
-        ))
+            range: (let_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_assignment_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_assignment_statement(&mut self) -> Result<ParsedStatement> {
         let assignment_start = self.current_index(false);
-        let lhs = self.parse_expression(0)?;
-
+        let left = self.parse_expression(0)?;
         self.consume_assert(TokenType::Equals)?;
-        let expr = self.parse_expression(0)?;
+
+        let right = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
-        Ok(Statement::Assignment(
-            lhs,
-            expr,
-            (),
-            (assignment_start..self.current_index(true)).into(),
-        ))
+
+        Ok(ParsedStatement::Assignment {
+            left,
+            right,
+            range: (assignment_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_while_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_while_statement(&mut self) -> Result<ParsedStatement> {
         let while_start = self.current_index(false);
         self.consume_assert(TokenType::While)?;
-        let expr = self.parse_expression(0)?;
+
+        let condition = self.parse_expression(0)?;
         let statement = self.parse_statement()?;
-        Ok(Statement::While(
-            expr,
-            Box::new(statement),
-            (),
-            (while_start..self.current_index(true)).into(),
-        ))
+
+        Ok(ParsedStatement::While {
+            condition,
+            body: Box::new(statement),
+            range: (while_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_if_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_if_statement(&mut self) -> Result<ParsedStatement> {
         let if_start = self.current_index(false);
         self.consume_assert(TokenType::If)?;
-        let expr = self.parse_expression(0)?;
+
+        let condition = self.parse_expression(0)?;
         let statement = self.parse_statement()?;
-        Ok(Statement::If(
-            expr,
-            Box::new(statement),
-            (),
-            (if_start..self.current_index(true)).into(),
-        ))
+
+        Ok(ParsedStatement::If {
+            condition,
+            body: Box::new(statement),
+            range: (if_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_identifier_type(&mut self) -> Result<(String, Type)> {
+    fn parse_identifier_type(&mut self) -> Result<(String, ParsedType)> {
         let identifier = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Colon)?;
+
         let value_type = self.parse_type()?;
+
         Ok((identifier.to_string(), value_type))
     }
 
-    fn parse_annotation(&mut self) -> Result<(String, Option<Expression<()>>)> {
+    fn parse_annotation(&mut self) -> Result<(String, Option<ParsedExpression>)> {
         self.consume_assert(TokenType::At)?;
         let name = self.consume_assert(TokenType::Identifier)?;
 
@@ -477,7 +573,7 @@ impl<'a> Parser<'a> {
         Ok((name.value.to_string(), Some(value)))
     }
 
-    fn parse_function(&mut self) -> Result<UpperStatement<()>> {
+    fn parse_function(&mut self) -> Result<ParsedUpperStatement> {
         let mut annotations = vec![];
 
         while self.peek()?.token_type == TokenType::At {
@@ -487,9 +583,14 @@ impl<'a> Parser<'a> {
 
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
-        let identifier = self.consume_assert(TokenType::Identifier)?;
+
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
         self.consume_assert(TokenType::LeftParen)?;
-        let mut args = vec![];
+
+        let mut parameters = vec![];
 
         loop {
             if self.peek()?.token_type == TokenType::RightParen {
@@ -497,7 +598,7 @@ impl<'a> Parser<'a> {
             }
 
             let (name, value_type) = self.parse_identifier_type()?;
-            args.push((name, value_type));
+            parameters.push((name, value_type));
 
             if self.peek()?.token_type == TokenType::RightParen {
                 break;
@@ -509,23 +610,23 @@ impl<'a> Parser<'a> {
         self.consume_assert(TokenType::RightParen)?;
 
         let return_type = if self.peek()?.token_type == TokenType::LeftBrace {
-            Type::Void()
+            ParsedType::Named("void".to_string())
         } else {
             self.parse_type()?
         };
 
         let body = self.parse_statement()?;
-        Ok(UpperStatement::Function(
-            identifier.value.to_string(),
-            args,
+        Ok(ParsedUpperStatement::Function {
+            name,
+            parameters,
             return_type,
-            Box::new(body),
+            body,
             annotations,
-            (function_start..self.current_index(true)).into(),
-        ))
+            range: (function_start..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_statement(&mut self) -> Result<Statement<()>> {
+    fn parse_statement(&mut self) -> Result<ParsedStatement> {
         let token = self.peek()?;
 
         match token.token_type {
@@ -533,19 +634,18 @@ impl<'a> Parser<'a> {
             TokenType::LeftBrace => {
                 let block_start = self.current_index(false);
                 self.consume_assert(TokenType::LeftBrace)?;
-                let mut statements = vec![];
+                let mut children = vec![];
                 while self.peek()?.token_type != TokenType::RightBrace {
-                    statements.push(self.parse_statement()?);
+                    children.push(self.parse_statement()?);
                 }
 
                 self.consume_assert(TokenType::RightBrace)?;
 
-                Ok(Statement::Block(
-                    statements,
-                    true,
-                    (),
-                    (block_start..self.current_index(true)).into(),
-                ))
+                Ok(ParsedStatement::Block {
+                    children,
+                    scoped: true,
+                    range: (block_start..self.current_index(true)).into(),
+                })
             }
             TokenType::Let => self.parse_let_statement(),
             TokenType::While => self.parse_while_statement(),
@@ -553,11 +653,10 @@ impl<'a> Parser<'a> {
             TokenType::Identifier => match self.peeks(1)?.token_type {
                 TokenType::LeftParen => {
                     let expr_start = self.current_index(false);
-                    let result = Statement::Expression(
-                        self.parse_expression(0)?,
-                        (),
-                        (expr_start..self.current_index(true) + 1).into(),
-                    );
+                    let result = ParsedStatement::Expression {
+                        expr: self.parse_expression(0)?,
+                        range: (expr_start..self.current_index(true) + 1).into(),
+                    };
                     self.consume_assert(TokenType::SemiColon)?;
                     Ok(result)
                 }
@@ -567,11 +666,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_const_declaration(&mut self) -> Result<UpperStatement<()>> {
+    fn parse_const_declaration(&mut self) -> Result<ParsedUpperStatement> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Const)?;
-        let name = self.consume_assert(TokenType::Identifier)?;
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
 
         self.consume_assert(TokenType::Colon)?;
         let value_type = self.parse_type()?;
@@ -581,28 +683,28 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(UpperStatement::ConstDeclaration(
-            name.value.to_string(),
+        Ok(ParsedUpperStatement::ConstDeclaration {
+            name,
             value_type,
             value,
-            (start_index..self.current_index(true)).into(),
-        ))
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
-    fn parse_extern(&mut self) -> Result<UpperStatement<()>> {
+    fn parse_extern(&mut self) -> Result<ParsedUpperStatement> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Extern)?;
         let symbol = self.consume_assert(TokenType::StringLiteral)?.value;
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(UpperStatement::ExternDeclaration(
-            symbol[1..symbol.len() - 1].to_string(),
-            (start_index..self.current_index(true)).into(),
-        ))
+        Ok(ParsedUpperStatement::ExternDeclaration {
+            name: symbol[1..symbol.len() - 1].to_string(),
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
-    pub fn parse_upper_statement(&mut self) -> Result<UpperStatement<()>> {
+    pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement> {
         let token = self.peek()?;
 
         match token.token_type {
@@ -622,7 +724,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = Result<UpperStatement<()>>;
+    type Item = Result<ParsedUpperStatement>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.eof() {
@@ -637,7 +739,7 @@ mod tests {
     use super::*;
     use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
 
-    fn parse_statements(input: &str) -> Result<Vec<Statement<()>>> {
+    fn parse_statements(input: &str) -> Result<Vec<ParsedStatement>> {
         let tokens = tokenize(input)?;
 
         let mut parser = Parser::new(&tokens);
@@ -649,7 +751,7 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_expressions(input: &str) -> Result<Vec<Expression<()>>> {
+    fn parse_expressions(input: &str) -> Result<Vec<ParsedExpression>> {
         let tokens = tokenize(input)?;
 
         let mut parser = Parser::new(&tokens);
@@ -661,7 +763,7 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_function(input: &str) -> Result<UpperStatement<()>> {
+    fn parse_function(input: &str) -> Result<ParsedUpperStatement> {
         let tokens = tokenize(input)?;
 
         let mut parser = Parser::new(&tokens);
@@ -672,7 +774,13 @@ mod tests {
     fn parse_constant() -> Result<()> {
         let exprs = parse_expressions("123")?;
 
-        assert_eq!(exprs[0], Expression::IntegerLiteral(123, (), (0..3).into()));
+        assert_eq!(
+            exprs[0],
+            ParsedExpression::IntegerLiteral {
+                value: 123,
+                range: (0..3).into()
+            }
+        );
 
         Ok(())
     }
@@ -683,12 +791,14 @@ mod tests {
 
         assert_eq!(
             exprs[0],
-            Expression::UnaryOperator(
-                UnaryOperatorType::Negate,
-                Box::new(Expression::IntegerLiteral(123, (), (1..4).into())),
-                (),
-                (0..4).into()
-            )
+            ParsedExpression::UnaryOperator {
+                op_type: UnaryOperatorType::Negate,
+                expr: Box::new(ParsedExpression::IntegerLiteral {
+                    value: 123,
+                    range: (1..4).into()
+                }),
+                range: (0..4).into()
+            }
         );
 
         Ok(())
@@ -700,13 +810,18 @@ mod tests {
 
         assert_eq!(
             exprs[0],
-            Expression::BinaryOperator(
-                BinaryOperatorType::Subtract,
-                Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
-                Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
-                (),
-                (0..9).into()
-            )
+            ParsedExpression::BinaryOperator {
+                op_type: BinaryOperatorType::Subtract,
+                left: Box::new(ParsedExpression::IntegerLiteral {
+                    value: 456,
+                    range: (0..3).into()
+                }),
+                right: Box::new(ParsedExpression::IntegerLiteral {
+                    value: 123,
+                    range: (6..9).into()
+                }),
+                range: (0..9).into()
+            }
         );
 
         Ok(())
@@ -718,19 +833,26 @@ mod tests {
 
         assert_eq!(
             exprs[0],
-            Expression::BinaryOperator(
-                BinaryOperatorType::Subtract,
-                Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
-                Box::new(Expression::BinaryOperator(
-                    BinaryOperatorType::Multiply,
-                    Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
-                    Box::new(Expression::IntegerLiteral(789, (), (12..15).into())),
-                    (),
-                    (6..15).into()
-                )),
-                (),
-                (0..15).into(),
-            )
+            ParsedExpression::BinaryOperator {
+                op_type: BinaryOperatorType::Subtract,
+                left: Box::new(ParsedExpression::IntegerLiteral {
+                    value: 456,
+                    range: (0..3).into()
+                }),
+                right: Box::new(ParsedExpression::BinaryOperator {
+                    op_type: BinaryOperatorType::Multiply,
+                    left: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 123,
+                        range: (6..9).into()
+                    }),
+                    right: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 789,
+                        range: (12..15).into()
+                    }),
+                    range: (6..15).into()
+                }),
+                range: (0..15).into(),
+            }
         );
 
         Ok(())
@@ -742,19 +864,26 @@ mod tests {
 
         assert_eq!(
             exprs[0],
-            Expression::BinaryOperator(
-                BinaryOperatorType::Subtract,
-                Box::new(Expression::BinaryOperator(
-                    BinaryOperatorType::Multiply,
-                    Box::new(Expression::IntegerLiteral(456, (), (0..3).into())),
-                    Box::new(Expression::IntegerLiteral(123, (), (6..9).into())),
-                    (),
-                    (0..9).into()
-                )),
-                Box::new(Expression::IntegerLiteral(789, (), (12..15).into())),
-                (),
-                (0..15).into()
-            )
+            ParsedExpression::BinaryOperator {
+                op_type: BinaryOperatorType::Subtract,
+                left: Box::new(ParsedExpression::BinaryOperator {
+                    op_type: BinaryOperatorType::Multiply,
+                    left: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 456,
+                        range: (0..3).into()
+                    }),
+                    right: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 123,
+                        range: (6..9).into()
+                    }),
+                    range: (0..9).into()
+                }),
+                right: Box::new(ParsedExpression::IntegerLiteral {
+                    value: 789,
+                    range: (12..15).into()
+                }),
+                range: (0..15).into(),
+            }
         );
 
         Ok(())
@@ -766,17 +895,21 @@ mod tests {
 
         assert_eq!(
             stmts[0],
-            Statement::Return(
-                Expression::BinaryOperator(
-                    BinaryOperatorType::Subtract,
-                    Box::new(Expression::IntegerLiteral(456, (), (7..10).into())),
-                    Box::new(Expression::IntegerLiteral(123, (), (13..16).into())),
-                    (),
-                    (7..16).into()
-                ),
-                (),
-                (0..17).into()
-            )
+            ParsedStatement::Return {
+                value: ParsedExpression::BinaryOperator {
+                    op_type: BinaryOperatorType::Subtract,
+                    left: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 456,
+                        range: (7..10).into()
+                    }),
+                    right: Box::new(ParsedExpression::IntegerLiteral {
+                        value: 123,
+                        range: (13..16).into()
+                    }),
+                    range: (7..16).into()
+                },
+                range: (0..17).into()
+            }
         );
 
         Ok(())
@@ -786,7 +919,14 @@ mod tests {
     fn parse_empty_block() -> Result<()> {
         let stmts = parse_statements("{}")?;
         assert_eq!(stmts.len(), 1);
-        assert_eq!(stmts[0], Statement::Block(vec![], true, (), (0..2).into()));
+        assert_eq!(
+            stmts[0],
+            ParsedStatement::Block {
+                children: vec![],
+                scoped: true,
+                range: (0..2).into()
+            }
+        );
 
         Ok(())
     }
@@ -797,17 +937,19 @@ mod tests {
         assert_eq!(stmts.len(), 1);
         assert_eq!(
             stmts[0],
-            Statement::Block(
-                vec![Statement::Block(
-                    vec![Statement::Block(vec![], true, (), (2..4).into())],
-                    true,
-                    (),
-                    (1..5).into()
-                )],
-                true,
-                (),
-                (0..6).into()
-            )
+            ParsedStatement::Block {
+                children: vec![ParsedStatement::Block {
+                    children: vec![ParsedStatement::Block {
+                        children: vec![],
+                        scoped: true,
+                        range: (2..4).into()
+                    }],
+                    scoped: true,
+                    range: (1..5).into()
+                }],
+                scoped: true,
+                range: (0..6).into()
+            }
         );
         Ok(())
     }
@@ -817,23 +959,24 @@ mod tests {
         let func = parse_function("fn test() { return 12; }")?;
         assert_eq!(
             func,
-            UpperStatement::Function(
-                "test".to_string(),
-                vec![],
-                Type::Void(),
-                Box::new(Statement::Block(
-                    vec![Statement::Return(
-                        Expression::IntegerLiteral(12, (), (19..21).into()),
-                        (),
-                        (12..22).into()
-                    )],
-                    true,
-                    (),
-                    (10..24).into()
-                )),
-                vec![],
-                (0..24).into()
-            )
+            ParsedUpperStatement::Function {
+                name: "test".to_string(),
+                parameters: vec![],
+                return_type: ParsedType::Named("void".to_string()),
+                body: ParsedStatement::Block {
+                    children: vec![ParsedStatement::Return {
+                        value: ParsedExpression::IntegerLiteral {
+                            value: 12,
+                            range: (19..21).into()
+                        },
+                        range: (12..22).into()
+                    }],
+                    scoped: true,
+                    range: (10..24).into()
+                },
+                annotations: vec![],
+                range: (0..24).into()
+            }
         );
         Ok(())
     }
@@ -843,23 +986,24 @@ mod tests {
         let func = parse_function("fn test() u8 { return 12; }")?;
         assert_eq!(
             func,
-            UpperStatement::Function(
-                "test".to_string(),
-                vec![],
-                Type::UInt8(),
-                Box::new(Statement::Block(
-                    vec![Statement::Return(
-                        Expression::IntegerLiteral(12, (), (22..24).into()),
-                        (),
-                        (15..25).into()
-                    )],
-                    true,
-                    (),
-                    (13..27).into()
-                )),
-                vec![],
-                (0..27).into()
-            )
+            ParsedUpperStatement::Function {
+                name: "test".to_string(),
+                parameters: vec![],
+                return_type: ParsedType::Named("u8".to_string()),
+                body: ParsedStatement::Block {
+                    children: vec![ParsedStatement::Return {
+                        value: ParsedExpression::IntegerLiteral {
+                            value: 12,
+                            range: (22..24).into()
+                        },
+                        range: (15..25).into()
+                    }],
+                    scoped: true,
+                    range: (13..27).into()
+                },
+                annotations: vec![],
+                range: (0..27).into()
+            }
         );
         Ok(())
     }
@@ -869,7 +1013,11 @@ mod tests {
         let call = parse_expressions("test()")?;
         assert_eq!(
             call[0],
-            Expression::FunctionCall("test".to_string(), vec![], (), (0..6).into())
+            ParsedExpression::FunctionCall {
+                name: "test".to_string(),
+                arguments: vec![],
+                range: (0..6).into()
+            }
         );
         Ok(())
     }
@@ -879,7 +1027,10 @@ mod tests {
         let string = parse_expressions("\"test\"")?;
         assert_eq!(
             string[0],
-            Expression::StringLiteral("test".to_string(), (), (0..6).into())
+            ParsedExpression::StringLiteral {
+                value: "test".to_string(),
+                range: (0..6).into()
+            }
         );
         Ok(())
     }
@@ -889,7 +1040,10 @@ mod tests {
         let string = parse_expressions("\"test\\t\\'test\\'\\n\"")?;
         assert_eq!(
             string[0],
-            Expression::StringLiteral("test\t\\'test\\'\n".to_string(), (), (0..18).into())
+            ParsedExpression::StringLiteral {
+                value: "test\t\\'test\\'\n".to_string(),
+                range: (0..18).into()
+            }
         );
         Ok(())
     }
@@ -899,11 +1053,14 @@ mod tests {
         let call = parse_statements("test();")?;
         assert_eq!(
             call[0],
-            Statement::Expression(
-                Expression::FunctionCall("test".to_string(), vec![], (), (0..6).into()),
-                (),
-                (0..7).into()
-            )
+            ParsedStatement::Expression {
+                expr: ParsedExpression::FunctionCall {
+                    name: "test".to_string(),
+                    arguments: vec![],
+                    range: (0..6).into()
+                },
+                range: (0..7).into()
+            }
         );
         Ok(())
     }
@@ -913,16 +1070,17 @@ mod tests {
         let call = parse_statements("test(x);")?;
         assert_eq!(
             call[0],
-            Statement::Expression(
-                Expression::FunctionCall(
-                    "test".to_string(),
-                    vec![Expression::VariableRef("x".to_string(), (), (5..6).into())],
-                    (),
-                    (0..7).into(),
-                ),
-                (),
-                (0..8).into()
-            )
+            ParsedStatement::Expression {
+                expr: ParsedExpression::FunctionCall {
+                    name: "test".to_string(),
+                    arguments: vec![ParsedExpression::VariableRef {
+                        name: "x".to_string(),
+                        range: (5..6).into()
+                    }],
+                    range: (0..7).into(),
+                },
+                range: (0..8).into()
+            }
         );
         Ok(())
     }

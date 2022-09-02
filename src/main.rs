@@ -1,20 +1,9 @@
-use clap::ArgEnum;
 use clap::StructOpt;
-use dodo::ast::AstTransformer;
-use dodo::backend::Backend;
-use dodo::cpp::CppGenerator;
+use dodo::backend::BackendType;
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::x86_nasm::X86NasmGenerator;
-use std::path::PathBuf;
-
-#[derive(Debug, Clone, Copy, ArgEnum)]
-pub enum Backends {
-    X86,
-    Cpp,
-}
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -24,7 +13,7 @@ struct Args {
     output: Option<std::path::PathBuf>,
 
     #[clap(short, long, arg_enum)]
-    backend: Option<Backends>,
+    backend: Option<BackendType>,
 
     #[clap(long)]
     print_tokens: bool,
@@ -47,6 +36,10 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
+    use std::path::PathBuf;
+
+    use dodo::{backend::Backend, cpp::CppGenerator, project::Project, x86_nasm::X86NasmGenerator};
+
     let args = Args::parse();
 
     // Reading source
@@ -81,11 +74,13 @@ fn main() -> Result<()> {
 
     // Type checking
 
-    let mut type_checker = TypeChecker::new();
+    let mut project = Project::new(source_file);
+
+    let mut type_checker = TypeChecker::new(&mut project);
     let statements = unwrap_or_error(
         statements
             .into_iter()
-            .map(|x| type_checker.transform_upper_statement(x))
+            .map(|x| type_checker.check_upper_statement(x))
             .collect::<Result<Vec<_>>>(),
         source_file,
     );
@@ -98,8 +93,8 @@ fn main() -> Result<()> {
     // Backend
 
     let mut backend: Box<dyn Backend> = match args.backend {
-        Some(Backends::X86) | None => Box::new(X86NasmGenerator::new()),
-        Some(Backends::Cpp) => Box::new(CppGenerator::new()),
+        Some(BackendType::X86) | None => Box::new(X86NasmGenerator::new(&mut project)),
+        Some(BackendType::Cpp) => Box::new(CppGenerator::new(&mut project)),
     };
 
     unwrap_or_error(

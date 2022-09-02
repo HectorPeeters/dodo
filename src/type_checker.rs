@@ -1,9 +1,12 @@
 use crate::ast::UpperStatement;
+use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
+use crate::project::{
+    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
+    BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
+};
+use crate::types::TypeId;
 use crate::{
-    ast::{
-        AstTransformer, BinaryOperatorType, Expression, Statement, TypedExpression, TypedStatement,
-        UnaryOperatorType,
-    },
+    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
     scope::Scope,
     tokenizer::SourceRange,
@@ -13,26 +16,28 @@ use std::cmp::Ordering;
 
 #[derive(Clone)]
 pub enum TypeScopeEntry {
-    Value(Type),
-    Function(Vec<Type>, Type),
-    Global(Type),
+    Value(TypeId),
+    Function(Vec<TypeId>, TypeId),
+    Global(TypeId),
     ExternalFuction(),
 }
 
-pub struct TypeChecker {
+pub struct TypeChecker<'a> {
+    project: &'a mut Project,
     scope: Scope<TypeScopeEntry>,
-    current_function_return_type: Type,
+    current_function_return_type: TypeId,
 }
 
-impl TypeChecker {
-    pub fn new() -> Self {
+impl<'a> TypeChecker<'a> {
+    pub fn new(project: &'a mut Project) -> Self {
         Self {
+            project,
             scope: Scope::new(),
-            current_function_return_type: Type::Unknown(),
+            current_function_return_type: BUILTIN_TYPE_UNKNOWN,
         }
     }
 
-    fn get_scope_value_type(&self, name: &str, range: &SourceRange) -> Result<Type> {
+    fn get_scope_value_type(&self, name: &str, range: &SourceRange) -> Result<TypeId> {
         use TypeScopeEntry::*;
         match self.scope.find(name).map_err(|x| x.with_range(*range))? {
             Value(t) => Ok(t),
@@ -48,7 +53,7 @@ impl TypeChecker {
         &self,
         name: &str,
         range: &SourceRange,
-    ) -> Result<(Vec<Type>, Type)> {
+    ) -> Result<(Vec<TypeId>, TypeId)> {
         use TypeScopeEntry::*;
         match self.scope.find(name).map_err(|x| x.with_range(*range))? {
             Value(_) => unreachable!("Trying to get type of function with the name of a value"),
@@ -68,56 +73,101 @@ impl TypeChecker {
         }
     }
 
-    fn widen_assignment(left: &Type, right: &Type) -> Option<Type> {
-        if left.size() < right.size() {
+    fn widen_assignment(&self, left: TypeId, right: TypeId) -> Option<TypeId> {
+        let left_size = self.project.get_type(left).size();
+        let right_size = self.project.get_type(right).size();
+
+        if left_size < right_size {
             None
         } else {
-            Some(left.clone())
+            Some(left)
         }
     }
-}
 
-impl Default for TypeChecker {
-    fn default() -> Self {
-        Self::new()
+    fn is_ref_type(&self, id: TypeId) -> bool {
+        self.project.get_type(id).is_ref()
     }
-}
 
-impl AstTransformer<(), Type> for TypeChecker {
-    fn transform_upper_statement(
+    fn get_inner_type(&self, id: TypeId) -> TypeId {
+        match self.project.get_type(id) {
+            Type::Ref(x) => *x,
+            _ => unreachable!("Getting inner type of non-ref type"),
+        }
+    }
+
+    fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
+        match parsed_type {
+            ParsedType::Named(name) => self.project.lookup_type(name).ok_or_else(|| {
+                // TODO: add range
+                Error::new(
+                    ErrorType::TypeCheck,
+                    format!("Could not find type '{}'", name),
+                )
+            }),
+            ParsedType::Ref(inner) => {
+                let inner = self.check_type(inner)?;
+                Ok(self.project.find_or_add_type(Type::Ref(inner)))
+            }
+        }
+    }
+
+    pub fn check_upper_statement(
         &mut self,
-        statement: UpperStatement<()>,
-    ) -> Result<UpperStatement<Type>> {
+        statement: ParsedUpperStatement,
+    ) -> Result<UpperStatement> {
         match statement {
-            UpperStatement::ExternDeclaration(name, range) => {
+            ParsedUpperStatement::ExternDeclaration { name, range } => {
                 self.scope
                     .insert(&name, TypeScopeEntry::ExternalFuction())?;
                 Ok(UpperStatement::ExternDeclaration(name, range))
             }
-            UpperStatement::Function(name, args, return_type, body, annotations, range) => {
+            ParsedUpperStatement::Function {
+                name,
+                parameters,
+                return_type,
+                body,
+                annotations,
+                range,
+            } => {
+                let checked_parameters = parameters
+                    .iter()
+                    .map(|(_, t)| self.check_type(t))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let checked_return_type = self.check_type(&return_type)?;
+
                 self.scope
                     .insert(
                         &name,
-                        TypeScopeEntry::Function(
-                            args.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
-                            return_type.clone(),
-                        ),
+                        TypeScopeEntry::Function(checked_parameters, checked_return_type),
                     )
                     .map_err(|x| x.with_range(range))?;
 
                 self.scope.push();
-                for (arg_name, arg_type) in &args {
+
+                let parameters = parameters
+                    .into_iter()
+                    .map(
+                        |(param_name, param_type)| match self.check_type(&param_type) {
+                            Ok(param_type) => Ok((param_name, param_type)),
+                            Err(e) => Err(e),
+                        },
+                    )
+                    .collect::<Result<Vec<_>>>()?;
+
+                for (param_name, param_type) in &parameters {
                     self.scope
-                        .insert(arg_name, TypeScopeEntry::Value(arg_type.clone()))
+                        .insert(param_name, TypeScopeEntry::Value(*param_type))
                         .map_err(|x| x.with_range(range))?;
                 }
 
-                assert_eq!(self.current_function_return_type, Type::Unknown());
-                self.current_function_return_type = return_type.clone();
+                assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
+                let return_type = self.check_type(&return_type)?;
+                self.current_function_return_type = return_type;
 
-                let checked_body = self.transform_statement(*body)?;
+                let checked_body = self.check_statement(body)?;
 
-                self.current_function_return_type = Type::Unknown();
+                self.current_function_return_type = BUILTIN_TYPE_UNKNOWN;
 
                 self.scope.pop();
 
@@ -125,7 +175,7 @@ impl AstTransformer<(), Type> for TypeChecker {
                     .into_iter()
                     .map(|(name, value)| {
                         if let Some(value) = value {
-                            match self.transform_expression(value) {
+                            match self.check_expression(value) {
                                 Ok(value) => Ok((name, Some(value))),
                                 Err(error) => Err(error),
                             }
@@ -137,195 +187,208 @@ impl AstTransformer<(), Type> for TypeChecker {
 
                 Ok(UpperStatement::Function(
                     name.clone(),
-                    args,
+                    parameters,
                     return_type,
                     Box::new(checked_body),
                     checked_annotations,
                     range,
                 ))
             }
-            UpperStatement::ConstDeclaration(name, value_type, expr, range) => {
-                let expr = self.transform_expression(expr)?;
+            ParsedUpperStatement::ConstDeclaration {
+                name,
+                value_type,
+                value,
+                range,
+            } => {
+                let value = self.check_expression(value)?;
 
-                Self::widen_assignment(&value_type, expr.data()).ok_or_else(|| {
-                    Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!(
-                            "Cannot widen const type {:?} to {:?}",
-                            expr.data(),
-                            value_type
-                        ),
-                        range,
-                    )
-                })?;
+                let value_type = self.check_type(&value_type)?;
+
+                self.widen_assignment(value_type, value.get_type())
+                    .ok_or_else(|| {
+                        Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!(
+                                "Cannot widen const type {:?} to {:?}",
+                                value.get_type(),
+                                value_type
+                            ),
+                            range,
+                        )
+                    })?;
 
                 self.scope
-                    .insert(&name, TypeScopeEntry::Global(value_type.clone()))?;
+                    .insert(&name, TypeScopeEntry::Global(value_type))?;
 
                 Ok(UpperStatement::ConstDeclaration(
-                    name, value_type, expr, range,
+                    name, value_type, value, range,
                 ))
             }
         }
     }
 
-    fn transform_statement(&mut self, statement: Statement<()>) -> Result<TypedStatement> {
+    fn check_statement(&mut self, statement: ParsedStatement) -> Result<Statement> {
         match statement {
-            Statement::Block(statements, scoped, _, range) => {
+            ParsedStatement::Block {
+                children,
+                scoped,
+                range,
+            } => {
                 if scoped {
                     self.scope.push();
                 }
 
-                let children = statements
+                let children = children
                     .into_iter()
-                    .map(|x| self.transform_statement(x))
+                    .map(|x| self.check_statement(x))
                     .collect::<Result<Vec<_>>>()?;
 
                 if scoped {
                     self.scope.pop();
                 }
 
-                Ok(Statement::Block(children, scoped, Type::Unknown(), range))
+                Ok(Statement::Block(children, scoped, range))
             }
-            Statement::Declaration(name, variable_type, _, range) => {
+            ParsedStatement::Declaration {
+                name,
+                value_type,
+                range,
+            } => {
+                let value_type = self.check_type(&value_type)?;
+
                 self.scope
-                    .insert(&name, TypeScopeEntry::Value(variable_type.clone()))
+                    .insert(&name, TypeScopeEntry::Value(value_type))
                     .map_err(|x| x.with_range(range))?;
 
-                Ok(Statement::Declaration(
-                    name.clone(),
-                    variable_type.clone(),
-                    variable_type,
-                    range,
-                ))
+                Ok(Statement::Declaration(name.clone(), value_type, range))
             }
-            Statement::Assignment(lhs, rhs, _, range) => {
-                let lhs_checked = self.transform_expression(lhs)?;
-                let mut rhs_checked = self.transform_expression(rhs)?;
+            ParsedStatement::Assignment { left, right, range } => {
+                let left_checked = self.check_expression(left)?;
+                let mut right_checked = self.check_expression(right)?;
 
-                if lhs_checked.data() == rhs_checked.data() {
-                    let resulting_type = lhs_checked.data().clone();
-                    return Ok(Statement::Assignment(
-                        lhs_checked,
-                        rhs_checked,
-                        resulting_type,
-                        range,
-                    ));
+                if left_checked.get_type() == right_checked.get_type() {
+                    return Ok(Statement::Assignment(left_checked, right_checked, range));
                 }
 
-                let new_type = Self::widen_assignment(lhs_checked.data(), rhs_checked.data())
+                let new_type = self
+                    .widen_assignment(left_checked.get_type(), right_checked.get_type())
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                rhs_checked.data(),
-                                lhs_checked.data(),
+                                right_checked.get_type(),
+                                left_checked.get_type(),
                             ),
                             range,
                         )
                     })?;
 
-                if &new_type != rhs_checked.data() {
-                    rhs_checked = Expression::Widen(Box::new(rhs_checked), new_type.clone(), range);
+                if new_type != right_checked.get_type() {
+                    right_checked = Expression::Widen(Box::new(right_checked), new_type, range);
                 }
 
-                Ok(Statement::Assignment(
-                    lhs_checked,
-                    rhs_checked,
-                    new_type,
-                    range,
-                ))
+                Ok(Statement::Assignment(left_checked, right_checked, range))
             }
-            Statement::Expression(expr, _, range) => {
-                let expr = self.transform_expression(expr)?;
-                let expr_type = expr.data().clone();
+            ParsedStatement::Expression { expr, range } => {
+                let expr = self.check_expression(expr)?;
 
-                Ok(Statement::Expression(expr, expr_type, range))
+                Ok(Statement::Expression(expr, range))
             }
-            Statement::If(cond, body, _, range) => {
-                let cond = self.transform_expression(cond)?;
+            ParsedStatement::If {
+                condition,
+                body,
+                range,
+            } => {
+                let condition = self.check_expression(condition)?;
 
-                if cond.data() != &Type::Bool() {
+                if condition.get_type() != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {:?}",
-                            cond.data()
+                            condition.get_type()
                         ),
                         range,
                     ));
                 }
-                let body = self.transform_statement(*body)?;
-                let body_type = body.data().clone();
 
-                Ok(Statement::If(cond, Box::new(body), body_type, range))
+                let body = self.check_statement(*body)?;
+
+                Ok(Statement::If(condition, Box::new(body), range))
             }
-            Statement::While(cond, body, _, range) => {
-                let cond = self.transform_expression(cond)?;
-                if cond.data() != &Type::Bool() {
+            ParsedStatement::While {
+                condition,
+                body,
+                range,
+            } => {
+                let cond = self.check_expression(condition)?;
+                if cond.get_type() != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
-                            cond.data()
+                            cond.get_type()
                         ),
                         range,
                     ));
                 }
 
-                let body = self.transform_statement(*body)?;
-                let body_type = body.data().clone();
+                let body = self.check_statement(*body)?;
 
-                Ok(Statement::While(cond, Box::new(body), body_type, range))
+                Ok(Statement::While(cond, Box::new(body), range))
             }
-            Statement::Return(expr, _, range) => {
-                let mut expr = self.transform_expression(expr)?;
-                let expr_type = expr.data().clone();
+            ParsedStatement::Return { value, range } => {
+                let mut value = self.check_expression(value)?;
+                let value_type = value.get_type();
 
-                assert_ne!(self.current_function_return_type, Type::Unknown());
+                assert_ne!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
+
                 let actual_type =
-                    Self::widen_assignment(&self.current_function_return_type, &expr_type);
+                    self.widen_assignment(self.current_function_return_type, value_type);
 
                 match actual_type {
                     None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
-                            self.current_function_return_type, expr_type,
+                            self.current_function_return_type, value_type,
                         ),
                         range,
                     )),
                     Some(t) => {
-                        if t != expr_type {
-                            expr = Expression::Widen(Box::new(expr), t, range);
+                        if t != value_type {
+                            value = Expression::Widen(Box::new(value), t, range);
                         }
 
-                        Ok(Statement::Return(expr, expr_type, range))
+                        Ok(Statement::Return(value, range))
                     }
                 }
             }
         }
     }
 
-    fn transform_expression(&mut self, expression: Expression<()>) -> Result<TypedExpression> {
-        use Expression::*;
-
+    fn check_expression(&mut self, expression: ParsedExpression) -> Result<Expression> {
         match expression {
-            BinaryOperator(op, left, right, _, range) => {
-                let mut left = self.transform_expression(*left)?;
-                let left_type = left.data().clone();
-                let mut right = self.transform_expression(*right)?;
-                let right_type = right.data().clone();
+            ParsedExpression::BinaryOperator {
+                op_type,
+                left,
+                right,
+                range,
+            } => {
+                let mut left = self.check_expression(*left)?;
+                let left_type = left.get_type();
+                let left_size = self.project.get_type_size(left_type);
+
+                let mut right = self.check_expression(*right)?;
+                let right_type = right.get_type();
+                let right_size = self.project.get_type_size(right_type);
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
                 // the remainder gets stored in the ah register instead of dl. When we can output
                 // assembly using the higher half eight bit registers, we can add this
                 // functionality.
-                if left_type.size() == 8
-                    && right_type.size() == 8
-                    && op == BinaryOperatorType::Modulo
-                {
+                if left_size == 8 && right_size == 8 && op_type == BinaryOperatorType::Modulo {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         "Modulo of two 8 bit integers is currently not supported".to_string(),
@@ -334,99 +397,109 @@ impl AstTransformer<(), Type> for TypeChecker {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if left_type.is_ref() && !op.is_comparison() {
+                if self.is_ref_type(left_type) && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
-                    return Ok(BinaryOperator(
-                        op,
+                    return Ok(Expression::BinaryOperator(
+                        op_type,
                         Box::new(left),
-                        Box::new(Widen(Box::new(right), left_type.clone(), range)),
+                        Box::new(Expression::Widen(Box::new(right), left_type, range)),
                         left_type,
                         range,
                     ));
                 }
 
-                match left_type.size().cmp(&right_type.size()) {
+                match left_size.cmp(&right_size) {
                     Ordering::Greater => {
-                        right = Widen(Box::new(right), left_type.clone(), range);
+                        right = Expression::Widen(Box::new(right), left_type, range);
                     }
                     Ordering::Less => {
-                        left = Widen(Box::new(left), right_type, range);
+                        left = Expression::Widen(Box::new(left), right_type, range);
                     }
                     _ => {}
                 };
 
-                let result_type = if op.is_comparison() {
-                    Type::Bool()
+                let result_type = if op_type.is_comparison() {
+                    BUILTIN_TYPE_BOOL
                 } else {
                     left_type
                 };
 
-                Ok(BinaryOperator(
-                    op,
+                Ok(Expression::BinaryOperator(
+                    op_type,
                     Box::new(left),
                     Box::new(right),
                     result_type,
                     range,
                 ))
             }
-            UnaryOperator(op, expr, _, range) => {
-                let expr = self.transform_expression(*expr)?;
-                let expr_type = expr.data().clone();
+            ParsedExpression::UnaryOperator {
+                op_type,
+                expr,
+                range,
+            } => {
+                let expr = self.check_expression(*expr)?;
+                let expr_type = expr.get_type();
 
-                match op {
-                    UnaryOperatorType::Negate => Ok(UnaryOperator(
+                match op_type {
+                    UnaryOperatorType::Negate => Ok(Expression::UnaryOperator(
                         UnaryOperatorType::Negate,
                         Box::new(expr),
                         expr_type,
                         range,
                     )),
-                    UnaryOperatorType::Ref => Ok(UnaryOperator(
+                    UnaryOperatorType::Ref => Ok(Expression::UnaryOperator(
                         UnaryOperatorType::Ref,
                         Box::new(expr),
-                        expr_type.get_ref(),
+                        self.project.find_or_add_type(Type::Ref(expr_type)),
                         range,
                     )),
-                    UnaryOperatorType::Deref => Ok(UnaryOperator(
+                    UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(
                         UnaryOperatorType::Deref,
                         Box::new(expr),
-                        expr_type.get_deref(),
+                        self.get_inner_type(expr_type),
                         range,
                     )),
                 }
             }
-            FunctionCall(name, args, _, range) => {
+            ParsedExpression::FunctionCall {
+                name,
+                arguments,
+                range,
+            } => {
                 if self.is_external_function(&name, &range)? {
-                    return Ok(FunctionCall(
+                    return Ok(Expression::FunctionCall(
                         name,
-                        args.into_iter()
-                            .map(|arg| self.transform_expression(arg))
+                        arguments
+                            .into_iter()
+                            .map(|arg| self.check_expression(arg))
                             .collect::<Result<Vec<_>>>()?,
-                        Type::UInt64(),
+                        BUILTIN_TYPE_U64,
                         range,
                     ));
                 }
 
                 let (arg_types, return_type) = self.get_scope_function_type(&name, &range)?;
 
-                assert_eq!(args.len(), arg_types.len());
+                assert_eq!(arguments.len(), arg_types.len());
 
-                let mut new_args: Vec<TypedExpression> = vec![];
+                let mut new_args = vec![];
 
-                for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
-                    let arg = self.transform_expression(arg)?;
-                    let arg_type = arg.data().clone();
+                for (arg, expected_type) in arguments.into_iter().zip(arg_types.iter()) {
+                    let arg = self.check_expression(arg)?;
+                    let arg_type = arg.get_type();
 
                     let new_type =
-                        Self::widen_assignment(expected_type, &arg_type).ok_or_else(|| {
-                            Error::new_with_range(
-                                ErrorType::TypeCheck,
-                                format!(
-                                    "Cannot widen from type {:?} to {:?}",
-                                    arg_type, expected_type
-                                ),
-                                range,
-                            )
-                        })?;
+                        self.widen_assignment(*expected_type, arg_type)
+                            .ok_or_else(|| {
+                                Error::new_with_range(
+                                    ErrorType::TypeCheck,
+                                    format!(
+                                        "Cannot widen from type {:?} to {:?}",
+                                        arg_type, expected_type
+                                    ),
+                                    range,
+                                )
+                            })?;
 
                     if new_type != arg_type {
                         new_args.push(Expression::Widen(Box::new(arg), new_type, range));
@@ -435,29 +508,32 @@ impl AstTransformer<(), Type> for TypeChecker {
                     }
                 }
 
-                Ok(FunctionCall(name, new_args, return_type, range))
+                Ok(Expression::FunctionCall(name, new_args, return_type, range))
             }
-            IntegerLiteral(value, _, range) => {
+            ParsedExpression::IntegerLiteral { value, range } => {
                 if value <= 255 {
-                    Ok(IntegerLiteral(value, Type::UInt8(), range))
+                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U8, range))
                 } else if value <= 65535 {
-                    Ok(IntegerLiteral(value, Type::UInt16(), range))
+                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U16, range))
                 } else if value <= 4294967295 {
-                    Ok(IntegerLiteral(value, Type::UInt32(), range))
+                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U32, range))
                 } else {
-                    Ok(IntegerLiteral(value, Type::UInt64(), range))
+                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U64, range))
                 }
             }
-            BooleanLiteral(value, _, range) => Ok(BooleanLiteral(value, Type::Bool(), range)),
-            VariableRef(name, _, range) => {
+            ParsedExpression::BooleanLiteral { value, range } => {
+                Ok(Expression::BooleanLiteral(value, BUILTIN_TYPE_BOOL, range))
+            }
+            ParsedExpression::VariableRef { name, range } => {
                 let value_type = self.get_scope_value_type(&name, &range)?;
 
-                Ok(VariableRef(name, value_type, range))
+                Ok(Expression::VariableRef(name, value_type, range))
             }
-            StringLiteral(value, _, range) => {
-                Ok(StringLiteral(value, Type::UInt8().get_ref(), range))
-            }
-            Widen(_expr, _value_type, _range) => unreachable!(),
+            ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
+                value,
+                self.project.find_or_add_type(Type::Ref(BUILTIN_TYPE_U8)),
+                range,
+            )),
         }
     }
 }
@@ -469,32 +545,40 @@ mod tests {
 
     #[test]
     fn widen_assignment() -> Result<()> {
-        let mut type_checker = TypeChecker::new();
+        let mut project = Project::new("test::widen_assignment");
+        let mut type_checker = TypeChecker::new(&mut project);
 
-        type_checker.transform_statement(Statement::Declaration(
-            "test".to_string(),
-            Type::UInt16(),
-            (),
-            (0..0).into(),
-        ))?;
+        type_checker.check_statement(ParsedStatement::Declaration {
+            name: "test".to_string(),
+            value_type: ParsedType::Named("u16".to_string()),
+            range: (0..0).into(),
+        })?;
 
-        let ast = Statement::Assignment(
-            Expression::VariableRef("test".to_string(), (), (0..0).into()),
-            Expression::IntegerLiteral(12, (), (0..0).into()),
-            (),
-            (0..0).into(),
-        );
+        let ast = ParsedStatement::Assignment {
+            left: ParsedExpression::VariableRef {
+                name: "test".to_string(),
+                range: (0..0).into(),
+            },
+            right: ParsedExpression::IntegerLiteral {
+                value: 12,
+                range: (0..0).into(),
+            },
+            range: (0..0).into(),
+        };
 
         assert_eq!(
-            type_checker.transform_statement(ast)?,
+            type_checker.check_statement(ast)?,
             Statement::Assignment(
-                Expression::VariableRef("test".to_string(), Type::UInt16(), (0..0).into()),
+                Expression::VariableRef("test".to_string(), BUILTIN_TYPE_U16, (0..0).into()),
                 Expression::Widen(
-                    Box::new(Expression::IntegerLiteral(12, Type::UInt8(), (0..0).into())),
-                    Type::UInt16(),
+                    Box::new(Expression::IntegerLiteral(
+                        12,
+                        BUILTIN_TYPE_U8,
+                        (0..0).into()
+                    )),
+                    BUILTIN_TYPE_U16,
                     (0..0).into(),
                 ),
-                Type::UInt16(),
                 (0..0).into(),
             )
         );

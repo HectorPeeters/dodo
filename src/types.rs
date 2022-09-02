@@ -1,14 +1,15 @@
 use std::fmt::Display;
 
-#[derive(Debug, Clone, PartialEq)]
+pub type TypeId = usize;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     UInt8(),
     UInt16(),
     UInt32(),
     UInt64(),
     Bool(),
-    Ref(Box<Type>),
-    Struct(String, Vec<(String, Type)>),
+    Ref(TypeId),
     Void(),
     Unknown(),
 }
@@ -23,21 +24,15 @@ impl Type {
             UInt64() => 64,
             Bool() => 8,
             Ref(_) => 64,
-            Struct(_, fields) => fields.iter().map(|(_, x)| x.size()).sum(),
             Void() => unreachable!(),
             Unknown() => unreachable!(),
         }
     }
 
     #[must_use]
-    pub fn get_ref(self) -> Self {
-        Type::Ref(Box::new(self))
-    }
-
-    #[must_use]
-    pub fn get_deref(self) -> Self {
+    pub fn get_deref(self) -> TypeId {
         match self {
-            Type::Ref(x) => *x,
+            Type::Ref(x) => x,
             // TODO: change this to return a result
             _ => panic!("Trying to deref type which is not a ref"),
         }
@@ -57,40 +52,8 @@ impl Display for Type {
             Type::UInt64() => write!(f, "u64"),
             Type::Bool() => write!(f, "bool"),
             Type::Ref(x) => write!(f, "{x}*"),
-            Type::Struct(_, _) => todo!(),
             Type::Void() => write!(f, "void"),
             Type::Unknown() => write!(f, "unknown"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_struct_single_field_size() {
-        let struct_type = Type::Struct(
-            "TestStruct".to_string(),
-            vec![("a".to_string(), Type::UInt8())],
-        );
-
-        assert_eq!(struct_type.size(), Type::UInt8().size());
-    }
-
-    #[test]
-    fn test_struct_multiple_fields_size() {
-        let struct_type = Type::Struct(
-            "TestStruct".to_string(),
-            vec![
-                ("a".to_string(), Type::UInt8()),
-                ("b".to_string(), Type::Ref(Box::new(Type::Bool()))),
-            ],
-        );
-
-        assert_eq!(
-            struct_type.size(),
-            Type::UInt8().size() + Type::Ref(Box::new(Type::Bool())).size()
-        );
     }
 }

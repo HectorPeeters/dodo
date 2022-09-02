@@ -6,14 +6,20 @@ use std::{
 };
 
 use dodo::{
-    ast::AstTransformer, backend::Backend, cpp::CppGenerator, error::Result, parser::Parser,
-    tokenizer::tokenize, type_checker::TypeChecker, x86_nasm::X86NasmGenerator,
+    backend::{Backend, BackendType},
+    cpp::CppGenerator,
+    error::Result,
+    parser::Parser,
+    project::Project,
+    tokenizer::tokenize,
+    type_checker::TypeChecker,
+    x86_nasm::X86NasmGenerator,
 };
 
 use test_case::test_case;
 
-fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
-    println!("RUNNING '{}' with backend '{}'...", file, backend.name());
+fn run_normal_test(file: &str, backend_type: BackendType) -> Result<()> {
+    println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
 
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
@@ -27,11 +33,18 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
 
-    let mut type_checker = TypeChecker::new();
+    let mut project = Project::new(file);
+
+    let mut type_checker = TypeChecker::new(&mut project);
     let statements = statements
         .into_iter()
-        .map(|x| type_checker.transform_upper_statement(x))
+        .map(|x| type_checker.check_upper_statement(x))
         .collect::<Result<Vec<_>>>()?;
+
+    let mut backend: Box<dyn Backend> = match backend_type {
+        BackendType::Cpp => Box::new(CppGenerator::new(&mut project)),
+        BackendType::X86 => Box::new(X86NasmGenerator::new(&mut project)),
+    };
 
     statements
         .into_iter()
@@ -73,13 +86,10 @@ fn run_normal_test(file: &str, backend: &mut dyn Backend) -> Result<()> {
 #[test_case("tests/data/string.dodo"; "string")]
 #[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {
-    let backends: Vec<Box<dyn Backend>> = vec![
-        Box::new(X86NasmGenerator::new()),
-        Box::new(CppGenerator::new()),
-    ];
+    let backend_types = vec![BackendType::Cpp, BackendType::X86];
 
-    for mut b in backends {
-        run_normal_test(path, &mut *b)?;
+    for b in backend_types {
+        run_normal_test(path, b)?;
     }
 
     Ok(())

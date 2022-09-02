@@ -1,13 +1,15 @@
-use crate::ast::{TypedUpperStatement, UpperStatement};
+use crate::ast::UpperStatement;
+use crate::project::{
+    Project, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
+    BUILTIN_TYPE_VOID,
+};
+use crate::types::Type;
 use crate::{
-    ast::{
-        BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
-        TypedStatement, UnaryOperatorType,
-    },
+    ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType},
     backend::Backend,
     error::{Error, ErrorType, Result},
     scope::Scope,
-    types::Type,
+    types::TypeId,
     x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RDX, RSP},
 };
 use std::{fs::File, io::Write, path::Path, process::Command};
@@ -26,18 +28,20 @@ pub enum ScopeLocation {
     Global(usize),
 }
 
-pub struct X86NasmGenerator {
+pub struct X86NasmGenerator<'a> {
+    project: &'a mut Project,
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     current_function_end_label: usize,
-    global_consts: Vec<(usize, TypedExpression, Type)>,
+    global_consts: Vec<(usize, Expression, TypeId)>,
 }
 
-impl<'a> X86NasmGenerator {
-    pub fn new() -> Self {
+impl<'a> X86NasmGenerator<'a> {
+    pub fn new(project: &'a mut Project) -> Self {
         let mut result = Self {
+            project,
             instructions: vec![],
             label_index: 0,
             scope: Scope::new(),
@@ -73,7 +77,7 @@ impl<'a> X86NasmGenerator {
         result
     }
 
-    fn store_global_const(&mut self, value: TypedExpression, value_type: Type) -> usize {
+    fn store_global_const(&mut self, value: Expression, value_type: TypeId) -> usize {
         let index = self.get_new_label();
         self.global_consts.push((index, value, value_type));
         index
@@ -95,7 +99,7 @@ impl<'a> X86NasmGenerator {
         self.instr(Pop(RBP));
     }
 
-    fn write_data<T: Write>(&'a mut self, writer: &'a mut T) {
+    fn write_data<T: Write>(&mut self, writer: &mut T) {
         self.instr(Section(".data".to_string()));
 
         let mut queued_instructions = vec![];
@@ -107,11 +111,11 @@ impl<'a> X86NasmGenerator {
                 Expression::IntegerLiteral(value, _, _) => {
                     use X86Instruction::*;
 
-                    let instruction = match value_type {
-                        Type::UInt8() => Db(vec![*value as u8]),
-                        Type::UInt16() => Dw(vec![*value as u16]),
-                        Type::UInt32() => Dd(vec![*value as u32]),
-                        Type::UInt64() => Dq(vec![*value]),
+                    let instruction = match *value_type {
+                        BUILTIN_TYPE_U8 => Db(vec![*value as u8]),
+                        BUILTIN_TYPE_U16 => Dw(vec![*value as u16]),
+                        BUILTIN_TYPE_U32 => Dd(vec![*value as u32]),
+                        BUILTIN_TYPE_U64 => Dq(vec![*value]),
                         _ => unreachable!(),
                     };
 
@@ -143,8 +147,8 @@ impl<'a> X86NasmGenerator {
     }
 }
 
-impl Backend for X86NasmGenerator {
-    fn process_upper_statement(&mut self, statement: TypedUpperStatement) -> Result<()> {
+impl<'a> Backend for X86NasmGenerator<'a> {
+    fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         self.visit_upper_statement(statement)
     }
 
@@ -212,14 +216,8 @@ impl Backend for X86NasmGenerator {
     }
 }
 
-impl Default for X86NasmGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
+impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
             UpperStatement::ExternDeclaration(symbol, _) => {
                 self.instr(Extern(symbol));
@@ -261,12 +259,14 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.size()?;
+
                     self.scope
                         .insert(arg_name, ScopeLocation::Stack(offset))
                         .map_err(|x| x.with_range(range))?;
+
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET),
-                        Reg(arg_reg, arg_type.size()),
+                        Reg(arg_reg, self.project.get_type_size(*arg_type)),
                     ));
                 }
 
@@ -295,24 +295,26 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
         Ok(())
     }
 
-    fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
+    fn visit_statement(&mut self, statement: Statement) -> Result<()> {
         match statement {
-            Statement::Declaration(name, _value_type, _, range) => {
+            Statement::Declaration(name, _value_type, range) => {
                 self.scope
                     .insert(&name, ScopeLocation::Stack(self.scope.size()?))
                     .map_err(|x| x.with_range(range))?;
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
-            Statement::Assignment(lhs, rhs, value_type, range) => match lhs {
+            Statement::Assignment(lhs, rhs, range) => match lhs {
                 Expression::VariableRef(name, _, _) => {
                     let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+
+                    let rhs_size = self.project.get_type_size(rhs.get_type());
                     let value_reg = self.visit_expression(rhs)?;
 
                     match location {
                         ScopeLocation::Stack(offset) => self.instr(Mov(
                             RegIndirect(Rbp, offset * STACK_OFFSET),
-                            Reg(value_reg, value_type.size()),
+                            Reg(value_reg, rhs_size),
                         )),
                         ScopeLocation::Global(_) => todo!(),
                     }
@@ -322,7 +324,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 Expression::UnaryOperator(UnaryOperatorType::Deref, expr, value_type, _) => {
                     let reg = self.visit_expression(rhs)?;
 
-                    let value_type_size = value_type.size();
+                    let value_type_size = self.project.get_type_size(value_type);
                     let dest_reg = self.visit_expression(*expr)?;
 
                     self.instr(Mov(RegIndirect(dest_reg, 0), Reg(reg, value_type_size)));
@@ -332,13 +334,13 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 }
                 _ => todo!(),
             },
-            Statement::While(cond, stmt, _, _range) => {
+            Statement::While(cond, stmt, _range) => {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
 
                 self.instr(LabelDef(start_label));
 
-                let cond_size = cond.data().size();
+                let cond_size = self.project.get_type_size(cond.get_type());
                 let register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(register, cond_size), Constant(0)));
@@ -351,10 +353,10 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.free_register(register);
             }
-            Statement::If(cond, stmt, _, _range) => {
+            Statement::If(cond, stmt, _range) => {
                 let end_label = self.get_new_label();
 
-                let cond_size = cond.data().size();
+                let cond_size = self.project.get_type_size(cond.get_type());
                 let cond_register = self.visit_expression(cond)?;
 
                 self.instr(Cmp(Reg(cond_register, cond_size), Constant(0)));
@@ -366,8 +368,8 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.instr(LabelDef(end_label));
             }
-            Statement::Return(expr, _, _range) => {
-                let expr_size = expr.data().size();
+            Statement::Return(expr, _range) => {
+                let expr_size = self.project.get_type_size(expr.get_type());
                 let value_reg = self.visit_expression(expr).unwrap();
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
@@ -375,7 +377,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 self.free_register(value_reg);
             }
-            Statement::Block(stmts, scoped, _, _) => {
+            Statement::Block(stmts, scoped, _) => {
                 if scoped {
                     self.scope.push();
                 }
@@ -388,7 +390,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                     self.scope.pop();
                 }
             }
-            Statement::Expression(expr, _expr_type, _range) => {
+            Statement::Expression(expr, _range) => {
                 let register = self.visit_expression(expr)?;
                 self.free_register(register);
             }
@@ -396,12 +398,13 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
         Ok(())
     }
 
-    fn visit_expression(&mut self, expression: TypedExpression) -> Result<X86Register> {
+    fn visit_expression(&mut self, expression: Expression) -> Result<X86Register> {
         match expression {
             Expression::IntegerLiteral(value, value_type, _range) => {
                 let register = self.get_next_register();
 
-                self.instr(Mov(Reg(register, value_type.size()), Constant(value)));
+                let value_size = self.project.get_type_size(value_type);
+                self.instr(Mov(Reg(register, value_size), Constant(value)));
 
                 Ok(register)
             }
@@ -412,17 +415,16 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 Ok(register)
             }
-            Expression::UnaryOperator(UnaryOperatorType::Ref, expr, _, _range) => {
+            Expression::UnaryOperator(UnaryOperatorType::Ref, expr, ref_type, _range) => {
                 let result_reg = self.get_next_register();
 
                 match &*expr {
-                    Expression::VariableRef(name, value_type, range) => {
+                    Expression::VariableRef(name, _, range) => {
                         let location = self.scope.find(name).map_err(|x| x.with_range(*range))?;
-                        let result_type = value_type.clone().get_ref();
 
                         match location {
                             ScopeLocation::Stack(offset) => self.instr(Lea(
-                                Reg(result_reg, result_type.size()),
+                                Reg(result_reg, self.project.get_type_size(ref_type)),
                                 RegIndirect(Rbp, offset * 16),
                             )),
                             ScopeLocation::Global(_) => todo!(),
@@ -433,7 +435,8 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 }
             }
             Expression::UnaryOperator(op, expr, _, _range) => {
-                let expr_size = expr.data().size();
+                let expr_size = self.project.get_type_size(expr.get_type());
+
                 let reg = self.visit_expression(*expr)?;
                 let result_reg = self.get_next_register();
 
@@ -448,8 +451,8 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 Ok(result_reg)
             }
             Expression::BinaryOperator(op, left, right, _, _range) => {
-                let left_size = left.data().size();
-                let right_size = right.data().size();
+                let left_size = self.project.get_type_size(left.get_type());
+                let right_size = self.project.get_type_size(right.get_type());
                 let left_reg = self.visit_expression(*left)?;
                 let right_reg = self.visit_expression(*right)?;
 
@@ -527,16 +530,18 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
                 let register = self.get_next_register();
 
+                let value_size = self.project.get_type_size(value_type);
+
                 match location {
                     ScopeLocation::Stack(offset) => self.instr(Mov(
-                        Reg(register, value_type.size()),
+                        Reg(register, value_size),
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        if value_type.is_ref() {
-                            self.instr(Mov(Reg(register, value_type.size()), Label(index)))
+                        if self.project.get_type(value_type).is_ref() {
+                            self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
-                            self.instr(Mov(Reg(register, value_type.size()), LabelIndirect(index)))
+                            self.instr(Mov(Reg(register, value_size), LabelIndirect(index)))
                         }
                     }
                 }
@@ -549,7 +554,7 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 let arg_count = args.len();
 
                 for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
-                    let arg_size = expr.data().size();
+                    let arg_size = self.project.get_type_size(expr.get_type());
                     let arg_register = self.visit_expression(expr)?;
 
                     if dest_reg.is_caller_saved() {
@@ -582,10 +587,12 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
 
                 let result_register = self.get_next_register();
 
-                if return_type != Type::Void() {
+                if return_type != BUILTIN_TYPE_VOID {
+                    let return_type_size = self.project.get_type_size(return_type);
+
                     self.instr(Mov(
-                        Reg(result_register, return_type.size()),
-                        Reg(Rax, return_type.size()),
+                        Reg(result_register, return_type_size),
+                        Reg(Rax, return_type_size),
                     ));
                 }
 
@@ -598,28 +605,25 @@ impl ConsumingAstVisitor<Type, (), X86Register> for X86NasmGenerator {
                 Ok(result_register)
             }
             Expression::StringLiteral(value, _, range) => {
+                let u8_pointer_type = self.project.find_or_add_type(Type::Ref(BUILTIN_TYPE_U8));
+
                 let label = self.store_global_const(
-                    TypedExpression::StringLiteral(
-                        value,
-                        Type::Ref(Box::new(Type::UInt8())),
-                        range,
-                    ),
-                    Type::Ref(Box::new(Type::UInt8())),
+                    Expression::StringLiteral(value, u8_pointer_type, range),
+                    u8_pointer_type,
                 );
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
             }
             Expression::Widen(expr, widen_type, _range) => {
-                let expr_size = expr.data().size();
-                assert!(expr_size < widen_type.size());
+                let expr_size = self.project.get_type_size(expr.get_type());
+                let widen_size = self.project.get_type_size(widen_type);
+
+                assert!(expr_size < widen_size);
                 let expr_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
-                self.instr(MovZX(
-                    Reg(result_reg, widen_type.size()),
-                    Reg(expr_reg, expr_size),
-                ));
+                self.instr(MovZX(Reg(result_reg, widen_size), Reg(expr_reg, expr_size)));
 
                 self.free_register(expr_reg);
 

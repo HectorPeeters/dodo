@@ -1,27 +1,33 @@
 use crate::ast::{
-    BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, TypedExpression,
-    TypedStatement, TypedUpperStatement, UnaryOperatorType, UpperStatement,
+    BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType,
+    UpperStatement,
 };
 use crate::backend::Backend;
 use crate::error::{Error, ErrorType, Result};
-use crate::types::Type;
+use crate::project::{
+    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
+    BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
+};
+use crate::types::{Type, TypeId};
 use std::path::Path;
 use std::process::Command;
 
-pub struct CppGenerator {
+pub struct CppGenerator<'a> {
+    project: &'a mut Project,
     buffer: String,
 }
 
-impl CppGenerator {
-    pub fn new() -> Self {
+impl<'a> CppGenerator<'a> {
+    pub fn new(project: &'a mut Project) -> Self {
         Self {
+            project,
             buffer: "#include <stdio.h>\n#include<stdlib.h>\n\n".to_string(),
         }
     }
 }
 
-impl Backend for CppGenerator {
-    fn process_upper_statement(&mut self, statement: TypedUpperStatement) -> Result<()> {
+impl<'a> Backend for CppGenerator<'a> {
+    fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         self.visit_upper_statement(statement)
     }
 
@@ -52,36 +58,38 @@ impl Backend for CppGenerator {
     }
 }
 
-fn to_cpp_type(type_: Type) -> String {
-    use Type::*;
-
-    match type_ {
-        UInt8() => "char".to_string(),
-        UInt16() => "unsigned short".to_string(),
-        UInt32() => "unsigned int".to_string(),
-        UInt64() => "unsigned long".to_string(),
-        Bool() => "bool".to_string(),
-        Ref(inner) => format!("{}*", to_cpp_type(*inner)),
-        Void() => "void".to_string(),
-        _ => unreachable!(),
+impl<'a> CppGenerator<'a> {
+    fn to_cpp_type(&self, id: TypeId) -> String {
+        match id {
+            BUILTIN_TYPE_U8 => "char".to_string(),
+            BUILTIN_TYPE_U16 => "unsigned short".to_string(),
+            BUILTIN_TYPE_U32 => "unsigned int".to_string(),
+            BUILTIN_TYPE_U64 => "unsigned long".to_string(),
+            BUILTIN_TYPE_BOOL => "bool".to_string(),
+            BUILTIN_TYPE_VOID => "void".to_string(),
+            _ => match self.project.get_type(id) {
+                Type::Ref(inner) => format!("{}*", self.to_cpp_type(*inner)),
+                _ => unreachable!(),
+            },
+        }
     }
 }
 
-impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<Type>) -> Result<()> {
+impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
             UpperStatement::ExternDeclaration(_, _) => Ok(()),
             UpperStatement::Function(name, args, return_type, body, annotations, _) => {
                 let args = args
                     .into_iter()
-                    .map(|(name, type_)| format!("{} {}", to_cpp_type(type_), name))
+                    .map(|(name, type_)| format!("{} {}", self.to_cpp_type(type_), name))
                     .collect::<Vec<_>>()
                     .join(", ");
 
                 let return_type = if name == "main" {
                     "int".to_string()
                 } else {
-                    to_cpp_type(return_type)
+                    self.to_cpp_type(return_type)
                 };
 
                 let no_return = if annotations.iter().any(|(name, _)| name == "noreturn") {
@@ -115,7 +123,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
                 Ok(())
             }
             UpperStatement::ConstDeclaration(name, value_type, value, _range) => {
-                let cpp_type = to_cpp_type(value_type);
+                let cpp_type = self.to_cpp_type(value_type);
 
                 let cpp_value = self.visit_expression(value)?;
 
@@ -127,9 +135,9 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
         }
     }
 
-    fn visit_statement(&mut self, statement: TypedStatement) -> Result<()> {
+    fn visit_statement(&mut self, statement: Statement) -> Result<()> {
         match statement {
-            Statement::Block(statements, scoped, _, _) => {
+            Statement::Block(statements, scoped, _) => {
                 if scoped {
                     self.buffer.push_str("{\n");
                 }
@@ -144,24 +152,24 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            Statement::Declaration(name, type_, _, _) => {
+            Statement::Declaration(name, type_, _) => {
                 self.buffer
-                    .push_str(&format!("{} {};\n", to_cpp_type(type_), name));
+                    .push_str(&format!("{} {};\n", self.to_cpp_type(type_), name));
                 Ok(())
             }
-            Statement::Assignment(lhs, rhs, _, _) => {
+            Statement::Assignment(lhs, rhs, _) => {
                 let lhs = self.visit_expression(lhs)?;
                 let rhs = self.visit_expression(rhs)?;
                 self.buffer.push_str(&format!("{} = {};\n", lhs, rhs));
                 Ok(())
             }
-            Statement::Expression(expr, _, _) => {
+            Statement::Expression(expr, _) => {
                 let expr = self.visit_expression(expr)?;
                 self.buffer.push_str(&expr);
                 self.buffer.push_str(";\n");
                 Ok(())
             }
-            Statement::While(cond, body, _, _) => {
+            Statement::While(cond, body, _) => {
                 let cond = self.visit_expression(cond)?;
 
                 self.buffer.push_str(&format!("while ({}) {{", cond));
@@ -170,7 +178,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            Statement::If(cond, body, _, _) => {
+            Statement::If(cond, body, _) => {
                 let cond = self.visit_expression(cond)?;
 
                 self.buffer.push_str(&format!("if ({}) {{", cond));
@@ -179,7 +187,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
 
                 Ok(())
             }
-            Statement::Return(expr, _, _) => {
+            Statement::Return(expr, _) => {
                 let expr = self.visit_expression(expr)?;
                 self.buffer.push_str(&format!("return {};", expr));
 
@@ -188,7 +196,7 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
         }
     }
 
-    fn visit_expression(&mut self, expression: TypedExpression) -> Result<String> {
+    fn visit_expression(&mut self, expression: Expression) -> Result<String> {
         match expression {
             Expression::BinaryOperator(op, left, right, _, _) => {
                 let left = self.visit_expression(*left)?;
@@ -240,11 +248,5 @@ impl ConsumingAstVisitor<Type, (), String> for CppGenerator {
             )),
             Expression::Widen(expr, _, _) => self.visit_expression(*expr),
         }
-    }
-}
-
-impl Default for CppGenerator {
-    fn default() -> Self {
-        Self::new()
     }
 }
