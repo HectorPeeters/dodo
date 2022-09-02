@@ -68,7 +68,7 @@ impl<'a> CppGenerator<'a> {
             BUILTIN_TYPE_BOOL => "bool".to_string(),
             BUILTIN_TYPE_VOID => "void".to_string(),
             _ => match self.project.get_type(id) {
-                Type::Ref(inner) => format!("{}*", self.to_cpp_type(*inner)),
+                Type::Ptr(inner) => format!("{}*", self.to_cpp_type(*inner)),
                 _ => unreachable!(),
             },
         }

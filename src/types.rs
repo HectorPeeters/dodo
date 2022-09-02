@@ -9,7 +9,7 @@ pub enum Type {
     UInt32(),
     UInt64(),
     Bool(),
-    Ref(TypeId),
+    Ptr(TypeId),
     Void(),
     Unknown(),
 }
@@ -23,7 +23,7 @@ impl Type {
             UInt32() => 32,
             UInt64() => 64,
             Bool() => 8,
-            Ref(_) => 64,
+            Ptr(_) => 64,
             Void() => unreachable!(),
             Unknown() => unreachable!(),
         }
@@ -32,14 +32,14 @@ impl Type {
     #[must_use]
     pub fn get_deref(self) -> TypeId {
         match self {
-            Type::Ref(x) => x,
+            Type::Ptr(x) => x,
             // TODO: change this to return a result
-            _ => panic!("Trying to deref type which is not a ref"),
+            _ => panic!("Trying to deref type which is not a ptr"),
         }
     }
 
-    pub fn is_ref(&self) -> bool {
-        matches!(self, Type::Ref(_))
+    pub fn is_ptr(&self) -> bool {
+        matches!(self, Type::Ptr(_))
     }
 }
 
@@ -51,7 +51,7 @@ impl Display for Type {
             Type::UInt32() => write!(f, "u32"),
             Type::UInt64() => write!(f, "u64"),
             Type::Bool() => write!(f, "bool"),
-            Type::Ref(x) => write!(f, "{x}*"),
+            Type::Ptr(x) => write!(f, "{x}*"),
             Type::Void() => write!(f, "void"),
             Type::Unknown() => write!(f, "unknown"),
         }

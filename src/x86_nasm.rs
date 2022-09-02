@@ -538,7 +538,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        if self.project.get_type(value_type).is_ref() {
+                        if self.project.get_type(value_type).is_ptr() {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
                             self.instr(Mov(Reg(register, value_size), LabelIndirect(index)))
@@ -605,7 +605,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 Ok(result_register)
             }
             Expression::StringLiteral(value, _, range) => {
-                let u8_pointer_type = self.project.find_or_add_type(Type::Ref(BUILTIN_TYPE_U8));
+                let u8_pointer_type = self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8));
 
                 let label = self.store_global_const(
                     Expression::StringLiteral(value, u8_pointer_type, range),

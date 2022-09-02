@@ -25,7 +25,7 @@ pub struct Parser<'a> {
 #[derive(Debug, PartialEq)]
 pub enum ParsedType {
     Named(String),
-    Ref(Box<ParsedType>),
+    Ptr(Box<ParsedType>),
 }
 
 pub type ParsedAnnotations = Vec<(String, Option<ParsedExpression>)>;
@@ -244,7 +244,7 @@ impl<'a> Parser<'a> {
         if self.peek()?.token_type == TokenType::Asterisk {
             self.consume()?;
 
-            result = ParsedType::Ref(Box::new(result));
+            result = ParsedType::Ptr(Box::new(result));
         }
 
         Ok(result)

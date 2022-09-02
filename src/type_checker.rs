@@ -85,12 +85,12 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn is_ref_type(&self, id: TypeId) -> bool {
-        self.project.get_type(id).is_ref()
+        self.project.get_type(id).is_ptr()
     }
 
     fn get_inner_type(&self, id: TypeId) -> TypeId {
         match self.project.get_type(id) {
-            Type::Ref(x) => *x,
+            Type::Ptr(x) => *x,
             _ => unreachable!("Getting inner type of non-ref type"),
         }
     }
@@ -104,9 +104,9 @@ impl<'a> TypeChecker<'a> {
                     format!("Could not find type '{}'", name),
                 )
             }),
-            ParsedType::Ref(inner) => {
+            ParsedType::Ptr(inner) => {
                 let inner = self.check_type(inner)?;
-                Ok(self.project.find_or_add_type(Type::Ref(inner)))
+                Ok(self.project.find_or_add_type(Type::Ptr(inner)))
             }
         }
     }
@@ -450,7 +450,7 @@ impl<'a> TypeChecker<'a> {
                     UnaryOperatorType::Ref => Ok(Expression::UnaryOperator(
                         UnaryOperatorType::Ref,
                         Box::new(expr),
-                        self.project.find_or_add_type(Type::Ref(expr_type)),
+                        self.project.find_or_add_type(Type::Ptr(expr_type)),
                         range,
                     )),
                     UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(
@@ -531,7 +531,7 @@ impl<'a> TypeChecker<'a> {
             }
             ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
                 value,
-                self.project.find_or_add_type(Type::Ref(BUILTIN_TYPE_U8)),
+                self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
                 range,
             )),
         }
