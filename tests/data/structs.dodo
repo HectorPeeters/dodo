@@ -1,8 +1,27 @@
+extern "printf";
+
 struct TestData {
     age: u32,
     is_alive: bool,
 }
 
+fn have_birthday(data: TestData*) {
+    (*data).age = (*data).age + 1;
+}
+
 fn main() {
     let data: TestData;
+
+    data.age = 12;
+    data.is_alive = true;
+
+    printf("Age: %u\n", data.age);
+
+    have_birthday(&data);
+
+    printf("Age: %u\n", data.age);
+
+    if data.is_alive {
+        printf("And is still alive!\n");
+    }
 }

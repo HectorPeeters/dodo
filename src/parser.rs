@@ -6,22 +6,6 @@ use crate::{
     tokenizer::{SourceRange, Token, TokenType},
 };
 
-type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpression>;
-
-type InfixParseFn<'a> = fn(
-    &mut Parser<'a>,
-    start_index: usize,
-    left: ParsedExpression,
-    precedence: usize,
-) -> Result<ParsedExpression>;
-
-pub struct Parser<'a> {
-    tokens: &'a [Token<'a>],
-    index: usize,
-    prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
-    infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum ParsedType {
     Named(String),
@@ -124,10 +108,34 @@ pub enum ParsedExpression {
         name: String,
         range: SourceRange,
     },
+    FieldAccessor {
+        name: String,
+        child: Box<ParsedExpression>,
+        range: SourceRange,
+    },
     StringLiteral {
         value: String,
         range: SourceRange,
     },
+}
+
+type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpression>;
+
+type InfixParseFn<'a> = fn(
+    &mut Parser<'a>,
+    start_index: usize,
+    left: ParsedExpression,
+    precedence: usize,
+) -> Result<ParsedExpression>;
+
+type PostfixParseFn<'a> = fn(&mut Parser<'a>, left: ParsedExpression) -> Result<ParsedExpression>;
+
+pub struct Parser<'a> {
+    tokens: &'a [Token<'a>],
+    index: usize,
+    prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
+    infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
+    postfix_fns: HashMap<TokenType, PostfixParseFn<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -170,11 +178,15 @@ impl<'a> Parser<'a> {
             (Self::parse_binary_operator, 6),
         );
 
+        let mut postfix_fns: HashMap<_, PostfixParseFn<'a>> = HashMap::new();
+        postfix_fns.insert(TokenType::Dot, Self::parse_field_accessor);
+
         Self {
             tokens,
             index: 0,
             prefix_fns,
             infix_fns,
+            postfix_fns,
         }
     }
 
@@ -285,20 +297,39 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_field_accessor(&mut self, left: ParsedExpression) -> Result<ParsedExpression> {
+        let start_index = self.current_index(false);
+
+        self.consume_assert(TokenType::Dot)?;
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
+
+        Ok(ParsedExpression::FieldAccessor {
+            name,
+            child: Box::new(left),
+            range: (start_index..self.current_index(true)).into(),
+        })
+    }
+
     fn parse_identifier_or_function_call(&mut self) -> Result<ParsedExpression> {
         let identifier_start = self.current_index(false);
-        if self.peeks(1)?.token_type == TokenType::LeftParen {
-            self.parse_function_call()
-        } else {
-            let name = self
-                .consume_assert(TokenType::Identifier)?
-                .value
-                .to_string();
+        let next_token = self.peeks(1)?.token_type;
 
-            Ok(ParsedExpression::VariableRef {
-                name,
-                range: (identifier_start..self.current_index(true)).into(),
-            })
+        match next_token {
+            TokenType::LeftParen => self.parse_function_call(),
+            _ => {
+                let name = self
+                    .consume_assert(TokenType::Identifier)?
+                    .value
+                    .to_string();
+
+                Ok(ParsedExpression::VariableRef {
+                    name,
+                    range: (identifier_start..self.current_index(true)).into(),
+                })
+            }
         }
     }
 
@@ -421,6 +452,16 @@ impl<'a> Parser<'a> {
                 self.peek()?.range,
             )),
         }?;
+
+        if self.eof() {
+            return Ok(left);
+        }
+
+        let token_type = self.peek()?.token_type;
+
+        if let Some(func) = self.postfix_fns.get(&token_type) {
+            left = func(self, left)?;
+        }
 
         if self.eof() || exit_tokens.contains(&self.peek()?.token_type) {
             return Ok(left);

@@ -5,6 +5,12 @@ use crate::project::Project;
 pub type TypeId = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructType {
+    pub name: String,
+    pub fields: Vec<(String, TypeId)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     UInt8(),
     UInt16(),
@@ -13,7 +19,7 @@ pub enum Type {
     Bool(),
     Ptr(TypeId),
     Void(),
-    Struct(String, Vec<(String, TypeId)>),
+    Struct(StructType),
 }
 
 impl Type {
@@ -27,7 +33,11 @@ impl Type {
             Bool() => 8,
             Ptr(_) => 64,
             Void() => unreachable!(),
-            Struct(_, fields) => fields.iter().map(|(_, t)| project.get_type_size(*t)).sum(),
+            Struct(s) => s
+                .fields
+                .iter()
+                .map(|(_, t)| project.get_type_size(*t))
+                .sum(),
         }
     }
 
@@ -55,7 +65,7 @@ impl Display for Type {
             Type::Bool() => write!(f, "bool"),
             Type::Ptr(x) => write!(f, "{x}*"),
             Type::Void() => write!(f, "void"),
-            Type::Struct(name, _) => write!(f, "{}", name),
+            Type::Struct(s) => write!(f, "{}", s.name),
         }
     }
 }

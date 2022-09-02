@@ -86,6 +86,8 @@ pub enum TokenType {
     SemiColon,
     #[token(",")]
     Comma,
+    #[token(".")]
+    Dot,
 
     #[token("(")]
     LeftParen,

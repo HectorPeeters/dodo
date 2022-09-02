@@ -616,6 +616,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
             }
+            Expression::FieldAccessor(_, _, _, _) => todo!(),
             Expression::Widen(expr, widen_type, _range) => {
                 let expr_size = self.project.get_type_size(expr.get_type());
                 let widen_size = self.project.get_type_size(widen_type);

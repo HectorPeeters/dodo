@@ -107,6 +107,7 @@ pub enum Expression {
     BooleanLiteral(bool, TypeId, SourceRange),
     VariableRef(String, TypeId, SourceRange),
     StringLiteral(String, TypeId, SourceRange),
+    FieldAccessor(String, Box<Expression>, TypeId, SourceRange),
     Widen(Box<Expression>, TypeId, SourceRange),
 }
 
@@ -122,6 +123,7 @@ impl Expression {
             BooleanLiteral(_, t, _) => *t,
             VariableRef(_, t, _) => *t,
             StringLiteral(_, t, _) => *t,
+            FieldAccessor(_, _, t, _) => *t,
             Widen(_, t, _) => *t,
         }
     }
@@ -137,6 +139,7 @@ impl Expression {
             BooleanLiteral(_, _, r) => r,
             VariableRef(_, _, r) => r,
             StringLiteral(_, _, r) => r,
+            FieldAccessor(_, _, _, r) => r,
             Widen(_, _, r) => r,
         }
     }

@@ -70,7 +70,7 @@ impl<'a> CppGenerator<'a> {
             _ if self.project.is_ptr_type(id) => {
                 format!("{}*", self.to_cpp_type(self.project.get_inner_type(id)))
             }
-            _ if self.project.is_struct_type(id) => self.project.get_struct_name(id).to_string(),
+            _ if self.project.is_struct_type(id) => self.project.get_struct(id).name.to_string(),
             _ => unreachable!(),
         }
     }
@@ -261,6 +261,9 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                     .replace('\t', "\\t")
                     .replace('\"', "\\\"")
             )),
+            Expression::FieldAccessor(name, child, _, _) => {
+                Ok(format!("{}.{}", self.visit_expression(*child)?, name))
+            }
             Expression::Widen(expr, _, _) => self.visit_expression(*expr),
         }
     }

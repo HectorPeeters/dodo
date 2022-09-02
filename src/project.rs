@@ -1,4 +1,4 @@
-use crate::types::{Type, TypeId};
+use crate::types::{StructType, Type, TypeId};
 
 pub struct Project {
     pub name: String,
@@ -41,24 +41,24 @@ impl Project {
             "u32" => Some(BUILTIN_TYPE_U32),
             "u64" => Some(BUILTIN_TYPE_U64),
             "bool" => Some(BUILTIN_TYPE_BOOL),
-            _ => self.types.iter().position(|x| match x {
-                Type::Struct(n, _) if n == name => true,
-                _ => false,
-            }),
+            _ => self
+                .types
+                .iter()
+                .position(|x| matches!(x, Type::Struct(s) if s.name == name)),
         }
     }
 
     pub fn is_struct_type(&self, id: TypeId) -> bool {
-        matches!(self.types[id], Type::Struct(_, _))
+        matches!(self.types[id], Type::Struct(_))
     }
 
     pub fn is_ptr_type(&self, id: TypeId) -> bool {
         matches!(self.types[id], Type::Ptr(_))
     }
 
-    pub fn get_struct_name(&self, id: TypeId) -> &str {
+    pub fn get_struct(&self, id: TypeId) -> &StructType {
         match &self.types[id] {
-            Type::Struct(name, _) => name,
+            Type::Struct(s) => s,
             _ => unreachable!(),
         }
     }
