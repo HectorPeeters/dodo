@@ -12,6 +12,7 @@ pub enum UpperStatement {
         Vec<(String, Option<Expression>)>,
         SourceRange,
     ),
+    StructDeclaratin(String, Vec<(String, TypeId)>),
     ConstDeclaration(String, TypeId, Expression, SourceRange),
     ExternDeclaration(String, SourceRange),
 }

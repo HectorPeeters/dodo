@@ -219,6 +219,7 @@ impl<'a> Backend for X86NasmGenerator<'a> {
 impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
+            UpperStatement::StructDeclaratin(_, _) => todo!(),
             UpperStatement::ExternDeclaration(symbol, _) => {
                 self.instr(Extern(symbol));
             }

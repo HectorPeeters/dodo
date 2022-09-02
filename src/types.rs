@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::project::Project;
+
 pub type TypeId = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,11 +13,11 @@ pub enum Type {
     Bool(),
     Ptr(TypeId),
     Void(),
-    Unknown(),
+    Struct(String, Vec<(String, TypeId)>),
 }
 
 impl Type {
-    pub fn size(&self) -> usize {
+    pub fn size(&self, project: &Project) -> usize {
         use Type::*;
         match self {
             UInt8() => 8,
@@ -25,7 +27,7 @@ impl Type {
             Bool() => 8,
             Ptr(_) => 64,
             Void() => unreachable!(),
-            Unknown() => unreachable!(),
+            Struct(_, fields) => fields.iter().map(|(_, t)| project.get_type_size(*t)).sum(),
         }
     }
 
@@ -53,7 +55,7 @@ impl Display for Type {
             Type::Bool() => write!(f, "bool"),
             Type::Ptr(x) => write!(f, "{x}*"),
             Type::Void() => write!(f, "void"),
-            Type::Unknown() => write!(f, "unknown"),
+            Type::Struct(name, _) => write!(f, "{}", name),
         }
     }
 }

@@ -9,6 +9,8 @@ pub enum TokenType {
     #[regex("//[^\n]*")]
     Comment,
 
+    #[token("struct")]
+    Struct,
     #[token("extern")]
     Extern,
     #[token("return")]

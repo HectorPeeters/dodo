@@ -1,0 +1,8 @@
+struct TestData {
+    age: u32,
+    is_alive: bool,
+}
+
+fn main() {
+    let data: TestData;
+}

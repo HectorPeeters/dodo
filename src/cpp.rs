@@ -67,7 +67,11 @@ impl<'a> CppGenerator<'a> {
             BUILTIN_TYPE_U64 => "unsigned long".to_string(),
             BUILTIN_TYPE_BOOL => "bool".to_string(),
             BUILTIN_TYPE_VOID => "void".to_string(),
-            _ => format!("{}*", self.to_cpp_type(self.project.get_inner_type(id))),
+            _ if self.project.is_ptr_type(id) => {
+                format!("{}*", self.to_cpp_type(self.project.get_inner_type(id)))
+            }
+            _ if self.project.is_struct_type(id) => self.project.get_struct_name(id).to_string(),
+            _ => unreachable!(),
         }
     }
 }
@@ -75,6 +79,20 @@ impl<'a> CppGenerator<'a> {
 impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
+            UpperStatement::StructDeclaratin(name, fields) => {
+                let formatted_fields = fields
+                    .into_iter()
+                    .map(|(name, field_type)| {
+                        format!("\t{} {};", self.to_cpp_type(field_type), name)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                self.buffer
+                    .push_str(&format!("struct {} {{\n{}\n}};\n", name, formatted_fields));
+
+                Ok(())
+            }
             UpperStatement::ExternDeclaration(_, _) => Ok(()),
             UpperStatement::Function(name, args, return_type, body, annotations, _) => {
                 let args = args
@@ -90,7 +108,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                 };
 
                 let no_return = if annotations.iter().any(|(name, _)| name == "noreturn") {
-                    "[[noreturn]]"
+                    "[[noreturn]] "
                 } else {
                     ""
                 };
@@ -109,7 +127,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                 };
 
                 self.buffer.push_str(&format!(
-                    "{} {} {}({}) {}\n",
+                    "{}{} {}({}) {}\n",
                     no_return, return_type, name, args, section_attribute
                 ));
 

@@ -29,17 +29,21 @@ pub enum ParsedType {
 }
 
 pub type ParsedAnnotations = Vec<(String, Option<ParsedExpression>)>;
-pub type ParsedFunctionParameters = Vec<(String, ParsedType)>;
+pub type NameTypePairs = Vec<(String, ParsedType)>;
 
 #[derive(Debug, PartialEq)]
 pub enum ParsedUpperStatement {
     Function {
         name: String,
-        parameters: ParsedFunctionParameters,
+        parameters: NameTypePairs,
         return_type: ParsedType,
         body: ParsedStatement,
         annotations: ParsedAnnotations,
         range: SourceRange,
+    },
+    StructDeclaration {
+        name: String,
+        fields: NameTypePairs,
     },
     ConstDeclaration {
         name: String,
@@ -704,11 +708,43 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatement> {
+        self.consume_assert(TokenType::Struct)?;
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
+
+        self.consume_assert(TokenType::LeftBrace)?;
+
+        let mut fields = vec![];
+
+        while self.peek()?.token_type != TokenType::RightBrace {
+            let field_name = self
+                .consume_assert(TokenType::Identifier)?
+                .value
+                .to_string();
+
+            self.consume_assert(TokenType::Colon)?;
+
+            let field_type = self.parse_type()?;
+
+            self.consume_assert(TokenType::Comma)?;
+
+            fields.push((field_name, field_type));
+        }
+
+        self.consume_assert(TokenType::RightBrace)?;
+
+        Ok(ParsedUpperStatement::StructDeclaration { name, fields })
+    }
+
     pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement> {
         let token = self.peek()?;
 
         match token.token_type {
             TokenType::Extern => self.parse_extern(),
+            TokenType::Struct => self.parse_struct_declaration(),
             TokenType::Fn | TokenType::At => self.parse_function(),
             TokenType::Const => self.parse_const_declaration(),
             _ => Err(Error::new_with_range(

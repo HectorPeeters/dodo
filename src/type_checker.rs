@@ -105,6 +105,20 @@ impl<'a> TypeChecker<'a> {
         statement: ParsedUpperStatement,
     ) -> Result<UpperStatement> {
         match statement {
+            ParsedUpperStatement::StructDeclaration { name, fields } => {
+                let checked_fields = fields
+                    .into_iter()
+                    .map(|(name, parsed_type)| match self.check_type(&parsed_type) {
+                        Ok(checked_type) => Ok((name, checked_type)),
+                        Err(e) => Err(e),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                let complete_type = Type::Struct(name.clone(), checked_fields.clone());
+                self.project.find_or_add_type(complete_type);
+
+                Ok(UpperStatement::StructDeclaratin(name, checked_fields))
+            }
             ParsedUpperStatement::ExternDeclaration { name, range } => {
                 self.scope
                     .insert(&name, TypeScopeEntry::ExternalFuction())?;

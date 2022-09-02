@@ -5,20 +5,19 @@ pub struct Project {
     pub types: Vec<Type>,
 }
 
-pub const BUILTIN_TYPE_UNKNOWN: usize = 0;
-pub const BUILTIN_TYPE_VOID: usize = 1;
-pub const BUILTIN_TYPE_U8: usize = 2;
-pub const BUILTIN_TYPE_U16: usize = 3;
-pub const BUILTIN_TYPE_U32: usize = 4;
-pub const BUILTIN_TYPE_U64: usize = 5;
-pub const BUILTIN_TYPE_BOOL: usize = 6;
+pub const BUILTIN_TYPE_UNKNOWN: usize = 999999;
+pub const BUILTIN_TYPE_VOID: usize = 0;
+pub const BUILTIN_TYPE_U8: usize = 1;
+pub const BUILTIN_TYPE_U16: usize = 2;
+pub const BUILTIN_TYPE_U32: usize = 3;
+pub const BUILTIN_TYPE_U64: usize = 4;
+pub const BUILTIN_TYPE_BOOL: usize = 5;
 
 impl Project {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
             types: vec![
-                Type::Unknown(),
                 Type::Void(),
                 Type::UInt8(),
                 Type::UInt16(),
@@ -42,12 +41,26 @@ impl Project {
             "u32" => Some(BUILTIN_TYPE_U32),
             "u64" => Some(BUILTIN_TYPE_U64),
             "bool" => Some(BUILTIN_TYPE_BOOL),
-            _ => unreachable!(),
+            _ => self.types.iter().position(|x| match x {
+                Type::Struct(n, _) if n == name => true,
+                _ => false,
+            }),
         }
+    }
+
+    pub fn is_struct_type(&self, id: TypeId) -> bool {
+        matches!(self.types[id], Type::Struct(_, _))
     }
 
     pub fn is_ptr_type(&self, id: TypeId) -> bool {
         matches!(self.types[id], Type::Ptr(_))
+    }
+
+    pub fn get_struct_name(&self, id: TypeId) -> &str {
+        match &self.types[id] {
+            Type::Struct(name, _) => name,
+            _ => unreachable!(),
+        }
     }
 
     pub fn get_inner_type(&self, id: TypeId) -> TypeId {
@@ -68,6 +81,6 @@ impl Project {
     }
 
     pub fn get_type_size(&self, id: TypeId) -> usize {
-        self.types[id].size()
+        self.types[id].size(self)
     }
 }
