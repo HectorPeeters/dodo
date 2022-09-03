@@ -152,12 +152,16 @@ impl<'a> Backend for X86NasmGenerator<'a> {
         self.visit_upper_statement(statement)
     }
 
-    fn finalize(&mut self, output: &Path) -> Result<()> {
+    fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
         // Generating assembly
 
         let assembly_file = output.with_extension("asm");
         let mut assembly_output = File::create(&assembly_file).unwrap();
         self.write_data(&mut assembly_output);
+
+        if dont_compile {
+            return Ok(());
+        }
 
         // Compiling assemlby
 

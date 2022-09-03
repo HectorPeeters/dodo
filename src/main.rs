@@ -4,7 +4,9 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::{backend::Backend, c_generator::CGenerator, project::Project, x86_nasm::X86NasmGenerator};
+use dodo::{
+    backend::Backend, c_generator::CGenerator, project::Project, x86_nasm::X86NasmGenerator,
+};
 use std::io::Write;
 use std::{path::PathBuf, process::Command};
 
@@ -27,6 +29,9 @@ struct Args {
 
     #[clap(short, long)]
     run: bool,
+
+    #[clap(long)]
+    dont_compile: bool,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -108,7 +113,7 @@ fn main() -> Result<()> {
     );
 
     let output_executable = args.output.unwrap_or_else(|| PathBuf::from("a.out"));
-    backend.finalize(&output_executable)?;
+    backend.finalize(&output_executable, args.dont_compile)?;
 
     if args.run {
         let absolute_path = std::fs::canonicalize(output_executable).unwrap();

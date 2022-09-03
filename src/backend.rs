@@ -13,7 +13,7 @@ pub enum BackendType {
 pub trait Backend {
     fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()>;
 
-    fn finalize(&mut self, output: &Path) -> Result<()>;
+    fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()>;
 
     fn name(&self) -> &'static str;
 }

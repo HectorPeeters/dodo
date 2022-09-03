@@ -31,9 +31,13 @@ impl<'a> Backend for CGenerator<'a> {
         self.visit_upper_statement(statement)
     }
 
-    fn finalize(&mut self, output: &Path) -> Result<()> {
+    fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
         let c_file = output.with_extension("c");
         std::fs::write(&c_file, &self.buffer).unwrap();
+
+        if dont_compile {
+            return Ok(());
+        }
 
         let compile_output = Command::new("clang")
             .args([c_file.to_str().unwrap(), "-o", output.to_str().unwrap()])
