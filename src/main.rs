@@ -4,6 +4,9 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
+use dodo::{backend::Backend, cpp::CppGenerator, project::Project, x86_nasm::X86NasmGenerator};
+use std::io::Write;
+use std::{path::PathBuf, process::Command};
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -21,6 +24,9 @@ struct Args {
     print_ast: bool,
     #[clap(long)]
     print_typed_ast: bool,
+
+    #[clap(short, long)]
+    run: bool,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -36,10 +42,6 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use std::path::PathBuf;
-
-    use dodo::{backend::Backend, cpp::CppGenerator, project::Project, x86_nasm::X86NasmGenerator};
-
     let args = Args::parse();
 
     // Reading source
@@ -105,7 +107,16 @@ fn main() -> Result<()> {
         source_file,
     );
 
-    backend.finalize(&args.output.unwrap_or_else(|| PathBuf::from("a.out")))?;
+    let output_executable = args.output.unwrap_or_else(|| PathBuf::from("a.out"));
+    backend.finalize(&output_executable)?;
+
+    if args.run {
+        let absolute_path = std::fs::canonicalize(output_executable).unwrap();
+        let output = Command::new(absolute_path).output().unwrap();
+
+        std::io::stdout().write_all(&output.stdout).unwrap();
+        std::io::stderr().write_all(&output.stderr).unwrap();
+    }
 
     Ok(())
 }
