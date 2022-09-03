@@ -1,0 +1,3 @@
+fn main() {
+    let pointer: u16* = @castU16Ptr(0x1234);
+}

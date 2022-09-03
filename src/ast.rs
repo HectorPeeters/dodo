@@ -117,6 +117,7 @@ pub enum Expression {
     StructLiteral(Vec<(String, Expression)>, TypeId, SourceRange),
     FieldAccessor(String, Box<Expression>, TypeId, SourceRange),
     Widen(Box<Expression>, TypeId, SourceRange),
+    Cast(Box<Expression>, TypeId, SourceRange),
 }
 
 impl Expression {
@@ -134,6 +135,7 @@ impl Expression {
             StructLiteral(_, t, _) => *t,
             FieldAccessor(_, _, t, _) => *t,
             Widen(_, t, _) => *t,
+            Cast(_, t, _) => *t,
         }
     }
 
@@ -151,6 +153,7 @@ impl Expression {
             StructLiteral(_, _, r) => r,
             FieldAccessor(_, _, _, r) => r,
             Widen(_, _, r) => r,
+            Cast(_, _, r) => r,
         }
     }
 }

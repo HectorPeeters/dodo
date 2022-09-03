@@ -294,6 +294,11 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CGenerator<'a> {
                 Ok(format!("{}.{}", self.visit_expression(*child)?, name))
             }
             Expression::Widen(expr, _, _) => self.visit_expression(*expr),
+            Expression::Cast(expr, cast_type, _) => Ok(format!(
+                "({})({})",
+                self.to_c_type(cast_type),
+                self.visit_expression(*expr)?
+            )),
         }
     }
 }

@@ -541,6 +541,36 @@ impl<'a> TypeChecker<'a> {
 
                 Ok(Expression::FunctionCall(name, new_args, return_type, range))
             }
+            ParsedExpression::IntrinsicCall {
+                name,
+                mut arguments,
+                range,
+            } => match &name[..] {
+                "castU16Ptr" => {
+                    if arguments.len() != 1 {
+                        return Err(Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("Intrinsic function 'castPtrU16' expects only one argument",),
+                            range,
+                        ));
+                    }
+
+                    let checked_argument = self.check_expression(arguments.remove(0))?;
+
+                    Ok(Expression::Cast(
+                        Box::new(checked_argument),
+                        self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U16)),
+                        range,
+                    ))
+                }
+                _ => {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Unknown intrinsic function '{}'", name),
+                        range,
+                    ))
+                }
+            },
             ParsedExpression::IntegerLiteral { value, range } => {
                 if value <= 255 {
                     Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U8, range))

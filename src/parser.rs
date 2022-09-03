@@ -98,6 +98,11 @@ pub enum ParsedExpression {
         arguments: Vec<ParsedExpression>,
         range: SourceRange,
     },
+    IntrinsicCall {
+        name: String,
+        arguments: Vec<ParsedExpression>,
+        range: SourceRange,
+    },
     IntegerLiteral {
         value: u64,
         range: SourceRange,
@@ -152,6 +157,7 @@ impl<'a> Parser<'a> {
             TokenType::Identifier,
             Self::parse_identifier_or_function_call,
         );
+        prefix_fns.insert(TokenType::At, Self::parse_intrinsic_call);
         prefix_fns.insert(TokenType::Minus, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::Ampersand, Self::parse_unary_expression);
         prefix_fns.insert(TokenType::Asterisk, Self::parse_unary_expression);
@@ -299,6 +305,39 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::RightParen)?;
         Ok(ParsedExpression::FunctionCall {
+            name,
+            arguments,
+            range: (function_start..self.current_index(true)).into(),
+        })
+    }
+
+    fn parse_intrinsic_call(&mut self) -> Result<ParsedExpression> {
+        let function_start = self.current_index(false);
+
+        self.consume_assert(TokenType::At)?;
+        let name = self
+            .consume_assert(TokenType::Identifier)?
+            .value
+            .to_string();
+        self.consume_assert(TokenType::LeftParen)?;
+
+        let mut arguments = vec![];
+        loop {
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
+            arguments.push(self.parse_expression(0)?);
+
+            if self.peek()?.token_type == TokenType::RightParen {
+                break;
+            }
+
+            self.consume_assert(TokenType::Comma)?;
+        }
+
+        self.consume_assert(TokenType::RightParen)?;
+        Ok(ParsedExpression::IntrinsicCall {
             name,
             arguments,
             range: (function_start..self.current_index(true)).into(),

@@ -649,6 +649,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 Ok(result_reg)
             }
+            Expression::Cast(_, _, _) => todo!(),
         }
     }
 }
