@@ -5,6 +5,11 @@ struct TestData {
     is_alive: bool,
 }
 
+const const_struct: TestData = struct TestData {
+    age = 12,
+    is_alive = true,
+};
+
 fn have_birthday(data: TestData*) {
     (*data).age = (*data).age + 1;
 }
@@ -20,10 +25,10 @@ fn print_message(data: TestData*) {
 }
 
 fn main() {
-    let data: TestData;
-
-    data.age = 80;
-    data.is_alive = true;
+    let data: TestData = struct TestData {
+        age = 80,
+        is_alive = true,
+    };
 
     print_message(&data);
 
@@ -32,4 +37,6 @@ fn main() {
     data.is_alive = false;
 
     print_message(&data);
+
+    printf("Const struct has age %u\n", const_struct.age);
 }

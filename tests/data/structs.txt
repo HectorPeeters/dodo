@@ -2,4 +2,5 @@ Age: 80
 And is still alive!
 Age: 81
 And is not alive..
+Const struct has age 12
 

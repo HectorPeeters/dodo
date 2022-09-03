@@ -105,6 +105,11 @@ pub enum ParsedExpression {
         value: bool,
         range: SourceRange,
     },
+    StructLiteral {
+        struct_type: ParsedType,
+        fields: Vec<(String, ParsedExpression)>,
+        range: SourceRange,
+    },
     VariableRef {
         name: String,
         range: SourceRange,
@@ -156,6 +161,7 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::OctalIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::HexIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::Struct, Self::parse_struct_constant);
         prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
 
         let mut infix_fns: HashMap<_, (InfixParseFn<'a>, usize)> = HashMap::new();
@@ -403,6 +409,40 @@ impl<'a> Parser<'a> {
                 token.range,
             )),
         }
+    }
+
+    fn parse_struct_constant(&mut self) -> Result<ParsedExpression> {
+        let start_index = self.current_index(false);
+
+        self.consume_assert(TokenType::Struct)?;
+
+        let struct_type = self.parse_type()?;
+
+        self.consume_assert(TokenType::LeftBrace)?;
+
+        let mut fields = vec![];
+
+        while self.peek()?.token_type != TokenType::RightBrace {
+            let name = self
+                .consume_assert(TokenType::Identifier)?
+                .value
+                .to_string();
+
+            self.consume_assert(TokenType::Equals)?;
+
+            let value = self.parse_expression(0)?;
+
+            self.consume_assert(TokenType::Comma)?;
+
+            fields.push((name, value));
+        }
+
+        self.consume_assert(TokenType::RightBrace)?;
+        Ok(ParsedExpression::StructLiteral {
+            struct_type,
+            fields,
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
     fn parse_parenthesized(&mut self) -> Result<ParsedExpression> {

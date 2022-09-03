@@ -267,6 +267,18 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                     .replace('\t', "\\t")
                     .replace('\"', "\\\"")
             )),
+            Expression::StructLiteral(fields, _, _) => {
+                let formatted_fields = fields
+                    .into_iter()
+                    .map(|(name, value)| match self.visit_expression(value) {
+                        Ok(value) => Ok(format!(".{} = {}", name, value)),
+                        Err(e) => Err(e),
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .join(",\n");
+
+                Ok(format!("{{\n{}\n}}", formatted_fields))
+            }
             Expression::FieldAccessor(name, child, _, _) => {
                 Ok(format!("{}.{}", self.visit_expression(*child)?, name))
             }

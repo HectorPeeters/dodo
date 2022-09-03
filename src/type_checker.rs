@@ -541,6 +541,57 @@ impl<'a> TypeChecker<'a> {
 
                 Ok(Expression::VariableRef(name, value_type, range))
             }
+            ParsedExpression::StructLiteral {
+                struct_type,
+                fields,
+                range,
+            } => {
+                let struct_type = self.check_type(&struct_type)?;
+                if !self.project.is_struct_type(struct_type) {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        "Trying to use struct constant for non-struct type".to_string(),
+                        range,
+                    ));
+                }
+
+                let struct_data = self.project.get_struct(struct_type);
+
+                for (expected_name, _) in &struct_data.fields {
+                    if !fields.iter().any(|f| &f.0 == expected_name) {
+                        return Err(Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("Missing field '{expected_name}' in struct constructor"),
+                            range,
+                        ));
+                    }
+                }
+
+                if struct_data.fields.len() != fields.len() {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!(
+                            "Too many fields in struct constructor for '{}'",
+                            struct_data.name
+                        ),
+                        range,
+                    ));
+                }
+
+                let checked_fields = fields
+                    .into_iter()
+                    .map(|(name, value)| match self.check_expression(value) {
+                        Ok(value) => Ok((name, value)),
+                        Err(e) => Err(e),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(Expression::StructLiteral(
+                    checked_fields,
+                    struct_type,
+                    range,
+                ))
+            }
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child = self.check_expression(*child)?;
                 if !self.project.is_struct_type(child.get_type()) {
