@@ -33,6 +33,7 @@ pub enum ParsedUpperStatement {
         name: String,
         value_type: ParsedType,
         value: ParsedExpression,
+        annotations: ParsedAnnotations,
         range: SourceRange,
     },
     ExternDeclaration {
@@ -652,29 +653,7 @@ impl<'a> Parser<'a> {
         Ok((identifier.to_string(), value_type))
     }
 
-    fn parse_annotation(&mut self) -> Result<(String, Option<ParsedExpression>)> {
-        self.consume_assert(TokenType::At)?;
-        let name = self.consume_assert(TokenType::Identifier)?;
-
-        if self.peek()?.token_type != TokenType::LeftParen {
-            return Ok((name.value.to_string(), None));
-        }
-
-        self.consume_assert(TokenType::LeftParen)?;
-        let value = self.parse_expression(0)?;
-        self.consume_assert(TokenType::RightParen)?;
-
-        Ok((name.value.to_string(), Some(value)))
-    }
-
-    fn parse_function(&mut self) -> Result<ParsedUpperStatement> {
-        let mut annotations = vec![];
-
-        while self.peek()?.token_type == TokenType::At {
-            let annotation = self.parse_annotation()?;
-            annotations.push(annotation);
-        }
-
+    fn parse_function(&mut self, annotations: ParsedAnnotations) -> Result<ParsedUpperStatement> {
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
 
@@ -760,7 +739,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_const_declaration(&mut self) -> Result<ParsedUpperStatement> {
+    fn parse_const_declaration(
+        &mut self,
+        annotations: ParsedAnnotations,
+    ) -> Result<ParsedUpperStatement> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Const)?;
@@ -781,6 +763,7 @@ impl<'a> Parser<'a> {
             name,
             value_type,
             value,
+            annotations,
             range: (start_index..self.current_index(true)).into(),
         })
     }
@@ -829,14 +812,41 @@ impl<'a> Parser<'a> {
         Ok(ParsedUpperStatement::StructDeclaration { name, fields })
     }
 
+    fn parse_annotations(&mut self) -> Result<ParsedAnnotations> {
+        let mut annotations = vec![];
+
+        while self.peek()?.token_type == TokenType::At {
+            self.consume_assert(TokenType::At)?;
+            let name = self
+                .consume_assert(TokenType::Identifier)?
+                .value
+                .to_string();
+
+            if self.peek()?.token_type != TokenType::LeftParen {
+                annotations.push((name, None));
+                continue;
+            }
+
+            self.consume_assert(TokenType::LeftParen)?;
+            let value = self.parse_expression(0)?;
+            self.consume_assert(TokenType::RightParen)?;
+
+            annotations.push((name, Some(value)));
+        }
+
+        Ok(annotations)
+    }
+
     pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement> {
+        let annotations = self.parse_annotations()?;
+
         let token = self.peek()?;
 
         match token.token_type {
             TokenType::Extern => self.parse_extern(),
             TokenType::Struct => self.parse_struct_declaration(),
-            TokenType::Fn | TokenType::At => self.parse_function(),
-            TokenType::Const => self.parse_const_declaration(),
+            TokenType::Fn => self.parse_function(annotations),
+            TokenType::Const => self.parse_const_declaration(annotations),
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!(
@@ -893,7 +903,7 @@ mod tests {
         let tokens = tokenize(input)?;
 
         let mut parser = Parser::new(&tokens);
-        parser.parse_function()
+        parser.parse_function(vec![])
     }
 
     #[test]

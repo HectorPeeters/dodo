@@ -137,13 +137,28 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
 
                 Ok(())
             }
-            UpperStatement::ConstDeclaration(name, value_type, value, _range) => {
+            UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
                 let cpp_type = self.to_cpp_type(value_type);
 
                 let cpp_value = self.visit_expression(value)?;
 
-                self.buffer
-                    .push_str(&format!("const {} {} = {};\n", cpp_type, name, cpp_value));
+                let section_annotation = annotations
+                    .into_iter()
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        _ => unreachable!()
+                    });
+
+                let section_attribute = match section_annotation {
+                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
+                    None => String::new(),
+                };
+
+                self.buffer.push_str(&format!(
+                    "const {} {} {} = {};\n",
+                    cpp_type, name, section_attribute, cpp_value
+                ));
 
                 Ok(())
             }

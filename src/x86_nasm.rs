@@ -287,7 +287,11 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            UpperStatement::ConstDeclaration(name, value_type, value, _range) => {
+            UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
+                if annotations.len() != 0 {
+                    todo!();
+                }
+
                 let position = self.store_global_const(value, value_type);
                 self.scope.insert(&name, ScopeLocation::Global(position))?;
             }

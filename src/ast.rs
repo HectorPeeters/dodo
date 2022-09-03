@@ -2,6 +2,8 @@ use crate::error::Result;
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::TypeId;
 
+pub type Annotations = Vec<(String, Option<Expression>)>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UpperStatement {
     Function(
@@ -9,11 +11,11 @@ pub enum UpperStatement {
         Vec<(String, TypeId)>,
         TypeId,
         Box<Statement>,
-        Vec<(String, Option<Expression>)>,
+        Annotations,
         SourceRange,
     ),
     StructDeclaratin(String, Vec<(String, TypeId)>),
-    ConstDeclaration(String, TypeId, Expression, SourceRange),
+    ConstDeclaration(String, TypeId, Expression, Annotations, SourceRange),
     ExternDeclaration(String, SourceRange),
 }
 

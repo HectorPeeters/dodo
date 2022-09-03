@@ -204,6 +204,7 @@ impl<'a> TypeChecker<'a> {
                 name,
                 value_type,
                 value,
+                annotations,
                 range,
             } => {
                 let value = self.check_expression(value)?;
@@ -226,8 +227,26 @@ impl<'a> TypeChecker<'a> {
                 self.scope
                     .insert(&name, TypeScopeEntry::Global(value_type))?;
 
+                let checked_annotations = annotations
+                    .into_iter()
+                    .map(|(name, value)| {
+                        if let Some(value) = value {
+                            match self.check_expression(value) {
+                                Ok(value) => Ok((name, Some(value))),
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            Ok((name, None))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
                 Ok(UpperStatement::ConstDeclaration(
-                    name, value_type, value, range,
+                    name,
+                    value_type,
+                    value,
+                    checked_annotations,
+                    range,
                 ))
             }
         }
