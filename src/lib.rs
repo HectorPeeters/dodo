@@ -4,7 +4,7 @@
 
 pub mod ast;
 pub mod backend;
-pub mod cpp;
+pub mod c_generator;
 pub mod error;
 //pub mod ir;
 pub mod parser;

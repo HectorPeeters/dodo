@@ -7,7 +7,7 @@ use crate::{ast::UpperStatement, error::Result};
 #[derive(Debug, Clone, Copy, ArgEnum)]
 pub enum BackendType {
     X86,
-    Cpp,
+    C,
 }
 
 pub trait Backend {

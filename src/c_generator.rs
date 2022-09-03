@@ -12,39 +12,39 @@ use crate::types::TypeId;
 use std::path::Path;
 use std::process::Command;
 
-pub struct CppGenerator<'a> {
+pub struct CGenerator<'a> {
     project: &'a mut Project,
     buffer: String,
 }
 
-impl<'a> CppGenerator<'a> {
+impl<'a> CGenerator<'a> {
     pub fn new(project: &'a mut Project) -> Self {
         Self {
             project,
-            buffer: "#include <stdio.h>\n#include<stdlib.h>\n\n".to_string(),
+            buffer: "#include <stdio.h>\n#include<stdlib.h>\n#include<stdbool.h>\n\n".to_string(),
         }
     }
 }
 
-impl<'a> Backend for CppGenerator<'a> {
+impl<'a> Backend for CGenerator<'a> {
     fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         self.visit_upper_statement(statement)
     }
 
     fn finalize(&mut self, output: &Path) -> Result<()> {
-        let cpp_file = output.with_extension("cpp");
-        std::fs::write(&cpp_file, &self.buffer).unwrap();
+        let c_file = output.with_extension("c");
+        std::fs::write(&c_file, &self.buffer).unwrap();
 
-        let compile_output = Command::new("clang++")
-            .args([cpp_file.to_str().unwrap(), "-o", output.to_str().unwrap()])
+        let compile_output = Command::new("clang")
+            .args([c_file.to_str().unwrap(), "-o", output.to_str().unwrap()])
             .output()
-            .expect("Failed to execute cpp compiler");
+            .expect("Failed to execute C compiler");
 
         compile_output.status.exit_ok().map_err(|_| {
             Error::new(
                 ErrorType::Postprocess,
                 format!(
-                    "Cpp compilation failed\n\n{}",
+                    "C compilation failed\n\n{}",
                     String::from_utf8(compile_output.stderr).unwrap()
                 ),
             )
@@ -58,8 +58,8 @@ impl<'a> Backend for CppGenerator<'a> {
     }
 }
 
-impl<'a> CppGenerator<'a> {
-    fn to_cpp_type(&self, id: TypeId) -> String {
+impl<'a> CGenerator<'a> {
+    fn to_c_type(&self, id: TypeId) -> String {
         match id {
             BUILTIN_TYPE_U8 => "char".to_string(),
             BUILTIN_TYPE_U16 => "unsigned short".to_string(),
@@ -68,23 +68,23 @@ impl<'a> CppGenerator<'a> {
             BUILTIN_TYPE_BOOL => "bool".to_string(),
             BUILTIN_TYPE_VOID => "void".to_string(),
             _ if self.project.is_ptr_type(id) => {
-                format!("{}*", self.to_cpp_type(self.project.get_inner_type(id)))
+                format!("{}*", self.to_c_type(self.project.get_inner_type(id)))
             }
-            _ if self.project.is_struct_type(id) => self.project.get_struct(id).name.to_string(),
+            _ if self.project.is_struct_type(id) => {
+                format!("struct {}", self.project.get_struct(id).name)
+            }
             _ => unreachable!(),
         }
     }
 }
 
-impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
+impl<'a> ConsumingAstVisitor<(), (), String> for CGenerator<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(name, fields) => {
                 let formatted_fields = fields
                     .into_iter()
-                    .map(|(name, field_type)| {
-                        format!("\t{} {};", self.to_cpp_type(field_type), name)
-                    })
+                    .map(|(name, field_type)| format!("\t{} {};", self.to_c_type(field_type), name))
                     .collect::<Vec<_>>()
                     .join("\n");
 
@@ -97,20 +97,14 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
             UpperStatement::Function(name, args, return_type, body, annotations, _) => {
                 let args = args
                     .into_iter()
-                    .map(|(name, type_)| format!("{} {}", self.to_cpp_type(type_), name))
+                    .map(|(name, type_)| format!("{} {}", self.to_c_type(type_), name))
                     .collect::<Vec<_>>()
                     .join(", ");
 
                 let return_type = if name == "main" {
                     "int".to_string()
                 } else {
-                    self.to_cpp_type(return_type)
-                };
-
-                let no_return = if annotations.iter().any(|(name, _)| name == "noreturn") {
-                    "[[noreturn]] "
-                } else {
-                    ""
+                    self.to_c_type(return_type)
                 };
 
                 let section_annotation = annotations
@@ -127,8 +121,8 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                 };
 
                 self.buffer.push_str(&format!(
-                    "{}{} {}({}) {}\n",
-                    no_return, return_type, name, args, section_attribute
+                    "{} {}({}) {}\n",
+                    return_type, name, args, section_attribute
                 ));
 
                 self.visit_statement(*body)?;
@@ -138,9 +132,9 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                 Ok(())
             }
             UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
-                let cpp_type = self.to_cpp_type(value_type);
+                let c_type = self.to_c_type(value_type);
 
-                let cpp_value = self.visit_expression(value)?;
+                let c_value = self.visit_expression(value)?;
 
                 let section_annotation = annotations
                     .into_iter()
@@ -157,7 +151,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
 
                 self.buffer.push_str(&format!(
                     "const {} {} {} = {};\n",
-                    cpp_type, name, section_attribute, cpp_value
+                    c_type, name, section_attribute, c_value
                 ));
 
                 Ok(())
@@ -184,7 +178,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
             }
             Statement::Declaration(name, type_, _) => {
                 self.buffer
-                    .push_str(&format!("{} {};\n", self.to_cpp_type(type_), name));
+                    .push_str(&format!("{} {};\n", self.to_c_type(type_), name));
                 Ok(())
             }
             Statement::Assignment(lhs, rhs, _) => {
@@ -282,7 +276,9 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                     .replace('\t', "\\t")
                     .replace('\"', "\\\"")
             )),
-            Expression::StructLiteral(fields, _, _) => {
+            Expression::StructLiteral(fields, struct_type, _) => {
+                let c_type = self.to_c_type(struct_type);
+
                 let formatted_fields = fields
                     .into_iter()
                     .map(|(name, value)| match self.visit_expression(value) {
@@ -292,7 +288,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
                     .collect::<Result<Vec<_>>>()?
                     .join(",\n");
 
-                Ok(format!("{{\n{}\n}}", formatted_fields))
+                Ok(format!("({}){{\n{}\n}}", c_type, formatted_fields))
             }
             Expression::FieldAccessor(name, child, _, _) => {
                 Ok(format!("{}.{}", self.visit_expression(*child)?, name))

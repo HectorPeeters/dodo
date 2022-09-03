@@ -4,7 +4,7 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::{backend::Backend, cpp::CppGenerator, project::Project, x86_nasm::X86NasmGenerator};
+use dodo::{backend::Backend, c_generator::CGenerator, project::Project, x86_nasm::X86NasmGenerator};
 use std::io::Write;
 use std::{path::PathBuf, process::Command};
 
@@ -96,7 +96,7 @@ fn main() -> Result<()> {
 
     let mut backend: Box<dyn Backend> = match args.backend {
         Some(BackendType::X86) | None => Box::new(X86NasmGenerator::new(&mut project)),
-        Some(BackendType::Cpp) => Box::new(CppGenerator::new(&mut project)),
+        Some(BackendType::C) => Box::new(CGenerator::new(&mut project)),
     };
 
     unwrap_or_error(

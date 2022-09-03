@@ -4,4 +4,4 @@
 
 *.asm
 *.out
-*.cpp
+*.c

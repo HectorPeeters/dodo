@@ -7,7 +7,7 @@ use std::{
 
 use dodo::{
     backend::{Backend, BackendType},
-    cpp::CppGenerator,
+    c_generator::CGenerator,
     error::Result,
     parser::Parser,
     project::Project,
@@ -42,7 +42,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut backend: Box<dyn Backend> = match backend_type {
-        BackendType::Cpp => Box::new(CppGenerator::new(&mut project)),
+        BackendType::C => Box::new(CGenerator::new(&mut project)),
         BackendType::X86 => Box::new(X86NasmGenerator::new(&mut project)),
     };
 
@@ -87,7 +87,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 #[test_case("tests/data/structs.dodo"; "structs")]
 #[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {
-    let backend_types = vec![BackendType::Cpp, BackendType::X86];
+    let backend_types = vec![BackendType::C, BackendType::X86];
 
     for b in backend_types {
         run_test(path, b)?;
