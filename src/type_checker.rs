@@ -304,6 +304,7 @@ impl<'a> TypeChecker<'a> {
             ParsedStatement::If {
                 condition,
                 body,
+                else_body,
                 range,
             } => {
                 let condition = self.check_expression(condition)?;
@@ -321,7 +322,12 @@ impl<'a> TypeChecker<'a> {
 
                 let body = self.check_statement(*body)?;
 
-                Ok(Statement::If(condition, Box::new(body), range))
+                let else_body = match else_body {
+                    Some(b) => Some(Box::new(self.check_statement(*b)?)),
+                    None => None,
+                };
+
+                Ok(Statement::If(condition, Box::new(body), else_body, range))
             }
             ParsedStatement::While {
                 condition,

@@ -1,4 +1,4 @@
-// Expected: 'else' not found in scope
+// Expected: Did not expect token 'Else' while parsing prefix expression
 
 fn main() {
     let x: u32 = else;

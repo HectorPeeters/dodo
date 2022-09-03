@@ -25,6 +25,8 @@ pub enum TokenType {
     While,
     #[token("if")]
     If,
+    #[token("else")]
+    Else,
 
     #[token("true")]
     True,

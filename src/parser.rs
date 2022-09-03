@@ -70,6 +70,7 @@ pub enum ParsedStatement {
     If {
         condition: ParsedExpression,
         body: Box<ParsedStatement>,
+        else_body: Option<Box<ParsedStatement>>,
         range: SourceRange,
     },
     Return {
@@ -587,9 +588,17 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression(0)?;
         let statement = self.parse_statement()?;
 
+        let else_body = if self.peek()?.token_type == TokenType::Else {
+            self.consume_assert(TokenType::Else)?;
+            Some(Box::new(self.parse_statement()?))
+        } else {
+            None
+        };
+
         Ok(ParsedStatement::If {
             condition,
             body: Box::new(statement),
+            else_body,
             range: (if_start..self.current_index(true)).into(),
         })
     }

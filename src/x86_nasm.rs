@@ -354,8 +354,9 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 self.free_register(register);
             }
-            Statement::If(cond, stmt, _range) => {
+            Statement::If(cond, stmt, else_body, _range) => {
                 let end_label = self.get_new_label();
+                let else_label = self.get_new_label();
 
                 let cond_size = self.project.get_type_size(cond.get_type());
                 let cond_register = self.visit_expression(cond)?;
@@ -363,9 +364,21 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 self.instr(Cmp(Reg(cond_register, cond_size), Constant(0)));
                 self.free_register(cond_register);
 
-                self.instr(Jz(Label(end_label)));
+                if else_body.is_none() {
+                    self.instr(Jz(Label(end_label)));
+                } else {
+                    self.instr(Jz(Label(else_label)));
+                }
 
                 self.visit_statement(*stmt)?;
+
+                if let Some(else_body) = else_body {
+                    self.instr(Jmp(Label(end_label)));
+
+                    self.instr(LabelDef(else_label));
+
+                    self.visit_statement(*else_body)?;
+                }
 
                 self.instr(LabelDef(end_label));
             }

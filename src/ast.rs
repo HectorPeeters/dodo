@@ -24,7 +24,12 @@ pub enum Statement {
     Assignment(Expression, Expression, SourceRange),
     Expression(Expression, SourceRange),
     While(Expression, Box<Statement>, SourceRange),
-    If(Expression, Box<Statement>, SourceRange),
+    If(
+        Expression,
+        Box<Statement>,
+        Option<Box<Statement>>,
+        SourceRange,
+    ),
     Return(Expression, SourceRange),
 }
 

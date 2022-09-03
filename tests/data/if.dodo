@@ -1,0 +1,22 @@
+extern "printf";
+extern "exit";
+
+fn run_if(x: u32) {
+    if x < 10 {
+        printf("Number is small\n");
+    } else {
+        if x == 10 {
+            printf("Number is ten\n");
+        } else {
+            printf("Number is large\n");
+        }
+    }
+}
+
+fn main() {
+    run_if(1);
+    run_if(10);
+    run_if(100);
+
+    exit(0);
+}

@@ -9,19 +9,27 @@ fn have_birthday(data: TestData*) {
     (*data).age = (*data).age + 1;
 }
 
+fn print_message(data: TestData*) {
+    printf("Age: %u\n", (*data).age);
+
+    if (*data).is_alive {
+        printf("And is still alive!\n");
+    } else {
+        printf("And is not alive..\n");
+    }
+}
+
 fn main() {
     let data: TestData;
 
-    data.age = 12;
+    data.age = 80;
     data.is_alive = true;
 
-    printf("Age: %u\n", data.age);
+    print_message(&data);
 
     have_birthday(&data);
 
-    printf("Age: %u\n", data.age);
+    data.is_alive = false;
 
-    if data.is_alive {
-        printf("And is still alive!\n");
-    }
+    print_message(&data);
 }

@@ -193,12 +193,18 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CppGenerator<'a> {
 
                 Ok(())
             }
-            Statement::If(cond, body, _) => {
+            Statement::If(cond, body, else_body, _) => {
                 let cond = self.visit_expression(cond)?;
 
                 self.buffer.push_str(&format!("if ({}) {{", cond));
                 self.visit_statement(*body)?;
                 self.buffer.push('}');
+
+                if let Some(else_body) = else_body {
+                    self.buffer.push_str(" else {");
+                    self.visit_statement(*else_body)?;
+                    self.buffer.push('}');
+                }
 
                 Ok(())
             }
