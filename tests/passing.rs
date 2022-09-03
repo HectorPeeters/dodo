@@ -18,7 +18,7 @@ use dodo::{
 
 use test_case::test_case;
 
-fn run_normal_test(file: &str, backend_type: BackendType) -> Result<()> {
+fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
     println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
 
     let mut hasher = DefaultHasher::new();
@@ -90,7 +90,7 @@ fn test_for_all_backends(path: &str) -> Result<()> {
     let backend_types = vec![BackendType::Cpp, BackendType::X86];
 
     for b in backend_types {
-        run_normal_test(path, b)?;
+        run_test(path, b)?;
     }
 
     Ok(())

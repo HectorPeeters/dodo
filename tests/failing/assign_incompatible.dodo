@@ -1,3 +1,5 @@
+// Expected: Cannot widen from type 2 to 1
+
 fn main() {
     let x: u8 = 300;
 }

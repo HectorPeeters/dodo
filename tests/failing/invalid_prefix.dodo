@@ -1,3 +1,5 @@
+// Expected: Did not expect token 'IntegerLiteral' while parsing infix expression
+
 fn main() {
     let x: u32 = else 12;
 }

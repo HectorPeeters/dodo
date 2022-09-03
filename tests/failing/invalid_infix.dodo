@@ -1,3 +1,5 @@
+// Expected: Did not expect token 'If' while parsing infix expression
+
 fn main() {
     let x: u32 = 12 if 13;
 }

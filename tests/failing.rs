@@ -17,16 +17,14 @@ use dodo::{
 
 use test_case::test_case;
 
-fn run_normal_test(file: &str, backend_type: BackendType) -> Result<()> {
+fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
     println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
 
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
 
-    let code = std::fs::read_to_string(file).unwrap();
-
-    let tokens = tokenize(&code)?;
+    let tokens = tokenize(source)?;
 
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
@@ -74,7 +72,19 @@ fn test_for_all_backends(path: &str) -> Result<()> {
     let backend_types = vec![BackendType::Cpp, BackendType::X86];
 
     for b in backend_types {
-        assert!(run_normal_test(path, b).is_err());
+        let code = std::fs::read_to_string(path).unwrap();
+
+        let expected = code
+            .lines()
+            .find(|x| x.starts_with("// Expected: "))
+            .map(|x| x.replace("// Expected: ", ""));
+
+        let result = run_test(path, &code, b);
+        assert!(result.is_err());
+
+        if let Some(expected) = expected {
+            assert_eq!(result.unwrap_err().message.trim(), expected.trim());
+        }
     }
 
     Ok(())

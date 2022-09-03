@@ -1,3 +1,5 @@
+// Expected: Cannot assign value to return type, expected '1' but got '2'
+
 fn test() u8 {
     return 300;
 }

@@ -1,3 +1,7 @@
+// Expected: Condition of while statement should be a boolean but is 1
+
+extern "printf";
+
 fn main() {
     while 2 {
         printf("This should not be printed\n");

@@ -1,3 +1,5 @@
+// Expected: Did not expect token 'RightBrace' while parsing infix expression
+
 fn main() {
     12
 }

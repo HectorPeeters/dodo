@@ -1,3 +1,5 @@
+// Expected: Expected token Identifier, but got Fn
+
 fn main() {
     let x: fn = 12;
 }

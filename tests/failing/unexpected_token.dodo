@@ -1,2 +1,4 @@
+// Expected: Expected token Identifier, but got LeftParen
+
 fn () {
 }

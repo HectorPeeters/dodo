@@ -1,3 +1,5 @@
+// Expected: 'else' not found in scope
+
 fn main() {
     let x: u32 = else;
 }

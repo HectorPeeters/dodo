@@ -16,7 +16,7 @@ pub enum ErrorType {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Error {
     error_type: ErrorType,
-    message: String,
+    pub message: String,
     range: Option<SourceRange>,
 }
 

@@ -1,3 +1,7 @@
+// Expected: Condition of if statement should be a boolean but is 1
+
+extern "printf";
+
 fn main() {
     if 2 {
         printf("This should not be printed\n");
