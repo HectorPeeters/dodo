@@ -49,7 +49,7 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
 
     let executable_path = format!("/tmp/output_{}", test_code);
     let executable_path = Path::new(&executable_path);
-    backend.finalize(executable_path)?;
+    backend.finalize(executable_path, false)?;
 
     Ok(())
 }

@@ -1,0 +1,10 @@
+extern "printf";
+extern "exit";
+
+fn main() {
+    let c: u8 = 'A';
+
+    printf("%hhu\n", c);
+
+    exit(0);
+}

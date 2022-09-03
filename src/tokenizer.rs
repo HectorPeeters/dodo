@@ -35,6 +35,8 @@ pub enum TokenType {
 
     #[regex("\"[^\"]*\"")]
     StringLiteral,
+    #[regex("\'[^\']\'")]
+    CharLiteral,
     #[regex("[0-9]+")]
     IntegerLiteral,
     #[regex("0[bB][0-1]+")]

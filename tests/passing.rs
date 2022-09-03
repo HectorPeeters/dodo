@@ -53,8 +53,9 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 
     let executable_path = format!("/tmp/output_{}", test_code);
     let executable_path = Path::new(&executable_path);
-    backend.finalize(executable_path)?;
+    backend.finalize(executable_path, false)?;
 
+    println!("{:?}", executable_path);
     let output = Command::new(executable_path)
         .output()
         .expect("Failed to execute");
@@ -68,6 +69,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 }
 
 #[test_case("tests/data/args.dodo"; "args")]
+#[test_case("tests/data/char_literals.dodo"; "char literals")]
 #[test_case("tests/data/comparisons.dodo"; "commparisons")]
 #[test_case("tests/data/fibonacci.dodo"; "fibonacci")]
 #[test_case("tests/data/fibonacci_recursive.dodo"; "fibonacci recursive")]

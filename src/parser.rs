@@ -164,6 +164,7 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::True, Self::parse_constant);
         prefix_fns.insert(TokenType::False, Self::parse_constant);
         prefix_fns.insert(TokenType::IntegerLiteral, Self::parse_constant);
+        prefix_fns.insert(TokenType::CharLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::BinaryIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::OctalIntegerLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::HexIntegerLiteral, Self::parse_constant);
@@ -425,6 +426,11 @@ impl<'a> Parser<'a> {
                 range,
             }),
             TokenType::IntegerLiteral => Self::parse_integer_literal(token.value, "", 10, range),
+            TokenType::CharLiteral => Ok(ParsedExpression::IntegerLiteral {
+                // TODO: character escaping
+                value: token.value.as_bytes()[1] as u64,
+                range,
+            }),
             TokenType::BinaryIntegerLiteral => {
                 Self::parse_integer_literal(token.value, "0b", 2, range)
             }
