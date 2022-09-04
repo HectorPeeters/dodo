@@ -207,11 +207,12 @@ impl<'a> TypeChecker<'a> {
                 annotations,
                 range,
             } => {
-                let value = self.check_expression(value)?;
+                let mut value = self.check_expression(value)?;
 
                 let value_type = self.check_type(&value_type)?;
 
-                self.widen_assignment(value_type, value.get_type())
+                let new_type = self
+                    .widen_assignment(value_type, value.get_type())
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
@@ -223,6 +224,10 @@ impl<'a> TypeChecker<'a> {
                             range,
                         )
                     })?;
+
+                if new_type != value.get_type() {
+                    value = Expression::Widen(Box::new(value), new_type, range);
+                }
 
                 self.scope
                     .insert(&name, TypeScopeEntry::Global(value_type))?;
@@ -604,7 +609,7 @@ impl<'a> TypeChecker<'a> {
                     ));
                 }
 
-                let struct_data = self.project.get_struct(struct_type);
+                let struct_data = self.project.get_struct(struct_type).clone();
 
                 for (expected_name, _) in &struct_data.fields {
                     if !fields.iter().any(|f| &f.0 == expected_name) {
@@ -627,13 +632,37 @@ impl<'a> TypeChecker<'a> {
                     ));
                 }
 
-                let checked_fields = fields
-                    .into_iter()
-                    .map(|(name, value)| match self.check_expression(value) {
-                        Ok(value) => Ok((name, value)),
-                        Err(e) => Err(e),
-                    })
-                    .collect::<Result<Vec<_>>>()?;
+                let mut checked_fields = vec![];
+
+                for (field_name, field_value) in fields {
+                    let struct_field = struct_data
+                        .fields
+                        .iter()
+                        .find(|x| x.0 == field_name)
+                        .unwrap();
+
+                    let mut checked_value = self.check_expression(field_value)?;
+
+                    let new_type = self
+                        .widen_assignment(struct_field.1, checked_value.get_type())
+                        .ok_or_else(|| {
+                            Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!(
+                                    "Cannot widen from type {:?} to {:?}",
+                                    checked_value.get_type(),
+                                    struct_field.1,
+                                ),
+                                range,
+                            )
+                        })?;
+
+                    if new_type != checked_value.get_type() {
+                        checked_value = Expression::Widen(Box::new(checked_value), new_type, range);
+                    }
+
+                    checked_fields.push((field_name, checked_value));
+                }
 
                 Ok(Expression::StructLiteral(
                     checked_fields,
