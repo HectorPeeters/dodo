@@ -3,6 +3,7 @@ use crate::project::{
     Project, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
     BUILTIN_TYPE_VOID,
 };
+use crate::tokenizer::SourceRange;
 use crate::types::Type;
 use crate::{
     ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType},
@@ -117,11 +118,23 @@ impl<'a> X86NasmGenerator<'a> {
     }
 
     fn write_data<T: Write>(&mut self, writer: &mut T) {
-        self.instr(Section(".data".to_string()));
-
         let mut queued_instructions = vec![];
 
         for global in &self.global_consts {
+            let section_annotation = global.annotations
+                    .iter()
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .map(|(_, value)| match value {
+                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        _ => unreachable!()
+                    });
+
+            if let Some(section_name) = section_annotation {
+                queued_instructions.push(Section(section_name.to_string()));
+            } else {
+                queued_instructions.push(Section(".data".to_string()));
+            }
+
             queued_instructions.push(LabelDef(global.index));
 
             match &global.value {
@@ -143,6 +156,27 @@ impl<'a> X86NasmGenerator<'a> {
                     string_bytes.push(0);
                     queued_instructions.push(Db(string_bytes));
                 }
+                Expression::StructLiteral(fields, _, _) => {
+                    for field in fields {
+                        match &field.1 {
+                            Expression::IntegerLiteral(value, value_type, _) => {
+                                let instruction = match *value_type {
+                                    BUILTIN_TYPE_U8 => Db(vec![*value as u8]),
+                                    BUILTIN_TYPE_U16 => Dw(vec![*value as u16]),
+                                    BUILTIN_TYPE_U32 => Dd(vec![*value as u32]),
+                                    BUILTIN_TYPE_U64 => Dq(vec![*value]),
+                                    _ => unreachable!(),
+                                };
+
+                                queued_instructions.push(instruction);
+                            }
+                            Expression::BooleanLiteral(value, _, _) => {
+                                queued_instructions.push(Db(vec![if *value { 1 } else { 0 }]));
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
                 _ => unreachable!(),
             }
         }
@@ -161,6 +195,31 @@ impl<'a> X86NasmGenerator<'a> {
                 .join("\n")
         )
         .unwrap();
+    }
+
+    fn generate_lvalue(
+        &mut self,
+        expression: Expression,
+        range: SourceRange,
+    ) -> Result<(X86Operand, Option<X86Register>)> {
+        match expression {
+            Expression::VariableRef(name, _, _) => {
+                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+
+                match location {
+                    ScopeLocation::Stack(offset) => {
+                        Ok((X86Operand::RegIndirect(Rbp, offset * STACK_OFFSET), None))
+                    }
+                    ScopeLocation::Global(_) => todo!(),
+                }
+            }
+            Expression::UnaryOperator(UnaryOperatorType::Deref, expr, _value_type, _) => {
+                let dest_reg = self.visit_expression(*expr)?;
+
+                Ok((RegIndirect(dest_reg, 0), Some(dest_reg)))
+            }
+            _ => todo!(),
+        }
     }
 }
 
@@ -326,36 +385,20 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
-            Statement::Assignment(lhs, rhs, range) => match lhs {
-                Expression::VariableRef(name, _, _) => {
-                    let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+            Statement::Assignment(lhs, rhs, range) => {
+                let value_size = self.project.get_type_size(rhs.get_type());
+                let value_reg = self.visit_expression(rhs)?;
 
-                    let rhs_size = self.project.get_type_size(rhs.get_type());
-                    let value_reg = self.visit_expression(rhs)?;
+                let (lvalue_operand, reg_to_free) = self.generate_lvalue(lhs, range)?;
 
-                    match location {
-                        ScopeLocation::Stack(offset) => self.instr(Mov(
-                            RegIndirect(Rbp, offset * STACK_OFFSET),
-                            Reg(value_reg, rhs_size),
-                        )),
-                        ScopeLocation::Global(_) => todo!(),
-                    }
+                self.instr(Mov(lvalue_operand, Reg(value_reg, value_size)));
 
-                    self.free_register(value_reg);
+                if let Some(reg_to_free) = reg_to_free {
+                    self.free_register(reg_to_free);
                 }
-                Expression::UnaryOperator(UnaryOperatorType::Deref, expr, value_type, _) => {
-                    let reg = self.visit_expression(rhs)?;
 
-                    let value_type_size = self.project.get_type_size(value_type);
-                    let dest_reg = self.visit_expression(*expr)?;
-
-                    self.instr(Mov(RegIndirect(dest_reg, 0), Reg(reg, value_type_size)));
-
-                    self.free_register(reg);
-                    self.free_register(dest_reg);
-                }
-                _ => todo!(),
-            },
+                self.free_register(value_reg);
+            }
             Statement::While(cond, stmt, _range) => {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
