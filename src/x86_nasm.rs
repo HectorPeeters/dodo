@@ -28,6 +28,13 @@ pub enum ScopeLocation {
     Global(usize),
 }
 
+struct GlobalConst {
+    index: usize,
+    value: Expression,
+    value_type: TypeId,
+    annotations: Vec<(String, Option<Expression>)>,
+}
+
 pub struct X86NasmGenerator<'a> {
     project: &'a mut Project,
     instructions: Vec<X86Instruction>,
@@ -35,7 +42,7 @@ pub struct X86NasmGenerator<'a> {
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     current_function_end_label: usize,
-    global_consts: Vec<(usize, Expression, TypeId)>,
+    global_consts: Vec<GlobalConst>,
 }
 
 impl<'a> X86NasmGenerator<'a> {
@@ -77,9 +84,19 @@ impl<'a> X86NasmGenerator<'a> {
         result
     }
 
-    fn store_global_const(&mut self, value: Expression, value_type: TypeId) -> usize {
+    fn store_global_const(
+        &mut self,
+        value: Expression,
+        value_type: TypeId,
+        annotations: Vec<(String, Option<Expression>)>,
+    ) -> usize {
         let index = self.get_new_label();
-        self.global_consts.push((index, value, value_type));
+        self.global_consts.push(GlobalConst {
+            index,
+            value,
+            value_type,
+            annotations,
+        });
         index
     }
 
@@ -104,14 +121,14 @@ impl<'a> X86NasmGenerator<'a> {
 
         let mut queued_instructions = vec![];
 
-        for (index, value, value_type) in &self.global_consts {
-            queued_instructions.push(LabelDef(*index));
+        for global in &self.global_consts {
+            queued_instructions.push(LabelDef(global.index));
 
-            match value {
+            match &global.value {
                 Expression::IntegerLiteral(value, _, _) => {
                     use X86Instruction::*;
 
-                    let instruction = match *value_type {
+                    let instruction = match global.value_type {
                         BUILTIN_TYPE_U8 => Db(vec![*value as u8]),
                         BUILTIN_TYPE_U16 => Dw(vec![*value as u16]),
                         BUILTIN_TYPE_U32 => Dd(vec![*value as u32]),
@@ -223,7 +240,7 @@ impl<'a> Backend for X86NasmGenerator<'a> {
 impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
-            UpperStatement::StructDeclaratin(_, _) => todo!(),
+            UpperStatement::StructDeclaratin(_, _) => {}
             UpperStatement::ExternDeclaration(symbol, _) => {
                 self.instr(Extern(symbol));
             }
@@ -292,11 +309,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
             UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
-                if annotations.len() != 0 {
-                    todo!();
-                }
-
-                let position = self.store_global_const(value, value_type);
+                let position = self.store_global_const(value, value_type, annotations);
                 self.scope.insert(&name, ScopeLocation::Global(position))?;
             }
         }
@@ -632,6 +645,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 let label = self.store_global_const(
                     Expression::StringLiteral(value, u8_pointer_type, range),
                     u8_pointer_type,
+                    vec![],
                 );
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
