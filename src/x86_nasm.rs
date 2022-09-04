@@ -29,6 +29,20 @@ pub enum ScopeLocation {
     Global(usize),
 }
 
+pub enum LValueLocation {
+    Stack(usize),
+    Register(X86Register, usize),
+}
+
+impl LValueLocation {
+    pub fn offset(self, offset: usize) -> LValueLocation {
+        match self {
+            LValueLocation::Stack(o) => LValueLocation::Stack(o + offset),
+            LValueLocation::Register(r, o) => LValueLocation::Register(r, o + offset),
+        }
+    }
+}
+
 struct GlobalConst {
     index: usize,
     value: Expression,
@@ -117,6 +131,53 @@ impl<'a> X86NasmGenerator<'a> {
         self.instr(Pop(RBP));
     }
 
+    fn get_data_instructions(&self, expression: &Expression, size: usize) -> Vec<X86Instruction> {
+        let mut instructions = vec![];
+
+        match expression {
+            Expression::IntegerLiteral(value, _, _) => {
+                use X86Instruction::*;
+
+                let instruction = match size {
+                    8 => Db(vec![*value as u8]),
+                    16 => Dw(vec![*value as u16]),
+                    32 => Dd(vec![*value as u32]),
+                    64 => Dq(vec![*value]),
+                    _ => unreachable!(),
+                };
+
+                instructions.push(instruction);
+            }
+            Expression::StringLiteral(value, _, _) => {
+                let mut string_bytes = value.as_bytes().to_vec();
+                string_bytes.push(0);
+                instructions.push(Db(string_bytes));
+            }
+            Expression::BooleanLiteral(value, _, _) => {
+                instructions.push(Db(vec![if *value { 1 } else { 0 }]));
+            }
+            Expression::StructLiteral(fields, _, _) => {
+                for field in fields {
+                    let mut field_instructions = self.get_data_instructions(
+                        &field.1,
+                        self.project.get_type_size(field.1.get_type()),
+                    );
+
+                    instructions.append(&mut field_instructions);
+                }
+            }
+            Expression::Widen(expr, widen_type, _) => {
+                let mut child_instructions =
+                    self.get_data_instructions(expr, self.project.get_type_size(*widen_type));
+
+                instructions.append(&mut child_instructions);
+            }
+            _ => unreachable!(),
+        }
+
+        instructions
+    }
+
     fn write_data<T: Write>(&mut self, writer: &mut T) {
         let mut queued_instructions = vec![];
 
@@ -137,48 +198,12 @@ impl<'a> X86NasmGenerator<'a> {
 
             queued_instructions.push(LabelDef(global.index));
 
-            match &global.value {
-                Expression::IntegerLiteral(value, _, _) => {
-                    use X86Instruction::*;
+            let mut data_instructions = self.get_data_instructions(
+                &global.value,
+                self.project.get_type_size(global.value.get_type()),
+            );
 
-                    let instruction = match global.value_type {
-                        BUILTIN_TYPE_U8 => Db(vec![*value as u8]),
-                        BUILTIN_TYPE_U16 => Dw(vec![*value as u16]),
-                        BUILTIN_TYPE_U32 => Dd(vec![*value as u32]),
-                        BUILTIN_TYPE_U64 => Dq(vec![*value]),
-                        _ => unreachable!(),
-                    };
-
-                    queued_instructions.push(instruction);
-                }
-                Expression::StringLiteral(value, _, _) => {
-                    let mut string_bytes = value.as_bytes().to_vec();
-                    string_bytes.push(0);
-                    queued_instructions.push(Db(string_bytes));
-                }
-                Expression::StructLiteral(fields, _, _) => {
-                    for field in fields {
-                        match &field.1 {
-                            Expression::IntegerLiteral(value, value_type, _) => {
-                                let instruction = match *value_type {
-                                    BUILTIN_TYPE_U8 => Db(vec![*value as u8]),
-                                    BUILTIN_TYPE_U16 => Dw(vec![*value as u16]),
-                                    BUILTIN_TYPE_U32 => Dd(vec![*value as u32]),
-                                    BUILTIN_TYPE_U64 => Dq(vec![*value]),
-                                    _ => unreachable!(),
-                                };
-
-                                queued_instructions.push(instruction);
-                            }
-                            Expression::BooleanLiteral(value, _, _) => {
-                                queued_instructions.push(Db(vec![if *value { 1 } else { 0 }]));
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                }
-                _ => unreachable!(),
-            }
+            queued_instructions.append(&mut data_instructions);
         }
 
         for instr in queued_instructions {
@@ -197,18 +222,32 @@ impl<'a> X86NasmGenerator<'a> {
         .unwrap();
     }
 
+    fn get_struct_field_offset(&self, name: &str, struct_type: TypeId) -> usize {
+        let struct_type = self.project.get_struct(struct_type);
+
+        let mut offset = 0;
+        for field in &struct_type.fields {
+            if field.0 == name {
+                break;
+            }
+            offset += self.project.get_type_size(field.1);
+        }
+
+        offset
+    }
+
     fn generate_lvalue(
         &mut self,
         expression: Expression,
         range: SourceRange,
-    ) -> Result<(X86Operand, Option<X86Register>)> {
+    ) -> Result<(LValueLocation, Option<X86Register>)> {
         match expression {
             Expression::VariableRef(name, _, _) => {
                 let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
 
                 match location {
                     ScopeLocation::Stack(offset) => {
-                        Ok((X86Operand::RegIndirect(Rbp, offset * STACK_OFFSET), None))
+                        Ok((LValueLocation::Stack(offset * STACK_OFFSET), None))
                     }
                     ScopeLocation::Global(_) => todo!(),
                 }
@@ -216,9 +255,16 @@ impl<'a> X86NasmGenerator<'a> {
             Expression::UnaryOperator(UnaryOperatorType::Deref, expr, _value_type, _) => {
                 let dest_reg = self.visit_expression(*expr)?;
 
-                Ok((RegIndirect(dest_reg, 0), Some(dest_reg)))
+                Ok((LValueLocation::Register(dest_reg, 0), Some(dest_reg)))
             }
-            _ => todo!(),
+            Expression::FieldAccessor(name, child, _, _) => {
+                let offset = self.get_struct_field_offset(&name, child.get_type());
+
+                let (child_location, child_reg) = self.generate_lvalue(*child, range)?;
+
+                Ok((child_location.offset(offset), child_reg))
+            }
+            _ => todo!("generate_lvalue not implemented for {:?}", expression),
         }
     }
 }
@@ -388,10 +434,18 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
             Statement::Assignment(lhs, rhs, range) => {
                 let value_size = self.project.get_type_size(rhs.get_type());
                 let value_reg = self.visit_expression(rhs)?;
+                let value_operand = Reg(value_reg, value_size);
 
                 let (lvalue_operand, reg_to_free) = self.generate_lvalue(lhs, range)?;
 
-                self.instr(Mov(lvalue_operand, Reg(value_reg, value_size)));
+                match lvalue_operand {
+                    LValueLocation::Stack(offset) => {
+                        self.instr(Mov(RegIndirect(Rbp, offset), value_operand))
+                    }
+                    LValueLocation::Register(reg, offset) => {
+                        self.instr(Mov(RegIndirect(reg, offset), value_operand))
+                    }
+                }
 
                 if let Some(reg_to_free) = reg_to_free {
                     self.free_register(reg_to_free);
@@ -616,7 +670,9 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        if self.project.is_ptr_type(value_type) {
+                        if self.project.is_ptr_type(value_type)
+                            || self.project.is_struct_type(value_type)
+                        {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
                             self.instr(Mov(Reg(register, value_size), LabelIndirect(index)))
@@ -695,7 +751,23 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 Ok(result_reg)
             }
             Expression::StructLiteral(_, _, _) => todo!(),
-            Expression::FieldAccessor(_, _, _, _) => todo!(),
+            Expression::FieldAccessor(name, child, value_type, _) => {
+                let value_type_size = self.project.get_type_size(value_type);
+                assert!(value_type_size <= 64);
+
+                let offset = self.get_struct_field_offset(&name, child.get_type());
+                let child_reg = self.visit_expression(*child)?;
+
+                let result_reg = self.get_next_register();
+                self.instr(Mov(
+                    Reg(result_reg, value_type_size),
+                    RegIndirect(child_reg, offset),
+                ));
+
+                self.free_register(child_reg);
+
+                Ok(result_reg)
+            }
             Expression::Widen(expr, widen_type, _range) => {
                 let expr_size = self.project.get_type_size(expr.get_type());
                 let widen_size = self.project.get_type_size(widen_type);
