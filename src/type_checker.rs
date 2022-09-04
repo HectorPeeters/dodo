@@ -598,13 +598,11 @@ impl<'a> TypeChecker<'a> {
                         range,
                     ))
                 }
-                _ => {
-                    Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!("Unknown intrinsic function '{}'", name),
-                        range,
-                    ))
-                }
+                _ => Err(Error::new_with_range(
+                    ErrorType::TypeCheck,
+                    format!("Unknown intrinsic function '{}'", name),
+                    range,
+                )),
             },
             ParsedExpression::IntegerLiteral { value, range } => {
                 if value <= 255 {

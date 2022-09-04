@@ -1,8 +1,5 @@
 use crate::ast::UpperStatement;
-use crate::project::{
-    Project, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
-    BUILTIN_TYPE_VOID,
-};
+use crate::project::{Project, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
 use crate::types::Type;
 use crate::{
@@ -46,7 +43,6 @@ impl LValueLocation {
 struct GlobalConst {
     index: usize,
     value: Expression,
-    value_type: TypeId,
     annotations: Vec<(String, Option<Expression>)>,
 }
 
@@ -102,14 +98,12 @@ impl<'a> X86NasmGenerator<'a> {
     fn store_global_const(
         &mut self,
         value: Expression,
-        value_type: TypeId,
         annotations: Vec<(String, Option<Expression>)>,
     ) -> usize {
         let index = self.get_new_label();
         self.global_consts.push(GlobalConst {
             index,
             value,
-            value_type,
             annotations,
         });
         index
@@ -172,7 +166,7 @@ impl<'a> X86NasmGenerator<'a> {
 
                 instructions.append(&mut child_instructions);
             }
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", expression),
         }
 
         instructions
@@ -413,8 +407,8 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
-                let position = self.store_global_const(value, value_type, annotations);
+            UpperStatement::ConstDeclaration(name, _, value, annotations, _range) => {
+                let position = self.store_global_const(value, annotations);
                 self.scope.insert(&name, ScopeLocation::Global(position))?;
             }
         }
@@ -432,6 +426,8 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(lhs, rhs, range) => {
+                assert!(!self.project.is_struct_type(rhs.get_type()));
+
                 let value_size = self.project.get_type_size(rhs.get_type());
                 let value_reg = self.visit_expression(rhs)?;
                 let value_operand = Reg(value_reg, value_size);
@@ -554,12 +550,16 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
                     Expression::VariableRef(name, _, range) => {
                         let location = self.scope.find(name).map_err(|x| x.with_range(*range))?;
 
+                        let value_size = self.project.get_type_size(ref_type);
+
                         match location {
                             ScopeLocation::Stack(offset) => self.instr(Lea(
-                                Reg(result_reg, self.project.get_type_size(ref_type)),
+                                Reg(result_reg, value_size),
                                 RegIndirect(Rbp, offset * 16),
                             )),
-                            ScopeLocation::Global(_) => todo!(),
+                            ScopeLocation::Global(index) => {
+                                self.instr(Mov(Reg(result_reg, value_size), Label(index)))
+                            }
                         }
                         Ok(result_reg)
                     }
@@ -743,14 +743,13 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 let label = self.store_global_const(
                     Expression::StringLiteral(value, u8_pointer_type, range),
-                    u8_pointer_type,
                     vec![],
                 );
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
             }
-            Expression::StructLiteral(_, _, _) => todo!(),
+            Expression::StructLiteral(_fields, _struct_type, _) => unreachable!(),
             Expression::FieldAccessor(name, child, value_type, _) => {
                 let value_type_size = self.project.get_type_size(value_type);
                 assert!(value_type_size <= 64);
@@ -782,7 +781,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
 
                 Ok(result_reg)
             }
-            Expression::Cast(_, _, _) => todo!(),
+            Expression::Cast(child, _, _) => self.visit_expression(*child),
         }
     }
 }
