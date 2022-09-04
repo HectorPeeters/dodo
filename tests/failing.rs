@@ -56,6 +56,7 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
 
 #[test_case("tests/failing/assign_incompatible.dodo"; "assign incompatible")]
 #[test_case("tests/failing/assign_return_type_incompatible.dodo"; "assign return type incompatible")]
+#[test_case("tests/failing/dont_assign_global_const.dodo"; "dont assign global const")]
 #[test_case("tests/failing/function_parameter_incompatible.dodo"; "function parameter incompatible")]
 #[test_case("tests/failing/if_condition_not_bool.dodo"; "if condition not bool")]
 #[test_case("tests/failing/invalid_infix.dodo"; "invalid infix")]

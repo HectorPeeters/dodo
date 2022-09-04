@@ -5,8 +5,14 @@ const greeting: u8* = "Hello world!";
 
 const number: u32 = 4321;
 
+const boolean1: bool = false;
+const boolean2: bool = true;
+
 fn main() {
     printf("%s\n", greeting);
     printf("The number is %u\n", number);
+    printf("The boolean one is %hhu\n", boolean1);
+    printf("The boolean two is %hhu\n", boolean2);
+
     exit(0);
 }

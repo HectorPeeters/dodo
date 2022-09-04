@@ -1,0 +1,7 @@
+// Expected: Cannot assign to constant 'value'
+
+const value: u32 = 1234;
+
+fn main() {
+    value = 5678;
+}
