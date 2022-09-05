@@ -3,15 +3,12 @@
 #![feature(custom_test_frameworks)]
 
 pub mod ast;
-pub mod backend;
-pub mod c_generator;
+pub mod backends;
 pub mod error;
-//pub mod ir;
+pub mod ir;
 pub mod parser;
 pub mod project;
 pub mod scope;
 pub mod tokenizer;
 pub mod type_checker;
 pub mod types;
-pub mod x86_instruction;
-pub mod x86_nasm;

@@ -1,8 +1,8 @@
+use super::Backend;
 use crate::ast::{
     BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType,
     UpperStatement,
 };
-use crate::backend::Backend;
 use crate::error::{Error, ErrorType, Result};
 use crate::project::{
     Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,

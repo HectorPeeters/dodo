@@ -1,19 +1,19 @@
+use super::x86_instruction::{
+    X86Instruction, X86Instruction::*, X86Operand::*, X86Register, X86Register::*,
+};
+use super::x86_instruction::{RAX, RBP, RDX, RSP};
+use super::Backend;
 use crate::ast::UpperStatement;
 use crate::project::{Project, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
 use crate::types::Type;
 use crate::{
     ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType},
-    backend::Backend,
     error::{Error, ErrorType, Result},
     scope::Scope,
     types::TypeId,
-    x86_instruction::{X86Instruction, X86Operand, X86Register, RAX, RBP, RDX, RSP},
 };
 use std::{fs::File, io::Write, path::Path, process::Command};
-use X86Instruction::*;
-use X86Operand::*;
-use X86Register::*;
 
 const ARGUMENT_REGISTERS: [X86Register; 6] = [Rdi, Rsi, Rdx, Rcx, R8, R9];
 const GENERAL_PURPOSE_REGISTER_COUNT: usize = 6;

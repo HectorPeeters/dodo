@@ -1,20 +1,16 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    path::Path,
-};
-
 use dodo::{
-    backend::{Backend, BackendType},
-    c_generator::CGenerator,
+    backends::{c_generator::CGenerator, x86_nasm::X86NasmGenerator, Backend, BackendType},
     error::Result,
     parser::Parser,
     project::Project,
     tokenizer::tokenize,
     type_checker::TypeChecker,
-    x86_nasm::X86NasmGenerator,
 };
-
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    path::Path,
+};
 use test_case::test_case;
 
 fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {

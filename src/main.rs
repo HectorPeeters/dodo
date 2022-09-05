@@ -1,12 +1,9 @@
 use clap::StructOpt;
-use dodo::backend::BackendType;
+use dodo::backends::BackendType;
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
-use dodo::{
-    backend::Backend, c_generator::CGenerator, project::Project, x86_nasm::X86NasmGenerator,
-};
 use std::io::Write;
 use std::{path::PathBuf, process::Command};
 
@@ -47,6 +44,11 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
+    use dodo::{
+        backends::{c_generator::CGenerator, x86_nasm::X86NasmGenerator, Backend},
+        project::Project,
+    };
+
     let args = Args::parse();
 
     // Reading source
