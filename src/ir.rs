@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub type IrString = usize;
 pub type IrBlockIndex = usize;
 pub type IrRegister = usize;
@@ -10,6 +12,20 @@ pub enum IrValue {
     Bool(bool),
 }
 
+impl Display for IrValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use IrValue::*;
+
+        match self {
+            U8(x) => write!(f, "{}u8", *x),
+            U16(x) => write!(f, "{}u16", *x),
+            U32(x) => write!(f, "{}u32", *x),
+            U64(x) => write!(f, "{}u64", *x),
+            Bool(x) => write!(f, "{}", if *x { "true" } else { "false" }),
+        }
+    }
+}
+
 pub enum IrInstruction {
     Jmp(IrBlockIndex),
     MovImm(IrRegister, IrValue),
@@ -18,6 +34,22 @@ pub enum IrInstruction {
     Pop(IrRegister),
     Call(IrBlockIndex),
     Ret(),
+}
+
+impl Display for IrInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use IrInstruction::*;
+
+        match self {
+            Jmp(index) => write!(f, "jmp {}", index),
+            MovImm(reg, value) => write!(f, "mov {} {}", reg, value),
+            Add(dest, a, b) => write!(f, "add {} {} {}", dest, a, b),
+            Push(value) => write!(f, "push {}", value),
+            Pop(value) => write!(f, "pop {}", value),
+            Call(index) => write!(f, "call {}", index),
+            Ret() => write!(f, "ret"),
+        }
+    }
 }
 
 pub struct IrBlock {

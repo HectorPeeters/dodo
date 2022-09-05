@@ -4,6 +4,7 @@ use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
+use dodo::{backends::*, project::Project};
 use std::io::Write;
 use std::{path::PathBuf, process::Command};
 
@@ -44,9 +45,8 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use dodo::{
-        backends::{c_generator::CGenerator, x86_nasm::X86NasmGenerator, Backend},
-        project::Project,
+    use dodo::backends::{
+        c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend,
     };
 
     let args = Args::parse();
@@ -102,8 +102,9 @@ fn main() -> Result<()> {
     // Backend
 
     let mut backend: Box<dyn Backend> = match args.backend {
-        Some(BackendType::X86) | None => Box::new(X86NasmGenerator::new(&mut project)),
-        Some(BackendType::C) => Box::new(CGenerator::new(&mut project)),
+        Some(BackendType::X86) | None => Box::new(X86NasmBackend::new(&mut project)),
+        Some(BackendType::C) => Box::new(CBackend::new(&mut project)),
+        Some(BackendType::Ir) => Box::new(IrBackend::new(&mut project)),
     };
 
     unwrap_or_error(

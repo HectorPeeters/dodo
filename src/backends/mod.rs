@@ -2,14 +2,16 @@ use crate::{ast::UpperStatement, error::Result};
 use clap::ArgEnum;
 use std::path::Path;
 
-pub mod c_generator;
+pub mod c_backend;
+pub mod ir_backend;
 pub mod x86_instruction;
-pub mod x86_nasm;
+pub mod x86_nasm_backend;
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
 pub enum BackendType {
     X86,
     C,
+    Ir,
 }
 
 pub trait Backend {

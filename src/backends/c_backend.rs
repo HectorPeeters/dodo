@@ -12,12 +12,12 @@ use crate::types::TypeId;
 use std::path::Path;
 use std::process::Command;
 
-pub struct CGenerator<'a> {
+pub struct CBackend<'a> {
     project: &'a mut Project,
     buffer: String,
 }
 
-impl<'a> CGenerator<'a> {
+impl<'a> CBackend<'a> {
     pub fn new(project: &'a mut Project) -> Self {
         Self {
             project,
@@ -26,7 +26,7 @@ impl<'a> CGenerator<'a> {
     }
 }
 
-impl<'a> Backend for CGenerator<'a> {
+impl<'a> Backend for CBackend<'a> {
     fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         self.visit_upper_statement(statement)
     }
@@ -62,7 +62,7 @@ impl<'a> Backend for CGenerator<'a> {
     }
 }
 
-impl<'a> CGenerator<'a> {
+impl<'a> CBackend<'a> {
     fn to_c_type(&self, id: TypeId) -> String {
         match id {
             BUILTIN_TYPE_U8 => "char".to_string(),
@@ -82,7 +82,7 @@ impl<'a> CGenerator<'a> {
     }
 }
 
-impl<'a> ConsumingAstVisitor<(), (), String> for CGenerator<'a> {
+impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(name, fields) => {

@@ -1,5 +1,8 @@
 use dodo::{
-    backends::{c_generator::CGenerator, x86_nasm::X86NasmGenerator, Backend, BackendType},
+    backends::{
+        c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend, Backend,
+        BackendType,
+    },
     error::Result,
     parser::Parser,
     project::Project,
@@ -38,8 +41,9 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut backend: Box<dyn Backend> = match backend_type {
-        BackendType::C => Box::new(CGenerator::new(&mut project)),
-        BackendType::X86 => Box::new(X86NasmGenerator::new(&mut project)),
+        BackendType::C => Box::new(CBackend::new(&mut project)),
+        BackendType::X86 => Box::new(X86NasmBackend::new(&mut project)),
+        BackendType::Ir => Box::new(IrBackend::new(&mut project)),
     };
 
     statements

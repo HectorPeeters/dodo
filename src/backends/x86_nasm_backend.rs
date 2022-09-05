@@ -46,7 +46,7 @@ struct GlobalConst {
     annotations: Vec<(String, Option<Expression>)>,
 }
 
-pub struct X86NasmGenerator<'a> {
+pub struct X86NasmBackend<'a> {
     project: &'a mut Project,
     instructions: Vec<X86Instruction>,
     label_index: usize,
@@ -56,7 +56,7 @@ pub struct X86NasmGenerator<'a> {
     global_consts: Vec<GlobalConst>,
 }
 
-impl<'a> X86NasmGenerator<'a> {
+impl<'a> X86NasmBackend<'a> {
     pub fn new(project: &'a mut Project) -> Self {
         let mut result = Self {
             project,
@@ -263,7 +263,7 @@ impl<'a> X86NasmGenerator<'a> {
     }
 }
 
-impl<'a> Backend for X86NasmGenerator<'a> {
+impl<'a> Backend for X86NasmBackend<'a> {
     fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         self.visit_upper_statement(statement)
     }
@@ -336,7 +336,7 @@ impl<'a> Backend for X86NasmGenerator<'a> {
     }
 }
 
-impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmGenerator<'a> {
+impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(_, _) => {}
