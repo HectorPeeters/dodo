@@ -72,8 +72,10 @@ pub enum IrInstruction {
     Mov(IrRegister, IrRegister),
     MovImm(IrRegister, IrValue),
     Add(IrRegister, IrRegister, IrRegister),
+    Sub(IrRegister, IrRegister, IrRegister),
     Gt(IrRegister, IrRegister, IrRegister),
     Lt(IrRegister, IrRegister, IrRegister),
+    LtE(IrRegister, IrRegister, IrRegister),
     Jmp(IrBlockIndex),
     JmpNz(IrBlockIndex, IrRegister),
     Push(IrRegister),
@@ -91,8 +93,10 @@ impl Display for IrInstruction {
             Mov(dest_reg, source_reg) => write!(f, "mov\t{} {}", dest_reg, source_reg),
             MovImm(reg, value) => write!(f, "movimm\t{} {}", reg, value),
             Add(dest, a, b) => write!(f, "add\t{} {} {}", dest, a, b),
+            Sub(dest, a, b) => write!(f, "sub\t{} {} {}", dest, a, b),
             Gt(dest, a, b) => write!(f, "gt\t{} {} {}", dest, a, b),
             Lt(dest, a, b) => write!(f, "lt\t{} {} {}", dest, a, b),
+            LtE(dest, a, b) => write!(f, "lte\t{} {} {}", dest, a, b),
             Jmp(index) => write!(f, "jmp\t{}", index),
             JmpNz(index, reg) => write!(f, "jmpnz\t{} {}", index, reg),
             Push(value) => write!(f, "push\t{}", value),
@@ -215,11 +219,17 @@ impl IrBuilder {
     pub fn can_reach_blocks(&self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
         let mut result = vec![];
 
+        let mut add = |value| {
+            if !result.contains(value) {
+                result.push(*value);
+            }
+        };
+
         for instr in &self.blocks[block_index].instructions {
             match instr {
-                IrInstruction::Jmp(target) => result.push(*target),
-                IrInstruction::JmpNz(target, _) => result.push(*target),
-                IrInstruction::Call(target) => result.push(*target),
+                IrInstruction::Jmp(target) => add(target),
+                IrInstruction::JmpNz(target, _) => add(target),
+                IrInstruction::Call(target) => add(target),
                 _ => {}
             }
         }
@@ -235,13 +245,16 @@ impl IrBuilder {
             let instruction_text = block
                 .instructions
                 .iter()
-                .map(|x| format!("{x}"))
+                .map(|x| format!("{x}\\l"))
                 .collect::<Vec<_>>()
-                .join("\\n");
+                .join("");
 
             buffer.push_str(&format!(
-                "\t{} [label=\"{}\", shape=box];\n",
-                index, instruction_text
+                "\t{} [label=\"{}: {}\\n{}\", shape=box];\n",
+                index,
+                index,
+                block.name(),
+                instruction_text
             ));
 
             for reachable_block in self.can_reach_blocks(index) {

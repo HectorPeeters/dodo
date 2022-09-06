@@ -74,7 +74,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 
 #[test_case("tests/data/args.dodo"; "args")]
 #[test_case("tests/data/char_literals.dodo"; "char literals")]
-#[test_case("tests/data/comparisons.dodo"; "commparisons")]
+#[test_case("tests/data/comparisons.dodo"; "comparisons")]
 #[test_case("tests/data/fibonacci.dodo"; "fibonacci")]
 #[test_case("tests/data/fibonacci_recursive.dodo"; "fibonacci recursive")]
 #[test_case("tests/data/global_const.dodo"; "global constants")]

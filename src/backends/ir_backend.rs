@@ -2,7 +2,9 @@ use super::Backend;
 use crate::ast::{BinaryOperatorType, Expression, Statement};
 use crate::error::Result;
 use crate::ir::{IrBuilder, IrInstruction, IrRegister, IrValue};
-use crate::project::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
+use crate::project::{
+    BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
+};
 use crate::scope::Scope;
 use crate::{ast::UpperStatement, project::Project};
 use std::path::Path;
@@ -143,7 +145,9 @@ impl<'a> IrBackend<'a> {
                     BinaryOperatorType::Add => {
                         IrInstruction::Add(destination_reg, left_reg, right_reg)
                     }
-                    BinaryOperatorType::Subtract => todo!(),
+                    BinaryOperatorType::Subtract => {
+                        IrInstruction::Sub(destination_reg, left_reg, right_reg)
+                    }
                     BinaryOperatorType::Multiply => todo!(),
                     BinaryOperatorType::Divide => todo!(),
                     BinaryOperatorType::Modulo => todo!(),
@@ -154,7 +158,9 @@ impl<'a> IrBackend<'a> {
                     BinaryOperatorType::LessThan => {
                         IrInstruction::Lt(destination_reg, left_reg, right_reg)
                     }
-                    BinaryOperatorType::LessThanEqual => todo!(),
+                    BinaryOperatorType::LessThanEqual => {
+                        IrInstruction::LtE(destination_reg, left_reg, right_reg)
+                    }
                     BinaryOperatorType::GreaterThan => {
                         IrInstruction::Gt(destination_reg, left_reg, right_reg)
                     }
@@ -182,11 +188,16 @@ impl<'a> IrBackend<'a> {
                         .add_instruction(IrInstruction::CallExtern(name));
                 }
 
-                let result_reg = self
-                    .builder
-                    .new_register(self.project.get_type_size(return_type).into());
-                self.builder.add_instruction(IrInstruction::Pop(result_reg));
-                Ok(result_reg)
+                if return_type != BUILTIN_TYPE_VOID {
+                    let result_reg = self
+                        .builder
+                        .new_register(self.project.get_type_size(return_type).into());
+                    self.builder.add_instruction(IrInstruction::Pop(result_reg));
+                    Ok(result_reg)
+                } else {
+                    let result_reg = self.builder.new_register(64.into());
+                    Ok(result_reg)
+                }
             }
             Expression::IntegerLiteral(value, value_type, _) => {
                 let result_reg = self
