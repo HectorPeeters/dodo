@@ -2,7 +2,49 @@ use std::fmt::Display;
 
 pub type IrString = usize;
 pub type IrBlockIndex = usize;
-pub type IrRegister = usize;
+
+#[derive(Debug, Copy, Clone)]
+pub struct IrRegister {
+    index: usize,
+    size: IrRegisterSize,
+}
+
+impl Display for IrRegister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.index, self.size)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum IrRegisterSize {
+    Byte,
+    Word,
+    Double,
+    Quad,
+}
+
+impl From<usize> for IrRegisterSize {
+    fn from(s: usize) -> Self {
+        match s {
+            8 => IrRegisterSize::Byte,
+            16 => IrRegisterSize::Word,
+            32 => IrRegisterSize::Double,
+            64 => IrRegisterSize::Quad,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Display for IrRegisterSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IrRegisterSize::Byte => write!(f, "b"),
+            IrRegisterSize::Word => write!(f, "w"),
+            IrRegisterSize::Double => write!(f, "d"),
+            IrRegisterSize::Quad => write!(f, "q"),
+        }
+    }
+}
 
 pub enum IrValue {
     U8(u8),
@@ -31,6 +73,7 @@ pub enum IrInstruction {
     MovImm(IrRegister, IrValue),
     Add(IrRegister, IrRegister, IrRegister),
     Gt(IrRegister, IrRegister, IrRegister),
+    Lt(IrRegister, IrRegister, IrRegister),
     Jmp(IrBlockIndex),
     JmpNz(IrBlockIndex, IrRegister),
     Push(IrRegister),
@@ -45,16 +88,17 @@ impl Display for IrInstruction {
         use IrInstruction::*;
 
         match self {
-            Mov(dest_reg, source_reg) => write!(f, "mov {} {}", dest_reg, source_reg),
-            MovImm(reg, value) => write!(f, "movimm {} {}", reg, value),
-            Add(dest, a, b) => write!(f, "add {} {} {}", dest, a, b),
-            Gt(dest, a, b) => write!(f, "gt {} {} {}", dest, a, b),
-            Jmp(index) => write!(f, "jmp {}", index),
-            JmpNz(index, reg) => write!(f, "jmpnz {} {}", index, reg),
-            Push(value) => write!(f, "push {}", value),
-            Pop(value) => write!(f, "pop {}", value),
-            Call(index) => write!(f, "call {}", index),
-            CallExtern(name) => write!(f, "ecall {}", name),
+            Mov(dest_reg, source_reg) => write!(f, "mov\t{} {}", dest_reg, source_reg),
+            MovImm(reg, value) => write!(f, "movimm\t{} {}", reg, value),
+            Add(dest, a, b) => write!(f, "add\t{} {} {}", dest, a, b),
+            Gt(dest, a, b) => write!(f, "gt\t{} {} {}", dest, a, b),
+            Lt(dest, a, b) => write!(f, "lt\t{} {} {}", dest, a, b),
+            Jmp(index) => write!(f, "jmp\t{}", index),
+            JmpNz(index, reg) => write!(f, "jmpnz\t{} {}", index, reg),
+            Push(value) => write!(f, "push\t{}", value),
+            Pop(value) => write!(f, "pop\t{}", value),
+            Call(index) => write!(f, "call\t{}", index),
+            CallExtern(name) => write!(f, "ecall\t{}", name),
             Ret() => write!(f, "ret"),
         }
     }
@@ -94,16 +138,16 @@ impl Display for IrBlock {
 
 pub struct IrBuilder {
     blocks: Vec<IrBlock>,
-    register_index: IrRegister,
     block_stack: Vec<IrBlockIndex>,
     strings: Vec<(usize, String)>,
+    ir_registers: Vec<IrRegister>,
 }
 
 impl Display for IrBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "STRINGS")?;
         for (id, value) in &self.strings {
-            writeln!(f, "{}: '{}'", id, value.replace("\n", "\\n"))?;
+            writeln!(f, "{}: '{}", id, value.replace('\n', "\\n"))?;
         }
         writeln!(f, "\n")?;
 
@@ -119,15 +163,17 @@ impl IrBuilder {
     pub fn new() -> Self {
         Self {
             blocks: vec![],
-            register_index: 0,
             block_stack: vec![],
             strings: vec![],
+            ir_registers: vec![],
         }
     }
 
-    pub fn new_register(&mut self) -> IrRegister {
-        self.register_index += 1;
-        self.register_index - 1
+    pub fn new_register(&mut self, size: IrRegisterSize) -> IrRegister {
+        let index = self.ir_registers.len();
+        let register = IrRegister { index, size };
+        self.ir_registers.push(register);
+        register
     }
 
     pub fn add_block(&mut self, name: &str) -> IrBlockIndex {
@@ -147,18 +193,18 @@ impl IrBuilder {
     }
 
     pub fn pop_block(&mut self) {
-        assert!(self.block_stack.len() > 0);
+        assert!(!self.block_stack.is_empty());
         self.block_stack.remove(self.block_stack.len() - 1);
     }
 
-    pub fn add_string(&mut self, string: String) -> usize {
-        let location = self.new_register();
-        self.strings.push((location, string));
-        location
+    pub fn add_string(&mut self, string: String) -> IrRegister {
+        let reg = self.new_register(IrRegisterSize::Quad);
+        self.strings.push((reg.index, string));
+        reg
     }
 
     fn current_block(&self) -> IrBlockIndex {
-        assert!(self.block_stack.len() > 0);
+        assert!(!self.block_stack.is_empty());
         *self.block_stack.last().unwrap()
     }
 
@@ -232,12 +278,12 @@ mod tests {
         let main_block = builder.add_block("main");
 
         builder.push_block(main_block);
-        let a_register = builder.new_register();
+        let a_register = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(MovImm(a_register, IrValue::U32(12)));
-        let b_register = builder.new_register();
+        let b_register = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(MovImm(b_register, IrValue::U32(13)));
 
-        let result_register = builder.new_register();
+        let result_register = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(Add(result_register, a_register, b_register));
         builder.pop_block();
     }
@@ -251,13 +297,13 @@ mod tests {
         let add_block = builder.add_block("add");
         builder.push_block(add_block);
 
-        let a_reg = builder.new_register();
+        let a_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(Pop(a_reg));
 
-        let b_reg = builder.new_register();
+        let b_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(Pop(b_reg));
 
-        let result_reg = builder.new_register();
+        let result_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(Add(result_reg, a_reg, b_reg));
 
         builder.add_instruction(Push(result_reg));
@@ -268,17 +314,17 @@ mod tests {
         let main_block = builder.add_block("main");
         builder.push_block(main_block);
 
-        let arg1_reg = builder.new_register();
+        let arg1_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(MovImm(arg1_reg, IrValue::U32(12)));
 
-        let arg2_reg = builder.new_register();
+        let arg2_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(MovImm(arg2_reg, IrValue::U32(13)));
 
         builder.add_instruction(Push(arg1_reg));
         builder.add_instruction(Push(arg2_reg));
         builder.add_instruction(Call(add_block));
 
-        let final_result_reg = builder.new_register();
+        let final_result_reg = builder.new_register(IrRegisterSize::Double);
         builder.add_instruction(Pop(final_result_reg));
 
         builder.pop_block();

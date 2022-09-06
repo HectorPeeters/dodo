@@ -39,8 +39,10 @@ impl<'a> IrBackend<'a> {
 
                 Ok(())
             }
-            Statement::Declaration(name, _, range) => {
-                let destination_reg = self.builder.new_register();
+            Statement::Declaration(name, value_type, range) => {
+                let destination_reg = self
+                    .builder
+                    .new_register(self.project.get_type_size(value_type).into());
 
                 self.scope
                     .insert(&name, destination_reg)
@@ -61,7 +63,35 @@ impl<'a> IrBackend<'a> {
                 todo!()
             }
             Statement::Expression(expr, _) => self.gen_expression(expr).map(|_| ()),
-            Statement::While(_, _, _) => todo!(),
+            Statement::While(condition, body, _) => {
+                let condition_reg = self.gen_expression(condition)?;
+                let condition_block = self.builder.add_block("condition_block");
+                let while_body_block = self.builder.add_block("while_block");
+                let continue_block = self.builder.add_block("continue_block");
+
+                self.builder
+                    .add_instruction(IrInstruction::Jmp(condition_block));
+
+                self.builder.push_block(condition_block);
+                self.builder
+                    .add_instruction(IrInstruction::JmpNz(continue_block, condition_reg));
+                self.builder
+                    .add_instruction(IrInstruction::Jmp(while_body_block));
+                self.builder.pop_block();
+                self.builder.pop_block();
+
+                self.builder.push_block(while_body_block);
+
+                self.gen_statement(*body)?;
+                self.builder
+                    .add_instruction(IrInstruction::Jmp(condition_block));
+
+                self.builder.pop_block();
+
+                self.builder.push_block(continue_block);
+
+                Ok(())
+            }
             Statement::If(condition, body, else_body, _) => {
                 if let Some(_) = else_body {
                     todo!();
@@ -101,11 +131,13 @@ impl<'a> IrBackend<'a> {
 
     fn gen_expression(&mut self, expression: Expression) -> Result<IrRegister> {
         match expression {
-            Expression::BinaryOperator(op, left, right, _, _) => {
+            Expression::BinaryOperator(op, left, right, result_type, _) => {
                 let left_reg = self.gen_expression(*left)?;
                 let right_reg = self.gen_expression(*right)?;
 
-                let destination_reg = self.builder.new_register();
+                let destination_reg = self
+                    .builder
+                    .new_register(self.project.get_type_size(result_type).into());
 
                 let instruction = match op {
                     BinaryOperatorType::Add => {
@@ -119,7 +151,9 @@ impl<'a> IrBackend<'a> {
                     BinaryOperatorType::ShiftRight => todo!(),
                     BinaryOperatorType::Equal => todo!(),
                     BinaryOperatorType::NotEqual => todo!(),
-                    BinaryOperatorType::LessThan => todo!(),
+                    BinaryOperatorType::LessThan => {
+                        IrInstruction::Lt(destination_reg, left_reg, right_reg)
+                    }
                     BinaryOperatorType::LessThanEqual => todo!(),
                     BinaryOperatorType::GreaterThan => {
                         IrInstruction::Gt(destination_reg, left_reg, right_reg)
@@ -132,7 +166,7 @@ impl<'a> IrBackend<'a> {
                 Ok(destination_reg)
             }
             Expression::UnaryOperator(_, _, _, _) => todo!(),
-            Expression::FunctionCall(name, args, _, _) => {
+            Expression::FunctionCall(name, args, return_type, _) => {
                 for arg in args {
                     let arg_reg = self.gen_expression(arg)?;
                     self.builder.add_instruction(IrInstruction::Push(arg_reg));
@@ -148,12 +182,16 @@ impl<'a> IrBackend<'a> {
                         .add_instruction(IrInstruction::CallExtern(name));
                 }
 
-                let result_reg = self.builder.new_register();
+                let result_reg = self
+                    .builder
+                    .new_register(self.project.get_type_size(return_type).into());
                 self.builder.add_instruction(IrInstruction::Pop(result_reg));
                 Ok(result_reg)
             }
             Expression::IntegerLiteral(value, value_type, _) => {
-                let result_reg = self.builder.new_register();
+                let result_reg = self
+                    .builder
+                    .new_register(self.project.get_type_size(value_type).into());
 
                 let value = match value_type {
                     BUILTIN_TYPE_U8 => IrValue::U8(value as u8),
@@ -191,8 +229,10 @@ impl<'a> Backend for IrBackend<'a> {
                 self.builder.push_block(function_block);
                 self.scope.push();
 
-                for (param_name, _) in params.into_iter().rev() {
-                    let param_reg = self.builder.new_register();
+                for (param_name, param_type) in params.into_iter().rev() {
+                    let param_reg = self
+                        .builder
+                        .new_register(self.project.get_type_size(param_type).into());
                     self.builder.add_instruction(IrInstruction::Pop(param_reg));
 
                     self.scope

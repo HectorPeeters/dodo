@@ -55,6 +55,10 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
     let executable_path = Path::new(&executable_path);
     backend.finalize(executable_path, false)?;
 
+    if backend_type == BackendType::Ir {
+        return Ok(());
+    }
+
     println!("{:?}", executable_path);
     let output = Command::new(executable_path)
         .output()
@@ -89,7 +93,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 #[test_case("tests/data/structs.dodo"; "structs")]
 #[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {
-    let backend_types = vec![BackendType::C, BackendType::X86];
+    let backend_types = vec![BackendType::Ir, BackendType::C, BackendType::X86];
 
     for b in backend_types {
         run_test(path, b)?;
