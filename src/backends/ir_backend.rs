@@ -172,7 +172,7 @@ impl<'a> IrBackend<'a> {
             Expression::VariableRef(name, _, range) => {
                 self.scope.find(&name).map_err(|e| e.with_range(range))
             }
-            Expression::StringLiteral(_, _, _) => todo!(),
+            Expression::StringLiteral(value, _, _) => Ok(self.builder.add_string(value)),
             Expression::StructLiteral(_, _, _) => todo!(),
             Expression::FieldAccessor(_, _, _, _) => todo!(),
             // TODO: this probably isn't sufficient
@@ -187,19 +187,22 @@ impl<'a> Backend for IrBackend<'a> {
         match statement {
             UpperStatement::Function(name, params, _, body, _, range) => {
                 let function_block = self.builder.add_block(&name);
-                self.builder.push_block(function_block);
 
-                for (name, _) in params {
+                self.builder.push_block(function_block);
+                self.scope.push();
+
+                for (param_name, _) in params.into_iter().rev() {
                     let param_reg = self.builder.new_register();
                     self.builder.add_instruction(IrInstruction::Pop(param_reg));
 
                     self.scope
-                        .insert(&name, param_reg)
+                        .insert(&param_name, param_reg)
                         .map_err(|e| e.with_range(range))?;
                 }
 
                 self.gen_statement(*body)?;
 
+                self.scope.pop();
                 self.builder.pop_block();
 
                 Ok(())
@@ -210,7 +213,7 @@ impl<'a> Backend for IrBackend<'a> {
         }
     }
 
-    fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
+    fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {
         println!("{}", self.builder);
 
         Ok(())

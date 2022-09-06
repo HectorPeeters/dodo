@@ -96,10 +96,17 @@ pub struct IrBuilder {
     blocks: Vec<IrBlock>,
     register_index: IrRegister,
     block_stack: Vec<IrBlockIndex>,
+    strings: Vec<(usize, String)>,
 }
 
 impl Display for IrBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "STRINGS")?;
+        for (id, value) in &self.strings {
+            writeln!(f, "{}: '{}'", id, value.replace("\n", "\\n"))?;
+        }
+        writeln!(f, "\n")?;
+
         for (index, block) in self.blocks.iter().enumerate() {
             writeln!(f, "==== {}: {} ====", index, block.name)?;
             writeln!(f, "{}\n", block)?;
@@ -114,6 +121,7 @@ impl IrBuilder {
             blocks: vec![],
             register_index: 0,
             block_stack: vec![],
+            strings: vec![],
         }
     }
 
@@ -141,6 +149,12 @@ impl IrBuilder {
     pub fn pop_block(&mut self) {
         assert!(self.block_stack.len() > 0);
         self.block_stack.remove(self.block_stack.len() - 1);
+    }
+
+    pub fn add_string(&mut self, string: String) -> usize {
+        let location = self.new_register();
+        self.strings.push((location, string));
+        location
     }
 
     fn current_block(&self) -> IrBlockIndex {
