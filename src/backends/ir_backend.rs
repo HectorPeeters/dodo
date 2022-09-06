@@ -254,7 +254,9 @@ impl<'a> Backend for IrBackend<'a> {
     }
 
     fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {
-        println!("{}", self.builder);
+        eprintln!("{}", self.builder);
+
+        println!("{}", self.builder.get_dot_graph());
 
         Ok(())
     }

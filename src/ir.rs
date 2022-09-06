@@ -212,18 +212,45 @@ impl IrBuilder {
         self.blocks.iter().position(|b| b.name == name)
     }
 
-    pub fn can_reach_blocks(&mut self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
+    pub fn can_reach_blocks(&self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
         let mut result = vec![];
 
         for instr in &self.blocks[block_index].instructions {
             match instr {
                 IrInstruction::Jmp(target) => result.push(*target),
+                IrInstruction::JmpNz(target, _) => result.push(*target),
                 IrInstruction::Call(target) => result.push(*target),
                 _ => {}
             }
         }
 
         result
+    }
+
+    pub fn get_dot_graph(&self) -> String {
+        let mut buffer = String::new();
+        buffer.push_str("digraph G {\n");
+
+        for (index, block) in self.blocks.iter().enumerate() {
+            let instruction_text = block
+                .instructions
+                .iter()
+                .map(|x| format!("{x}"))
+                .collect::<Vec<_>>()
+                .join("\\n");
+
+            buffer.push_str(&format!(
+                "\t{} [label=\"{}\", shape=box];\n",
+                index, instruction_text
+            ));
+
+            for reachable_block in self.can_reach_blocks(index) {
+                buffer.push_str(&format!("\t{} -> {}\n", index, reachable_block));
+            }
+        }
+
+        buffer.push('}');
+        buffer
     }
 }
 
