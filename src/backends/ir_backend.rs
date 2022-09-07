@@ -1,7 +1,7 @@
 use super::Backend;
 use crate::ast::{BinaryOperatorType, Expression, Statement};
 use crate::error::Result;
-use crate::ir::{IrBuilder, IrInstruction, IrRegister, IrValue};
+use crate::ir::{IrBuilder, IrInstruction, IrRegister, IrRegisterSize, IrValue};
 use crate::project::{
     BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
 };
@@ -142,32 +142,23 @@ impl<'a> IrBackend<'a> {
                     .new_register(self.project.get_type_size(result_type).into());
 
                 let instruction = match op {
-                    BinaryOperatorType::Add => {
-                        IrInstruction::Add(destination_reg, left_reg, right_reg)
-                    }
-                    BinaryOperatorType::Subtract => {
-                        IrInstruction::Sub(destination_reg, left_reg, right_reg)
-                    }
-                    BinaryOperatorType::Multiply => todo!(),
-                    BinaryOperatorType::Divide => todo!(),
-                    BinaryOperatorType::Modulo => todo!(),
-                    BinaryOperatorType::ShiftLeft => todo!(),
-                    BinaryOperatorType::ShiftRight => todo!(),
-                    BinaryOperatorType::Equal => todo!(),
-                    BinaryOperatorType::NotEqual => todo!(),
-                    BinaryOperatorType::LessThan => {
-                        IrInstruction::Lt(destination_reg, left_reg, right_reg)
-                    }
-                    BinaryOperatorType::LessThanEqual => {
-                        IrInstruction::LtE(destination_reg, left_reg, right_reg)
-                    }
-                    BinaryOperatorType::GreaterThan => {
-                        IrInstruction::Gt(destination_reg, left_reg, right_reg)
-                    }
-                    BinaryOperatorType::GreaterThanEqual => todo!(),
+                    BinaryOperatorType::Add => IrInstruction::Add,
+                    BinaryOperatorType::Subtract => IrInstruction::Sub,
+                    BinaryOperatorType::Multiply => IrInstruction::Mul,
+                    BinaryOperatorType::Divide => IrInstruction::Div,
+                    BinaryOperatorType::Modulo => IrInstruction::Mod,
+                    BinaryOperatorType::ShiftLeft => IrInstruction::Shl,
+                    BinaryOperatorType::ShiftRight => IrInstruction::Shr,
+                    BinaryOperatorType::Equal => IrInstruction::Eq,
+                    BinaryOperatorType::NotEqual => IrInstruction::Ne,
+                    BinaryOperatorType::LessThan => IrInstruction::Lt,
+                    BinaryOperatorType::LessThanEqual => IrInstruction::LtE,
+                    BinaryOperatorType::GreaterThan => IrInstruction::Gt,
+                    BinaryOperatorType::GreaterThanEqual => IrInstruction::GtE,
                 };
 
-                self.builder.add_instruction(instruction);
+                self.builder
+                    .add_instruction(instruction(destination_reg, left_reg, right_reg));
 
                 Ok(destination_reg)
             }
@@ -217,7 +208,15 @@ impl<'a> IrBackend<'a> {
 
                 Ok(result_reg)
             }
-            Expression::BooleanLiteral(_, _, _) => todo!(),
+            Expression::BooleanLiteral(value, _, _) => {
+                let reg = self.builder.new_register(IrRegisterSize::Byte);
+                self.builder.add_instruction(IrInstruction::MovImm(
+                    reg,
+                    IrValue::U8(if value { 1 } else { 0 }),
+                ));
+
+                Ok(reg)
+            }
             Expression::VariableRef(name, _, range) => {
                 self.scope.find(&name).map_err(|e| e.with_range(range))
             }
