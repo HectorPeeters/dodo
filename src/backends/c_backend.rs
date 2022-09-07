@@ -129,7 +129,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
                     return_type, name, args, section_attribute
                 ));
 
-                self.visit_statement(*body)?;
+                self.visit_statement(body)?;
 
                 self.buffer.push('\n');
 

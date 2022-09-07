@@ -11,8 +11,8 @@ const boolean2: bool = true;
 fn main() {
     printf("%s\n", greeting);
     printf("The number is %u\n", number);
-    printf("The boolean one is %hhu\n", boolean1);
-    printf("The boolean two is %hhu\n", boolean2);
+    printf("Boolean one is %hhu\n", boolean1);
+    printf("Boolean two is %hhu\n", boolean2);
 
     exit(0);
 }

@@ -1,3 +1,4 @@
 Hello world!
 The number is 4321
-
+Boolean one is 0
+Boolean two is 1

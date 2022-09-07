@@ -93,7 +93,7 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
 #[test_case("tests/data/structs.dodo"; "structs")]
 #[test_case("tests/data/types.dodo"; "types")]
 fn test_for_all_backends(path: &str) -> Result<()> {
-    let backend_types = vec![BackendType::Ir, BackendType::C, BackendType::X86];
+    let backend_types = vec![BackendType::C, BackendType::X86];
 
     for b in backend_types {
         run_test(path, b)?;

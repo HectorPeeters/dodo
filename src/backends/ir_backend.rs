@@ -260,7 +260,7 @@ impl<'a> Backend for IrBackend<'a> {
                         .map_err(|e| e.with_range(range))?;
                 }
 
-                self.gen_statement(*body)?;
+                self.gen_statement(body)?;
 
                 self.scope.pop();
                 self.builder.pop_block();

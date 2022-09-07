@@ -391,7 +391,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                     ));
                 }
 
-                self.visit_statement(*body)?;
+                self.visit_statement(body)?;
 
                 if no_return {
                     return Ok(());

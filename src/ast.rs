@@ -10,7 +10,7 @@ pub enum UpperStatement {
         String,
         Vec<(String, TypeId)>,
         TypeId,
-        Box<Statement>,
+        Statement,
         Annotations,
         SourceRange,
     ),

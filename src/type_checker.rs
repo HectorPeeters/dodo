@@ -195,7 +195,7 @@ impl<'a> TypeChecker<'a> {
                     name.clone(),
                     parameters,
                     return_type,
-                    Box::new(checked_body),
+                    checked_body,
                     checked_annotations,
                     range,
                 ))
