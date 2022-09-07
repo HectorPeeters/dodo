@@ -30,7 +30,7 @@ impl From<usize> for IrRegisterSize {
             16 => IrRegisterSize::Word,
             32 => IrRegisterSize::Double,
             64 => IrRegisterSize::Quad,
-            _ => unreachable!(),
+            _ => unreachable!("Register size {}", s),
         }
     }
 }

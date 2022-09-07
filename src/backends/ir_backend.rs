@@ -225,7 +225,17 @@ impl<'a> IrBackend<'a> {
             Expression::StructLiteral(_, _, _) => todo!(),
             Expression::FieldAccessor(_, _, _, _) => todo!(),
             // TODO: this probably isn't sufficient
-            Expression::Widen(expr, _, _) => self.gen_expression(*expr),
+            Expression::Widen(expr, target_type, _) => {
+                let result_reg = self
+                    .builder
+                    .new_register(self.project.get_type_size(target_type).into());
+                let expr_reg = self.gen_expression(*expr)?;
+
+                self.builder
+                    .add_instruction(IrInstruction::Mov(result_reg, expr_reg));
+
+                Ok(result_reg)
+            }
             Expression::Cast(_, _, _) => todo!(),
         }
     }
