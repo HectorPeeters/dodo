@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use test_case::test_case;
+use test_generator::test_resources;
 
 fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
     println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
@@ -72,32 +72,11 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
     Ok(())
 }
 
-#[test_case("tests/data/args.dodo"; "args")]
-#[test_case("tests/data/char_literals.dodo"; "char literals")]
-#[test_case("tests/data/comparisons.dodo"; "comparisons")]
-#[test_case("tests/data/fibonacci.dodo"; "fibonacci")]
-#[test_case("tests/data/fibonacci_recursive.dodo"; "fibonacci recursive")]
-#[test_case("tests/data/global_const.dodo"; "global constants")]
-#[test_case("tests/data/int_radix.dodo"; "int radix")]
-#[test_case("tests/data/math.dodo"; "math")]
-#[test_case("tests/data/nested.dodo"; "nested")]
-#[test_case("tests/data/noreturn.dodo"; "no return")]
-#[test_case("tests/data/pointers.dodo"; "pointers")]
-#[test_case("tests/data/primes.dodo"; "primes")]
-#[test_case("tests/data/print.dodo"; "print")]
-#[test_case("tests/data/pythagorean_triplets.dodo"; "pythagorean triplets")]
-#[test_case("tests/data/return.dodo"; "returns")]
-#[test_case("tests/data/scopes.dodo"; "scopes")]
-#[test_case("tests/data/section_annotation.dodo"; "annotations")]
-#[test_case("tests/data/string.dodo"; "string")]
-#[test_case("tests/data/structs.dodo"; "structs")]
-#[test_case("tests/data/types.dodo"; "types")]
-fn test_for_all_backends(path: &str) -> Result<()> {
+#[test_resources("tests/data/*.dodo")]
+fn test_for_all_backends(path: &str) {
     let backend_types = vec![BackendType::C, BackendType::X86];
 
     for b in backend_types {
-        run_test(path, b)?;
+        run_test(path, b).unwrap();
     }
-
-    Ok(())
 }

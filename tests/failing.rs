@@ -14,7 +14,7 @@ use std::{
     hash::{Hash, Hasher},
     path::Path,
 };
-use test_case::test_case;
+use test_generator::test_resources;
 
 fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
     println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
@@ -54,22 +54,8 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
     Ok(())
 }
 
-#[test_case("tests/failing/assign_incompatible.dodo"; "assign incompatible")]
-#[test_case("tests/failing/assign_return_type_incompatible.dodo"; "assign return type incompatible")]
-//TODO: #[test_case("tests/failing/dont_assign_global_const.dodo"; "dont assign global const")]
-#[test_case("tests/failing/function_parameter_incompatible.dodo"; "function parameter incompatible")]
-#[test_case("tests/failing/if_condition_not_bool.dodo"; "if condition not bool")]
-#[test_case("tests/failing/invalid_infix.dodo"; "invalid infix")]
-#[test_case("tests/failing/invalid_literal.dodo"; "invalid literal")]
-#[test_case("tests/failing/invalid_prefix.dodo"; "invalid prefix")]
-#[test_case("tests/failing/invalid_statement.dodo"; "invalid statement")]
-#[test_case("tests/failing/invalid_type.dodo"; "invalid type")]
-#[test_case("tests/failing/modulo_eight_bit.dodo"; "modulo eight bit")]
-#[test_case("tests/failing/unexpected_token.dodo"; "unexpected token")]
-#[test_case("tests/failing/unfinished_token_stream.dodo"; "unfinished token stream")]
-#[test_case("tests/failing/unfinished_token_stream_2.dodo"; "unfinished token stream 2")]
-#[test_case("tests/failing/while_condition_not_bool.dodo"; "while condition not bool")]
-fn test_for_all_backends(path: &str) -> Result<()> {
+#[test_resources("tests/failing/*.dodo")]
+fn test_for_all_backends(path: &str) {
     let backend_types = vec![BackendType::C, BackendType::X86];
 
     for b in backend_types {
@@ -87,6 +73,4 @@ fn test_for_all_backends(path: &str) -> Result<()> {
             assert_eq!(result.unwrap_err().message.trim(), expected.trim());
         }
     }
-
-    Ok(())
 }
