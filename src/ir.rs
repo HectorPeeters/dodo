@@ -5,8 +5,8 @@ pub type IrBlockIndex = usize;
 
 #[derive(Debug, Copy, Clone)]
 pub struct IrRegister {
-    index: usize,
-    size: IrRegisterSize,
+    pub index: usize,
+    pub size: IrRegisterSize,
 }
 
 impl Display for IrRegister {
@@ -46,12 +46,31 @@ impl Display for IrRegisterSize {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum IrValue {
     U8(u8),
     U16(u16),
     U32(u32),
     U64(u64),
     Bool(bool),
+    String(usize),
+    Uninitialized(),
+}
+
+impl IrValue {
+    pub fn to_string(&self, builder: &IrBuilder) -> String {
+        use IrValue::*;
+
+        match self {
+            U8(x) => format!("{}", *x),
+            U16(x) => format!("{}", *x),
+            U32(x) => format!("{}", *x),
+            U64(x) => format!("{}", *x),
+            Bool(x) => format!("{}", if *x { "true" } else { "false" }),
+            String(index) => format!("{}", builder.strings[*index]),
+            Uninitialized() => format!("uninitalized"),
+        }
+    }
 }
 
 impl Display for IrValue {
@@ -64,6 +83,8 @@ impl Display for IrValue {
             U32(x) => write!(f, "{}u32", *x),
             U64(x) => write!(f, "{}u64", *x),
             Bool(x) => write!(f, "{}", if *x { "true" } else { "false" }),
+            String(index) => write!(f, "{}s", *index),
+            Uninitialized() => write!(f, "uninitalized"),
         }
     }
 }
@@ -71,6 +92,7 @@ impl Display for IrValue {
 pub enum IrInstruction {
     Mov(IrRegister, IrRegister),
     MovImm(IrRegister, IrValue),
+    MovZx(IrRegister, IrRegister),
     Add(IrRegister, IrRegister, IrRegister),
     Sub(IrRegister, IrRegister, IrRegister),
     Mul(IrRegister, IrRegister, IrRegister),
@@ -85,11 +107,11 @@ pub enum IrInstruction {
     Shl(IrRegister, IrRegister, IrRegister),
     Shr(IrRegister, IrRegister, IrRegister),
     Jmp(IrBlockIndex),
-    JmpNz(IrBlockIndex, IrRegister),
+    CondJmp(IrBlockIndex, IrBlockIndex, IrRegister),
     Push(IrRegister),
     Pop(IrRegister),
     Call(IrBlockIndex),
-    CallExtern(String),
+    CallExtern(String, usize),
     Ret(),
 }
 
@@ -100,6 +122,7 @@ impl Display for IrInstruction {
         match self {
             Mov(dest_reg, source_reg) => write!(f, "mov\t{} {}", dest_reg, source_reg),
             MovImm(reg, value) => write!(f, "movimm\t{} {}", reg, value),
+            MovZx(dest_reg, src_reg) => write!(f, "movzx\t{} {}", dest_reg, src_reg),
             Add(dest, a, b) => write!(f, "add\t{} {} {}", dest, a, b),
             Sub(dest, a, b) => write!(f, "sub\t{} {} {}", dest, a, b),
             Mul(dest, a, b) => write!(f, "mul\t{} {} {}", dest, a, b),
@@ -114,11 +137,11 @@ impl Display for IrInstruction {
             Shl(dest, a, b) => write!(f, "shl\t{} {} {}", dest, a, b),
             Shr(dest, a, b) => write!(f, "shr\t{} {} {}", dest, a, b),
             Jmp(index) => write!(f, "jmp\t{}", index),
-            JmpNz(index, reg) => write!(f, "jmpnz\t{} {}", index, reg),
+            CondJmp(true_index, false_index, reg) => write!(f, "condjmp\t{} {} {}", true_index, false_index, reg),
             Push(value) => write!(f, "push\t{}", value),
             Pop(value) => write!(f, "pop\t{}", value),
             Call(index) => write!(f, "call\t{}", index),
-            CallExtern(name) => write!(f, "ecall\t{}", name),
+            CallExtern(name, arg_count) => write!(f, "ecall\t{}[{}]", name, arg_count),
             Ret() => write!(f, "ret"),
         }
     }
@@ -126,7 +149,7 @@ impl Display for IrInstruction {
 
 pub struct IrBlock {
     pub name: String,
-    instructions: Vec<IrInstruction>,
+    pub instructions: Vec<IrInstruction>,
 }
 
 impl IrBlock {
@@ -157,16 +180,16 @@ impl Display for IrBlock {
 }
 
 pub struct IrBuilder {
-    blocks: Vec<IrBlock>,
+    pub blocks: Vec<IrBlock>,
     block_stack: Vec<IrBlockIndex>,
-    strings: Vec<(usize, String)>,
-    ir_registers: Vec<IrRegister>,
+    pub strings: Vec<String>,
+    pub ir_registers: Vec<IrRegister>,
 }
 
 impl Display for IrBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "STRINGS")?;
-        for (id, value) in &self.strings {
+        for (id, value) in self.strings.iter().enumerate() {
             writeln!(f, "{}: '{}", id, value.replace('\n', "\\n"))?;
         }
         writeln!(f, "\n")?;
@@ -217,10 +240,9 @@ impl IrBuilder {
         self.block_stack.remove(self.block_stack.len() - 1);
     }
 
-    pub fn add_string(&mut self, string: String) -> IrRegister {
-        let reg = self.new_register(IrRegisterSize::Quad);
-        self.strings.push((reg.index, string));
-        reg
+    pub fn add_string(&mut self, string: String) -> usize {
+        self.strings.push(string);
+        self.strings.len() - 1
     }
 
     fn current_block(&self) -> IrBlockIndex {
@@ -244,7 +266,10 @@ impl IrBuilder {
         for instr in &self.blocks[block_index].instructions {
             match instr {
                 IrInstruction::Jmp(target) => add(target),
-                IrInstruction::JmpNz(target, _) => add(target),
+                IrInstruction::CondJmp(true_target, false_target, _) => {
+                    add(true_target);
+                    add(false_target);
+                },
                 IrInstruction::Call(target) => add(target),
                 _ => {}
             }

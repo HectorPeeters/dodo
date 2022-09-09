@@ -5,8 +5,7 @@ use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
 use dodo::type_checker::TypeChecker;
 use dodo::{backends::*, project::Project};
-use std::io::Write;
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -102,8 +101,8 @@ fn main() -> Result<()> {
     // Backend
 
     let mut backend: Box<dyn Backend> = match args.backend {
-        Some(BackendType::X86) | None => Box::new(X86NasmBackend::new(&mut project)),
-        Some(BackendType::C) => Box::new(CBackend::new(&mut project)),
+        Some(BackendType::C) | None => Box::new(CBackend::new(&mut project)),
+        Some(BackendType::X86) => Box::new(X86NasmBackend::new(&mut project)),
         Some(BackendType::Ir) => Box::new(IrBackend::new(&mut project)),
     };
 
@@ -119,11 +118,7 @@ fn main() -> Result<()> {
     backend.finalize(&output_executable, args.dont_compile)?;
 
     if args.run {
-        let absolute_path = std::fs::canonicalize(output_executable).unwrap();
-        let output = Command::new(absolute_path).output().unwrap();
-
-        std::io::stdout().write_all(&output.stdout).unwrap();
-        std::io::stderr().write_all(&output.stderr).unwrap();
+        backend.run(&output_executable)?;
     }
 
     Ok(())

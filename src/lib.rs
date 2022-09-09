@@ -5,6 +5,7 @@
 pub mod ast;
 pub mod backends;
 pub mod error;
+pub mod interpreter;
 pub mod ir;
 pub mod parser;
 pub mod project;

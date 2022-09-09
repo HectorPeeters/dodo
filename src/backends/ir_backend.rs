@@ -1,7 +1,8 @@
 use super::Backend;
 use crate::ast::{BinaryOperatorType, Expression, Statement};
 use crate::error::Result;
-use crate::ir::{IrBuilder, IrInstruction, IrRegister, IrRegisterSize, IrValue};
+use crate::interpreter::Interpreter;
+use crate::ir::{IrBlockIndex, IrBuilder, IrInstruction, IrRegister, IrRegisterSize, IrValue};
 use crate::project::{
     BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
 };
@@ -13,6 +14,7 @@ pub struct IrBackend<'a> {
     project: &'a mut Project,
     builder: IrBuilder,
     scope: Scope<IrRegister>,
+    main_block: Option<IrBlockIndex>,
 }
 
 impl<'a> IrBackend<'a> {
@@ -21,6 +23,7 @@ impl<'a> IrBackend<'a> {
             project,
             builder: IrBuilder::new(),
             scope: Scope::new(),
+            main_block: None,
         }
     }
 
@@ -66,7 +69,6 @@ impl<'a> IrBackend<'a> {
             }
             Statement::Expression(expr, _) => self.gen_expression(expr).map(|_| ()),
             Statement::While(condition, body, _) => {
-                let condition_reg = self.gen_expression(condition)?;
                 let condition_block = self.builder.add_block("condition_block");
                 let while_body_block = self.builder.add_block("while_block");
                 let continue_block = self.builder.add_block("continue_block");
@@ -75,10 +77,12 @@ impl<'a> IrBackend<'a> {
                     .add_instruction(IrInstruction::Jmp(condition_block));
 
                 self.builder.push_block(condition_block);
-                self.builder
-                    .add_instruction(IrInstruction::JmpNz(continue_block, condition_reg));
-                self.builder
-                    .add_instruction(IrInstruction::Jmp(while_body_block));
+                let condition_reg = self.gen_expression(condition)?;
+                self.builder.add_instruction(IrInstruction::CondJmp(
+                    while_body_block,
+                    continue_block,
+                    condition_reg,
+                ));
                 self.builder.pop_block();
                 self.builder.pop_block();
 
@@ -103,10 +107,11 @@ impl<'a> IrBackend<'a> {
                 let if_body_block = self.builder.add_block("if_block");
                 let continue_block = self.builder.add_block("continue_block");
 
-                self.builder
-                    .add_instruction(IrInstruction::JmpNz(continue_block, condition_reg));
-                self.builder
-                    .add_instruction(IrInstruction::Jmp(if_body_block));
+                self.builder.add_instruction(IrInstruction::CondJmp(
+                    if_body_block,
+                    continue_block,
+                    condition_reg,
+                ));
                 self.builder.pop_block();
 
                 self.builder.push_block(if_body_block);
@@ -164,6 +169,7 @@ impl<'a> IrBackend<'a> {
             }
             Expression::UnaryOperator(_, _, _, _) => todo!(),
             Expression::FunctionCall(name, args, return_type, _) => {
+                let arg_count = args.len();
                 for arg in args {
                     let arg_reg = self.gen_expression(arg)?;
                     self.builder.add_instruction(IrInstruction::Push(arg_reg));
@@ -176,7 +182,7 @@ impl<'a> IrBackend<'a> {
                         .add_instruction(IrInstruction::Call(function_block_id));
                 } else {
                     self.builder
-                        .add_instruction(IrInstruction::CallExtern(name));
+                        .add_instruction(IrInstruction::CallExtern(name, arg_count));
                 }
 
                 if return_type != BUILTIN_TYPE_VOID {
@@ -220,7 +226,16 @@ impl<'a> IrBackend<'a> {
             Expression::VariableRef(name, _, range) => {
                 self.scope.find(&name).map_err(|e| e.with_range(range))
             }
-            Expression::StringLiteral(value, _, _) => Ok(self.builder.add_string(value)),
+            Expression::StringLiteral(value, _, _) => {
+                let string_index = self.builder.add_string(value);
+                let dest_reg = self.builder.new_register(IrRegisterSize::Quad);
+                self.builder.add_instruction(IrInstruction::MovImm(
+                    dest_reg,
+                    IrValue::String(string_index),
+                ));
+
+                Ok(dest_reg)
+            }
             Expression::StructLiteral(_, _, _) => todo!(),
             Expression::FieldAccessor(_, _, _, _) => todo!(),
             // TODO: this probably isn't sufficient
@@ -231,7 +246,7 @@ impl<'a> IrBackend<'a> {
                 let expr_reg = self.gen_expression(*expr)?;
 
                 self.builder
-                    .add_instruction(IrInstruction::Mov(result_reg, expr_reg));
+                    .add_instruction(IrInstruction::MovZx(result_reg, expr_reg));
 
                 Ok(result_reg)
             }
@@ -243,8 +258,12 @@ impl<'a> IrBackend<'a> {
 impl<'a> Backend for IrBackend<'a> {
     fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
         match statement {
-            UpperStatement::Function(name, params, _, body, _, range) => {
+            UpperStatement::Function(name, params, return_type, body, _annotations, range) => {
                 let function_block = self.builder.add_block(&name);
+
+                if name == "main" {
+                    self.main_block = Some(function_block);
+                }
 
                 self.builder.push_block(function_block);
                 self.scope.push();
@@ -262,6 +281,10 @@ impl<'a> Backend for IrBackend<'a> {
 
                 self.gen_statement(body)?;
 
+                if return_type == BUILTIN_TYPE_VOID {
+                    self.builder.add_instruction(IrInstruction::Ret());
+                }
+
                 self.scope.pop();
                 self.builder.pop_block();
 
@@ -274,9 +297,18 @@ impl<'a> Backend for IrBackend<'a> {
     }
 
     fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {
-        eprintln!("{}", self.builder);
-
         println!("{}", self.builder.get_dot_graph());
+
+        Ok(())
+    }
+
+    fn run(&mut self, _output: &Path) -> Result<()> {
+        let mut interpreter = Interpreter::new(
+            &self.builder,
+            self.main_block.expect("Main block must be present"),
+        );
+
+        interpreter.execute();
 
         Ok(())
     }
