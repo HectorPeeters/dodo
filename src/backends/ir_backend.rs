@@ -318,12 +318,12 @@ impl<'a> Backend for IrBackend<'a> {
     }
 
     fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {
-        println!("{}", self.builder.get_dot_graph());
+        //        println!("{}", self.builder.get_dot_graph());
 
         Ok(())
     }
 
-    fn run(&mut self, _output: &Path) -> Result<()> {
+    fn run(&mut self, _output: &Path) -> Result<String> {
         let mut interpreter = Interpreter::new(
             &self.builder,
             self.main_block.expect("Main block must be present"),
@@ -331,7 +331,9 @@ impl<'a> Backend for IrBackend<'a> {
 
         interpreter.execute();
 
-        Ok(())
+        println!("INTERP FINISHED");
+
+        Ok(interpreter.output_buffer)
     }
 
     fn name(&self) -> &'static str {

@@ -61,35 +61,12 @@ macro_rules! equality {
     };
 }
 
-fn print_printf_string(format_string: &str, args: &[IrValue], builder: &IrBuilder) {
-    // TODO: make this less hacky
-    let format_specifiers = vec!["%hhu", "%hu", "%u", "%lu", "%llu", "%d", "%s", "%p"];
-
-    let mut split_string = vec![format_string];
-
-    for format_specifier in format_specifiers {
-        let mut new_string_parts = vec![];
-        for string_part in split_string {
-            let mut split_part = string_part.split(format_specifier).collect::<Vec<_>>();
-            new_string_parts.append(&mut split_part);
-        }
-        split_string = new_string_parts;
-    }
-
-    assert_eq!(split_string.len() - 1, args.len());
-
-    print!("{}", split_string[0]);
-    for i in 0..args.len() {
-        print!("{}", args[i].to_string(builder));
-        print!("{}", split_string[i + 1]);
-    }
-}
-
 pub struct Interpreter<'a> {
     ir: &'a IrBuilder,
     registers: Vec<IrValue>,
     arg_stack: Vec<IrValue>,
     call_stack: Vec<(usize, IrBlockIndex)>,
+    pub output_buffer: String,
 }
 
 enum InstructionExecuteResult {
@@ -97,6 +74,7 @@ enum InstructionExecuteResult {
     ChangeBlock(IrBlockIndex),
     PushBlock(IrBlockIndex),
     PopBlock,
+    Exit,
 }
 
 impl<'a> Interpreter<'a> {
@@ -106,6 +84,7 @@ impl<'a> Interpreter<'a> {
             registers: vec![IrValue::Uninitialized(); ir.ir_registers.len()],
             arg_stack: vec![],
             call_stack: vec![(0, block_index)],
+            output_buffer: String::new(),
         }
     }
 
@@ -186,13 +165,12 @@ impl<'a> Interpreter<'a> {
                     "printf" => {
                         let format_string = args.remove(0);
                         if let IrValue::String(index) = format_string {
-                            print_printf_string(&self.ir.strings[index], &args, self.ir);
+                            self.print_printf_string(&self.ir.strings[index], &args);
                         }
                         self.arg_stack.push(IrValue::U64(0));
                     }
                     "exit" => {
-                        // TODO: use correct error code here
-                        std::process::exit(0);
+                        return InstructionExecuteResult::Exit;
                     }
                     _ => unreachable!("Unknown external function {}", name),
                 }
@@ -229,7 +207,40 @@ impl<'a> Interpreter<'a> {
                 InstructionExecuteResult::PopBlock => {
                     self.call_stack.pop().unwrap();
                 }
+                InstructionExecuteResult::Exit => {
+                    return;
+                }
             }
         }
+    }
+
+    fn print_printf_string(&mut self, format_string: &str, args: &[IrValue]) {
+        // TODO: make this less hacky
+        let format_specifiers = vec!["%hhu", "%hu", "%u", "%lu", "%llu", "%d", "%s", "%p", "%c"];
+
+        let mut split_string = vec![format_string];
+
+        for format_specifier in format_specifiers {
+            let mut new_string_parts = vec![];
+            for string_part in split_string {
+                let mut split_part = string_part.split(format_specifier).collect::<Vec<_>>();
+                new_string_parts.append(&mut split_part);
+            }
+            split_string = new_string_parts;
+        }
+
+        assert_eq!(split_string.len() - 1, args.len());
+
+        let mut result_string = split_string[0].to_string();
+
+        for i in 0..args.len() {
+            result_string.push_str(&format!(
+                "{}{}",
+                args[i].to_string(self.ir),
+                split_string[i + 1]
+            ));
+        }
+
+        self.output_buffer.push_str(&result_string);
     }
 }

@@ -13,7 +13,6 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
-    process::Command,
 };
 use test_generator::test_resources;
 
@@ -55,27 +54,24 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
     let executable_path = Path::new(&executable_path);
     backend.finalize(executable_path, false)?;
 
-    if backend_type == BackendType::Ir {
-        return Ok(());
-    }
+    let output = backend.run(executable_path)?;
 
-    let output = Command::new(executable_path)
-        .output()
-        .expect("Failed to execute");
-
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        expected.trim()
-    );
+    assert_eq!(output.trim(), expected.trim());
 
     Ok(())
 }
 
 #[test_resources("tests/data/*.dodo")]
-fn test_for_all_backends(path: &str) {
-    let backend_types = vec![BackendType::C, BackendType::X86];
+fn test_c(path: &str) {
+    run_test(path, BackendType::C).unwrap();
+}
 
-    for b in backend_types {
-        run_test(path, b).unwrap();
-    }
+#[test_resources("tests/data/*.dodo")]
+fn test_x86(path: &str) {
+    run_test(path, BackendType::X86).unwrap();
+}
+
+#[test_resources("tests/data/*.dodo")]
+fn test_ir(path: &str) {
+    run_test(path, BackendType::Ir).unwrap();
 }

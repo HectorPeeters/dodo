@@ -118,7 +118,8 @@ fn main() -> Result<()> {
     backend.finalize(&output_executable, args.dont_compile)?;
 
     if args.run {
-        backend.run(&output_executable)?;
+        let output = backend.run(&output_executable)?;
+        println!("{}", output);
     }
 
     Ok(())

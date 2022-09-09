@@ -51,26 +51,38 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
     let executable_path = Path::new(&executable_path);
     backend.finalize(executable_path, false)?;
 
+    backend.run(executable_path)?;
+
     Ok(())
 }
 
-#[test_resources("tests/failing/*.dodo")]
-fn test_for_all_backends(path: &str) {
-    let backend_types = vec![BackendType::C, BackendType::X86];
+fn test_for_backend(path: &str, backend_type: BackendType) {
+    let code = std::fs::read_to_string(path).unwrap();
 
-    for b in backend_types {
-        let code = std::fs::read_to_string(path).unwrap();
+    let expected = code
+        .lines()
+        .find(|x| x.starts_with("// Expected: "))
+        .map(|x| x.replace("// Expected: ", ""));
 
-        let expected = code
-            .lines()
-            .find(|x| x.starts_with("// Expected: "))
-            .map(|x| x.replace("// Expected: ", ""));
+    let result = run_test(path, &code, backend_type);
+    assert!(result.is_err());
 
-        let result = run_test(path, &code, b);
-        assert!(result.is_err());
-
-        if let Some(expected) = expected {
-            assert_eq!(result.unwrap_err().message.trim(), expected.trim());
-        }
+    if let Some(expected) = expected {
+        assert_eq!(result.unwrap_err().message.trim(), expected.trim());
     }
+}
+
+#[test_resources("tests/failing/*.dodo")]
+fn test_c(path: &str) {
+    test_for_backend(path, BackendType::C);
+}
+
+#[test_resources("tests/failing/*.dodo")]
+fn test_x86(path: &str) {
+    test_for_backend(path, BackendType::X86);
+}
+
+#[test_resources("tests/failing/*.dodo")]
+fn test_ir(path: &str) {
+    test_for_backend(path, BackendType::Ir);
 }
