@@ -454,6 +454,8 @@ impl<'a> TypeChecker<'a> {
                     _ => {}
                 };
 
+                assert_eq!(left.get_type(), right.get_type());
+
                 let result_type = if op_type.is_comparison() {
                     BUILTIN_TYPE_BOOL
                 } else {

@@ -216,10 +216,8 @@ impl<'a> IrBackend<'a> {
             }
             Expression::BooleanLiteral(value, _, _) => {
                 let reg = self.builder.new_register(IrRegisterSize::Byte);
-                self.builder.add_instruction(IrInstruction::MovImm(
-                    reg,
-                    IrValue::U8(if value { 1 } else { 0 }),
-                ));
+                self.builder
+                    .add_instruction(IrInstruction::MovImm(reg, IrValue::Bool(value)));
 
                 Ok(reg)
             }

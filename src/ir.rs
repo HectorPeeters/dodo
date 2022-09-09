@@ -137,7 +137,9 @@ impl Display for IrInstruction {
             Shl(dest, a, b) => write!(f, "shl\t{} {} {}", dest, a, b),
             Shr(dest, a, b) => write!(f, "shr\t{} {} {}", dest, a, b),
             Jmp(index) => write!(f, "jmp\t{}", index),
-            CondJmp(true_index, false_index, reg) => write!(f, "condjmp\t{} {} {}", true_index, false_index, reg),
+            CondJmp(true_index, false_index, reg) => {
+                write!(f, "condjmp\t{} {} {}", true_index, false_index, reg)
+            }
             Push(value) => write!(f, "push\t{}", value),
             Pop(value) => write!(f, "pop\t{}", value),
             Call(index) => write!(f, "call\t{}", index),
@@ -254,7 +256,7 @@ impl IrBuilder {
         self.blocks.iter().position(|b| b.name == name)
     }
 
-    pub fn can_reach_blocks(&self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
+    pub fn can_jump_blocks(&self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
         let mut result = vec![];
 
         let mut add = |value| {
@@ -269,8 +271,7 @@ impl IrBuilder {
                 IrInstruction::CondJmp(true_target, false_target, _) => {
                     add(true_target);
                     add(false_target);
-                },
-                IrInstruction::Call(target) => add(target),
+                }
                 _ => {}
             }
         }
@@ -298,7 +299,7 @@ impl IrBuilder {
                 instruction_text
             ));
 
-            for reachable_block in self.can_reach_blocks(index) {
+            for reachable_block in self.can_jump_blocks(index) {
                 buffer.push_str(&format!("\t{} -> {}\n", index, reachable_block));
             }
         }
@@ -329,8 +330,8 @@ mod tests {
         builder.add_instruction(IrInstruction::Jmp(target_block));
         builder.pop_block();
 
-        assert_eq!(builder.can_reach_blocks(main_block), vec![1]);
-        assert_eq!(builder.can_reach_blocks(target_block), vec![]);
+        assert_eq!(builder.can_jump_blocks(main_block), vec![1]);
+        assert_eq!(builder.can_jump_blocks(target_block), vec![]);
     }
 
     #[test]
@@ -346,8 +347,8 @@ mod tests {
         builder.add_instruction(IrInstruction::Jmp(main_block));
         builder.pop_block();
 
-        assert_eq!(builder.can_reach_blocks(main_block), vec![target_block]);
-        assert_eq!(builder.can_reach_blocks(target_block), vec![main_block]);
+        assert_eq!(builder.can_jump_blocks(main_block), vec![target_block]);
+        assert_eq!(builder.can_jump_blocks(target_block), vec![main_block]);
     }
 
     #[test]
