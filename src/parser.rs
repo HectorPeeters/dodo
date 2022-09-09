@@ -140,14 +140,11 @@ type InfixParseFn<'a> = fn(
     precedence: usize,
 ) -> Result<ParsedExpression>;
 
-type PostfixParseFn<'a> = fn(&mut Parser<'a>, left: ParsedExpression) -> Result<ParsedExpression>;
-
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
-    postfix_fns: HashMap<TokenType, PostfixParseFn<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -192,16 +189,13 @@ impl<'a> Parser<'a> {
             TokenType::GreaterThanEqual,
             (Self::parse_binary_operator, 6),
         );
-
-        let mut postfix_fns: HashMap<_, PostfixParseFn<'a>> = HashMap::new();
-        postfix_fns.insert(TokenType::Dot, Self::parse_field_accessor);
+        infix_fns.insert(TokenType::Dot, (Self::parse_field_accessor, 13));
 
         Self {
             tokens,
             index: 0,
             prefix_fns,
             infix_fns,
-            postfix_fns,
         }
     }
 
@@ -345,9 +339,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_field_accessor(&mut self, left: ParsedExpression) -> Result<ParsedExpression> {
-        let start_index = self.current_index(false);
-
+    fn parse_field_accessor(
+        &mut self,
+        start_index: usize,
+        left: ParsedExpression,
+        _precedence: usize,
+    ) -> Result<ParsedExpression> {
         self.consume_assert(TokenType::Dot)?;
         let name = self
             .consume_assert(TokenType::Identifier)?
@@ -544,13 +541,7 @@ impl<'a> Parser<'a> {
             return Ok(left);
         }
 
-        let token_type = self.peek()?.token_type;
-
-        if let Some(func) = self.postfix_fns.get(&token_type) {
-            left = func(self, left)?;
-        }
-
-        if self.eof() || exit_tokens.contains(&self.peek()?.token_type) {
+        if exit_tokens.contains(&self.peek()?.token_type) {
             return Ok(left);
         }
 

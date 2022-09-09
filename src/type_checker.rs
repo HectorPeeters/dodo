@@ -296,36 +296,6 @@ impl<'a> TypeChecker<'a> {
                 let left_checked = self.check_expression(left)?;
                 let mut right_checked = self.check_expression(right)?;
 
-                // TODO: this should probably be moved into another step later on
-                if let Expression::StructLiteral(fields, right_type, _) = &right_checked {
-                    if left_checked.get_type() != *right_type {
-                        return Err(Error::new_with_range(
-                            ErrorType::TypeCheck,
-                            "Trying to assign struct of incorrect type".to_string(),
-                            range,
-                        ));
-                    }
-
-                    let assign_instructions = fields
-                        .iter()
-                        .map(|(name, value)| {
-                            Statement::Assignment(
-                                Expression::FieldAccessor(
-                                    name.to_string(),
-                                    Box::new(left_checked.clone()),
-                                    value.get_type(),
-                                    range,
-                                ),
-                                // TODO: this clone can robably be removed
-                                value.clone(),
-                                range,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-
-                    return Ok(Statement::Block(assign_instructions, false, range));
-                }
-
                 if left_checked.get_type() == right_checked.get_type() {
                     return Ok(Statement::Assignment(left_checked, right_checked, range));
                 }
@@ -762,11 +732,11 @@ impl<'a> TypeChecker<'a> {
                     ));
                 }
 
-                return Err(Error::new_with_range(
+                Err(Error::new_with_range(
                     ErrorType::TypeCheck,
                     format!("Trying to access field '{name}' of non-struct type"),
                     range,
-                ));
+                ))
             }
             ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
                 value,
