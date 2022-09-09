@@ -1,0 +1,30 @@
+extern "printf";
+extern "exit";
+
+struct A {
+    value: u32,
+}
+
+struct B {
+    child: A,
+}
+
+struct C {
+    child: B,
+}
+
+fn main() {
+    let c: C = struct C {
+        child = struct B {
+            child = struct A {
+                value = 12,
+            },
+        },
+    };
+
+    let value: u32 = c.child.child.value;
+
+    printf("%u\n", value);
+
+    exit(0);
+}

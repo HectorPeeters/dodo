@@ -59,7 +59,6 @@ fn run_test(file: &str, backend_type: BackendType) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:?}", executable_path);
     let output = Command::new(executable_path)
         .output()
         .expect("Failed to execute");
