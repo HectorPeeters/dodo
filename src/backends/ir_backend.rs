@@ -99,28 +99,51 @@ impl<'a> IrBackend<'a> {
                 Ok(())
             }
             Statement::If(condition, body, else_body, _) => {
-                if let Some(_) = else_body {
-                    todo!();
-                }
-
                 let condition_reg = self.gen_expression(condition)?;
                 let if_body_block = self.builder.add_block("if_block");
                 let continue_block = self.builder.add_block("continue_block");
 
-                self.builder.add_instruction(IrInstruction::CondJmp(
-                    if_body_block,
-                    continue_block,
-                    condition_reg,
-                ));
-                self.builder.pop_block();
+                if let Some(else_body) = else_body {
+                    let else_body_block = self.builder.add_block("if_block");
 
-                self.builder.push_block(if_body_block);
+                    self.builder.add_instruction(IrInstruction::CondJmp(
+                        if_body_block,
+                        else_body_block,
+                        condition_reg,
+                    ));
+                    self.builder.pop_block();
 
-                self.gen_statement(*body)?;
-                self.builder
-                    .add_instruction(IrInstruction::Jmp(continue_block));
+                    self.builder.push_block(if_body_block);
 
-                self.builder.pop_block();
+                    self.gen_statement(*body)?;
+                    self.builder
+                        .add_instruction(IrInstruction::Jmp(continue_block));
+
+                    self.builder.pop_block();
+
+                    self.builder.push_block(else_body_block);
+
+                    self.gen_statement(*else_body)?;
+                    self.builder
+                        .add_instruction(IrInstruction::Jmp(continue_block));
+
+                    self.builder.pop_block();
+                } else {
+                    self.builder.add_instruction(IrInstruction::CondJmp(
+                        if_body_block,
+                        continue_block,
+                        condition_reg,
+                    ));
+                    self.builder.pop_block();
+
+                    self.builder.push_block(if_body_block);
+
+                    self.gen_statement(*body)?;
+                    self.builder
+                        .add_instruction(IrInstruction::Jmp(continue_block));
+
+                    self.builder.pop_block();
+                }
 
                 self.builder.push_block(continue_block);
 

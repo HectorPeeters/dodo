@@ -66,9 +66,9 @@ impl IrValue {
             U16(x) => format!("{}", *x),
             U32(x) => format!("{}", *x),
             U64(x) => format!("{}", *x),
-            Bool(x) => format!("{}", if *x { "true" } else { "false" }),
-            String(index) => format!("{}", builder.strings[*index]),
-            Uninitialized() => format!("uninitalized"),
+            Bool(x) => (if *x { "true" } else { "false" }).to_string(),
+            String(index) => builder.strings[*index].to_string(),
+            Uninitialized() => "uninitalized".to_string(),
         }
     }
 }

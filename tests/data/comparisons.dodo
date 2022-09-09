@@ -2,7 +2,7 @@ extern "printf";
 extern "exit";
 
 fn assert(x: bool) {
-    if x == 0 {
+    if x == false {
         printf("Failed!\n");
         exit(1);
     }
@@ -10,7 +10,7 @@ fn assert(x: bool) {
 }
 
 fn nassert(x: bool) {
-    if x != 0 {
+    if x == true {
         printf("Failed!\n");
         exit(1);
     }
