@@ -11,13 +11,13 @@ const const_struct: TestData = struct TestData {
 };
 
 fn have_birthday(data: TestData*) {
-    (*data).age = (*data).age + 1;
+    data.age = data.age + 1;
 }
 
 fn print_message(data: TestData*) {
-    printf("Age: %u\n", (*data).age);
+    printf("Age: %u\n", data.age);
 
-    if (*data).is_alive {
+    if data.is_alive {
         printf("And is still alive!\n");
     } else {
         printf("And is not alive..\n");

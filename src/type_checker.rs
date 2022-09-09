@@ -700,38 +700,73 @@ impl<'a> TypeChecker<'a> {
             }
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child = self.check_expression(*child)?;
-                if !self.project.is_struct_type(child.get_type()) {
-                    return Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!("Trying to access field '{name}' of non-struct type"),
+                let child_type = child.get_type();
+
+                let is_struct = self.project.is_struct_type(child_type);
+                if is_struct {
+                    let struct_type = self.project.get_struct(child.get_type());
+
+                    let field_type = struct_type
+                        .fields
+                        .iter()
+                        .find(|(n, _)| n == &name)
+                        .map(|(_, t)| t);
+
+                    if field_type.is_none() {
+                        return Err(Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("No field '{name}' exists on type {}", child.get_type()),
+                            range,
+                        ));
+                    }
+
+                    let field_type = field_type.unwrap();
+
+                    return Ok(Expression::FieldAccessor(
+                        name,
+                        Box::new(child),
+                        *field_type,
                         range,
                     ));
                 }
 
-                let struct_type = self.project.get_struct(child.get_type());
+                let is_struct_pointer = self
+                    .project
+                    .is_struct_type(self.project.get_inner_type(child_type));
 
-                let field_type = struct_type
-                    .fields
-                    .iter()
-                    .find(|(n, _)| n == &name)
-                    .map(|(_, t)| t);
+                if is_struct_pointer {
+                    let struct_type = self
+                        .project
+                        .get_struct(self.project.get_inner_type(child.get_type()));
+                    let field_type = struct_type
+                        .fields
+                        .iter()
+                        .find(|(n, _)| n == &name)
+                        .map(|(_, t)| t);
 
-                if field_type.is_none() {
-                    return Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!("No field '{name}' exists on type {}", child.get_type()),
+                    if field_type.is_none() {
+                        return Err(Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("No field '{name}' exists on type {}", child.get_type()),
+                            range,
+                        ));
+                    }
+
+                    let field_type = field_type.unwrap();
+
+                    return Ok(Expression::FieldAccessor(
+                        name,
+                        Box::new(child),
+                        *field_type,
                         range,
                     ));
                 }
 
-                let field_type = field_type.unwrap();
-
-                Ok(Expression::FieldAccessor(
-                    name,
-                    Box::new(child),
-                    *field_type,
+                return Err(Error::new_with_range(
+                    ErrorType::TypeCheck,
+                    format!("Trying to access field '{name}' of non-struct type"),
                     range,
-                ))
+                ));
             }
             ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
                 value,

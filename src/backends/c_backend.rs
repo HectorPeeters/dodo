@@ -209,14 +209,12 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
             Statement::If(cond, body, else_body, _) => {
                 let cond = self.visit_expression(cond)?;
 
-                self.buffer.push_str(&format!("if ({}) {{", cond));
+                self.buffer.push_str(&format!("if ({}) ", cond));
                 self.visit_statement(*body)?;
-                self.buffer.push('}');
 
                 if let Some(else_body) = else_body {
-                    self.buffer.push_str(" else {");
+                    self.buffer.push_str(" else ");
                     self.visit_statement(*else_body)?;
-                    self.buffer.push('}');
                 }
 
                 Ok(())
@@ -295,7 +293,14 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
                 Ok(format!("({}){{\n{}\n}}", c_type, formatted_fields))
             }
             Expression::FieldAccessor(name, child, _, _) => {
-                Ok(format!("{}.{}", self.visit_expression(*child)?, name))
+                let child_type = child.get_type();
+                let child_source = self.visit_expression(*child)?;
+
+                if self.project.is_ptr_type(child_type) {
+                    Ok(format!("{}->{}", child_source, name))
+                } else {
+                    Ok(format!("{}.{}", child_source, name))
+                }
             }
             Expression::Widen(expr, _, _) => self.visit_expression(*expr),
             Expression::Cast(expr, cast_type, _) => Ok(format!(
