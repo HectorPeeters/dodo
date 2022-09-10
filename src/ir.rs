@@ -195,6 +195,7 @@ impl Display for IrBlock {
     }
 }
 
+#[derive(Default)]
 pub struct IrBuilder {
     pub blocks: Vec<IrBlock>,
     block_stack: Vec<IrBlockIndex>,

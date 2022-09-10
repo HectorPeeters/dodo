@@ -1,6 +1,7 @@
 use crate::error::*;
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct Scope<T> {
     items: Vec<HashMap<String, T>>,
 }
@@ -53,15 +54,6 @@ impl<T: Clone> Scope<T> {
 
     pub fn size(&self) -> Result<usize> {
         Ok(self.items.iter().map(|x| x.len()).sum())
-    }
-}
-
-impl<T> Default for Scope<T>
-where
-    T: Clone,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
 

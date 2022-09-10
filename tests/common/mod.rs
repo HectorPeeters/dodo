@@ -12,18 +12,45 @@ use dodo::{
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
 };
-use test_generator::test_resources;
 
-fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
+#[allow(dead_code)]
+pub fn run_passing_test(file: &str, backend_type: BackendType) -> Result<()> {
+    let source = std::fs::read_to_string(file).unwrap();
+    let expected = std::fs::read_to_string(PathBuf::from(file).with_extension("txt")).unwrap();
+
+    let output = run_test(file, &source, backend_type)?;
+    assert_eq!(output.trim(), expected.trim());
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn run_failing_test(file: &str, backend_type: BackendType) {
+    let source = std::fs::read_to_string(file).unwrap();
+
+    let expected = source
+        .lines()
+        .find(|x| x.starts_with("// Expected: "))
+        .map(|x| x.replace("// Expected: ", ""));
+
+    let result = run_test(file, &source, backend_type);
+    assert!(result.is_err());
+
+    if let Some(expected) = expected {
+        assert_eq!(result.unwrap_err().message.trim(), expected.trim());
+    }
+}
+
+fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<String> {
     println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
 
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
     let test_code = hasher.finish();
 
-    let tokens = tokenize(source)?;
+    let tokens = tokenize(&source)?;
 
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
@@ -51,38 +78,7 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<()> {
     let executable_path = Path::new(&executable_path);
     backend.finalize(executable_path, false)?;
 
-    backend.run(executable_path)?;
+    let output = backend.run(executable_path)?;
 
-    Ok(())
-}
-
-fn test_for_backend(path: &str, backend_type: BackendType) {
-    let code = std::fs::read_to_string(path).unwrap();
-
-    let expected = code
-        .lines()
-        .find(|x| x.starts_with("// Expected: "))
-        .map(|x| x.replace("// Expected: ", ""));
-
-    let result = run_test(path, &code, backend_type);
-    assert!(result.is_err());
-
-    if let Some(expected) = expected {
-        assert_eq!(result.unwrap_err().message.trim(), expected.trim());
-    }
-}
-
-#[test_resources("tests/failing/*.dodo")]
-fn test_c(path: &str) {
-    test_for_backend(path, BackendType::C);
-}
-
-#[test_resources("tests/failing/*.dodo")]
-fn test_x86(path: &str) {
-    test_for_backend(path, BackendType::X86);
-}
-
-#[test_resources("tests/failing/*.dodo")]
-fn test_ir(path: &str) {
-    test_for_backend(path, BackendType::Ir);
+    Ok(output)
 }
