@@ -5,6 +5,9 @@ macro_rules! binop {
         {
             use IrValue::*;
 
+            assert_eq!($dest.size, $left.size);
+            assert_eq!($dest.size, $right.size);
+
             let left_value = $regs[$left.index];
             let right_value = $regs[$right.index];
 
@@ -25,6 +28,9 @@ macro_rules! comparison {
         {
             use IrValue::*;
 
+            assert_eq!($left.size, $right.size);
+            assert_eq!($dest.size, IrRegisterSize::Byte);
+
             let left_value = $regs[$left.index];
             let right_value = $regs[$right.index];
 
@@ -44,6 +50,9 @@ macro_rules! equality {
     ($regs:expr, $dest:expr, $left:expr, $right:expr, $op:tt) => {
         {
             use IrValue::*;
+
+            assert_eq!($left.size, $right.size);
+            assert_eq!($dest.size, IrRegisterSize::Byte);
 
             let left_value = $regs[$left.index];
             let right_value = $regs[$right.index];
@@ -95,20 +104,27 @@ impl<'a> Interpreter<'a> {
                 self.registers[dest.index] = self.registers[src.index];
             }
             MovImm(dest, value) => {
+                assert_eq!(dest.size, value.get_reg_size());
                 self.registers[dest.index] = *value;
             }
             MovZx(dest, src) => {
                 use IrRegisterSize::*;
                 use IrValue::*;
 
-                let result_value = match (src.size, self.registers[src.index], dest.size) {
+                let value = self.registers[src.index];
+                assert_eq!(src.size, value.get_reg_size());
+
+                let result_value = match (src.size, value, dest.size) {
                     (Byte, U8(x), Word) => U16(x as u16),
                     (Byte, U8(x), Double) => U32(x as u32),
                     (Byte, U8(x), Quad) => U64(x as u64),
                     (Word, U16(x), Double) => U32(x as u32),
                     (Word, U16(x), Quad) => U64(x as u64),
                     (Double, U32(x), Quad) => U64(x as u64),
-                    _ => unreachable!(),
+                    _ => unreachable!(
+                        "{} -> {} [{}]",
+                        src.size, dest.size, self.registers[src.index]
+                    ),
                 };
 
                 self.registers[dest.index] = result_value;
@@ -124,8 +140,8 @@ impl<'a> Interpreter<'a> {
             GtE(dest, left, right) => comparison!(self.registers, dest, left, right, >=),
             Lt(dest, left, right) => comparison!(self.registers, dest, left, right, <),
             LtE(dest, left, right) => comparison!(self.registers, dest, left, right, <=),
-            Shl(_, _, _) => todo!(),
-            Shr(_, _, _) => todo!(),
+            Shl(dest, left, right) => binop!(self.registers, dest, left, right, <<),
+            Shr(dest, left, right) => binop!(self.registers, dest, left, right, >>),
             Jmp(block_index) => {
                 return InstructionExecuteResult::ChangeBlock(*block_index);
             }
@@ -184,7 +200,7 @@ impl<'a> Interpreter<'a> {
     pub fn execute(&mut self) {
         loop {
             if self.call_stack.is_empty() {
-                break;
+                unreachable!();
             }
 
             let (instruction_index, block_index) = self.call_stack.last_mut().unwrap();

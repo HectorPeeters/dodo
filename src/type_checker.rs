@@ -444,14 +444,16 @@ impl<'a> TypeChecker<'a> {
                     ));
                 }
 
-                match left_size.cmp(&right_size) {
+                let result_type = match left_size.cmp(&right_size) {
                     Ordering::Greater => {
                         right = Expression::Widen(Box::new(right), left_type, range);
+                        left_type
                     }
                     Ordering::Less => {
                         left = Expression::Widen(Box::new(left), right_type, range);
+                        right_type
                     }
-                    _ => {}
+                    _ => left_type,
                 };
 
                 assert_eq!(left.get_type(), right.get_type());
@@ -459,7 +461,7 @@ impl<'a> TypeChecker<'a> {
                 let result_type = if op_type.is_comparison() {
                     BUILTIN_TYPE_BOOL
                 } else {
-                    left_type
+                    result_type
                 };
 
                 Ok(Expression::BinaryOperator(

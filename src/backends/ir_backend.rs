@@ -318,7 +318,7 @@ impl<'a> Backend for IrBackend<'a> {
     }
 
     fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {
-        //        println!("{}", self.builder.get_dot_graph());
+        println!("{}\n\n\n", self.builder.get_dot_graph());
 
         Ok(())
     }
@@ -330,8 +330,6 @@ impl<'a> Backend for IrBackend<'a> {
         );
 
         interpreter.execute();
-
-        println!("INTERP FINISHED");
 
         Ok(interpreter.output_buffer)
     }

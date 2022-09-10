@@ -15,7 +15,7 @@ impl Display for IrRegister {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum IrRegisterSize {
     Byte,
     Word,
@@ -69,6 +69,20 @@ impl IrValue {
             Bool(x) => (if *x { "true" } else { "false" }).to_string(),
             String(index) => builder.strings[*index].to_string(),
             Uninitialized() => "uninitalized".to_string(),
+        }
+    }
+
+    pub fn get_reg_size(&self) -> IrRegisterSize {
+        use IrRegisterSize::*;
+
+        match self {
+            IrValue::U8(_) => Byte,
+            IrValue::U16(_) => Word,
+            IrValue::U32(_) => Double,
+            IrValue::U64(_) => Quad,
+            IrValue::Bool(_) => Byte,
+            IrValue::String(_) => Quad,
+            IrValue::Uninitialized() => unreachable!(),
         }
     }
 }
