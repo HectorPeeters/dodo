@@ -50,6 +50,8 @@ pub enum BinaryOperatorType {
     LessThanEqual,
     GreaterThan,
     GreaterThanEqual,
+    LogicalOr,
+    LogicalAnd,
 }
 
 impl BinaryOperatorType {
@@ -68,6 +70,8 @@ impl BinaryOperatorType {
             TokenType::LessThanEqual => BinaryOperatorType::LessThanEqual,
             TokenType::GreaterThan => BinaryOperatorType::GreaterThan,
             TokenType::GreaterThanEqual => BinaryOperatorType::GreaterThanEqual,
+            TokenType::DoubleVerticalBar => BinaryOperatorType::LogicalOr,
+            TokenType::DoubleAmpersand => BinaryOperatorType::LogicalAnd,
             _ => unreachable!(),
         }
     }

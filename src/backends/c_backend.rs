@@ -248,6 +248,8 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
                     BinaryOperatorType::LessThanEqual => format!("({} <= {})", left, right),
                     BinaryOperatorType::GreaterThan => format!("({} > {})", left, right),
                     BinaryOperatorType::GreaterThanEqual => format!("({} >= {})", left, right),
+                    BinaryOperatorType::LogicalOr => format!("({} || {})", left, right),
+                    BinaryOperatorType::LogicalAnd => format!("({} && {})", left, right),
                 })
             }
             Expression::UnaryOperator(op, expr, _, _) => {

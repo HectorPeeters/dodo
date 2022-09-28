@@ -79,6 +79,11 @@ pub enum TokenType {
     #[token("=")]
     Equals,
 
+    #[token("||")]
+    DoubleVerticalBar,
+    #[token("&&")]
+    DoubleAmpersand,
+
     #[token("&")]
     Ampersand,
     #[token("@")]

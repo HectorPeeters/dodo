@@ -1,0 +1,35 @@
+extern "printf";
+extern "exit";
+
+fn assert_eq(result: bool, expected: bool) {
+    if result != expected {
+        printf("Failed: expected %d but got %d\n", expected, result);
+        exit(1);
+    }
+
+}
+
+fn logical_or() {
+    assert_eq(false || false, false);
+    assert_eq(false || true, true);
+    assert_eq(true || false, true);
+    assert_eq(true || true, true);
+    printf("Or success\n");
+}
+
+fn logical_and() {
+    assert_eq(false && false, false);
+    assert_eq(false && true, false);
+    assert_eq(true && false, false);
+    assert_eq(true && true, true);
+    printf("And success\n");
+}
+
+fn main() {
+    logical_or();
+    logical_and();
+
+    printf("Success\n");
+
+    exit(0);
+}

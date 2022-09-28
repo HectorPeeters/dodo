@@ -653,6 +653,8 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                         self.instr(Cmp(left_op, right_op));
                         self.instr(SetGE(Reg(left_reg, 8)));
                     }
+                    BinaryOperatorType::LogicalOr => self.instr(Or(left_op, right_op)),
+                    BinaryOperatorType::LogicalAnd => self.instr(And(left_op, right_op)),
                 }
 
                 self.free_register(right_reg);

@@ -189,6 +189,12 @@ impl<'a> Parser<'a> {
             TokenType::GreaterThanEqual,
             (Self::parse_binary_operator, 6),
         );
+        infix_fns.insert(
+            TokenType::DoubleVerticalBar,
+            (Self::parse_binary_operator, 6),
+        );
+        infix_fns.insert(TokenType::DoubleAmpersand, (Self::parse_binary_operator, 6));
+
         infix_fns.insert(TokenType::Dot, (Self::parse_field_accessor, 13));
 
         Self {

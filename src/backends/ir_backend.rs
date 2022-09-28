@@ -249,6 +249,7 @@ impl<'a> IrBackend<'a> {
                     BinaryOperatorType::LessThanEqual => IrInstruction::LtE,
                     BinaryOperatorType::GreaterThan => IrInstruction::Gt,
                     BinaryOperatorType::GreaterThanEqual => IrInstruction::GtE,
+                    _ => todo!(),
                 };
 
                 self.builder

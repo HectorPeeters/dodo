@@ -412,6 +412,7 @@ impl<'a> TypeChecker<'a> {
                 right,
                 range,
             } => {
+                // TODO: add support for logic operators
                 let mut left = self.check_expression(*left)?;
                 let left_type = left.get_type();
                 let left_size = self.project.get_type_size(left_type);
