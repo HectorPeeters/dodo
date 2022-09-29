@@ -122,6 +122,7 @@ pub enum Expression {
     FieldAccessor(String, Box<Expression>, TypeId, SourceRange),
     Widen(Box<Expression>, TypeId, SourceRange),
     Cast(Box<Expression>, TypeId, SourceRange),
+    Type(TypeId, SourceRange),
 }
 
 impl Expression {
@@ -140,6 +141,7 @@ impl Expression {
             FieldAccessor(_, _, t, _) => *t,
             Widen(_, t, _) => *t,
             Cast(_, t, _) => *t,
+            Type(t, _) => *t,
         }
     }
 
@@ -158,6 +160,7 @@ impl Expression {
             FieldAccessor(_, _, _, r) => r,
             Widen(_, _, r) => r,
             Cast(_, _, r) => r,
+            Type(_, r) => r,
         }
     }
 }

@@ -129,6 +129,10 @@ pub enum ParsedExpression {
         value: String,
         range: SourceRange,
     },
+    Type {
+        value: ParsedType,
+        range: SourceRange,
+    },
 }
 
 type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpression>;
@@ -168,6 +172,7 @@ impl<'a> Parser<'a> {
         prefix_fns.insert(TokenType::StringLiteral, Self::parse_constant);
         prefix_fns.insert(TokenType::Struct, Self::parse_struct_constant);
         prefix_fns.insert(TokenType::LeftParen, Self::parse_parenthesized);
+        prefix_fns.insert(TokenType::Colon, Self::parse_type_value);
 
         let mut infix_fns: HashMap<_, (InfixParseFn<'a>, usize)> = HashMap::new();
         infix_fns.insert(TokenType::Plus, (Self::parse_binary_operator, 11));
@@ -458,6 +463,22 @@ impl<'a> Parser<'a> {
                 token.range,
             )),
         }
+    }
+
+    fn parse_type_value(&mut self) -> Result<ParsedExpression> {
+        let start_index = self.current_index(false);
+
+        // NOTE: colon before a type is required to not get an ambiguous syntax. Otherwise the
+        // parser will not see the difference between 'u16' and 'foo' which might be a variable
+        // reference and not a type.
+        self.consume_assert(TokenType::Colon)?;
+
+        let value = self.parse_type()?;
+
+        Ok(ParsedExpression::Type {
+            value,
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
     fn parse_struct_constant(&mut self) -> Result<ParsedExpression> {

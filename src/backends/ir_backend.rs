@@ -350,6 +350,7 @@ impl<'a> IrBackend<'a> {
                 Ok(result_reg)
             }
             Expression::Cast(_, _, _) => todo!(),
+            Expression::Type(_, _) => unreachable!(),
         }
     }
 }

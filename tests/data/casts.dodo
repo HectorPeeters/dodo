@@ -1,3 +1,14 @@
+extern "printf";
+extern "exit";
+
 fn main() {
-    let pointer: u16* = @castU16Ptr(0x1234);
+    let pointer: u16* = @cast(0x1234, :u16*);
+
+    let x: u32 = 12;
+    let px: u64 = @cast(&x, :u64);
+    let nx: u32 = *@cast(px, :u32*);
+
+    printf("%d %d\n", x, nx);
+
+    exit(0);
 }

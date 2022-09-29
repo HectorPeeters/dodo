@@ -556,22 +556,28 @@ impl<'a> TypeChecker<'a> {
                 mut arguments,
                 range,
             } => match &name[..] {
-                "castU16Ptr" => {
-                    if arguments.len() != 1 {
+                "cast" => {
+                    if arguments.len() != 2 {
                         return Err(Error::new_with_range(
                             ErrorType::TypeCheck,
-                            "Intrinsic function 'castPtrU16' expects only one argument".to_string(),
+                            "Intrinsic function 'cast' expects two arguments".to_string(),
                             range,
                         ));
                     }
 
                     let checked_argument = self.check_expression(arguments.remove(0))?;
 
-                    Ok(Expression::Cast(
-                        Box::new(checked_argument),
-                        self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U16)),
-                        range,
-                    ))
+                    let target_type = self.check_expression(arguments.remove(0))?;
+
+                    if let Expression::Type(t, _) = target_type {
+                        Ok(Expression::Cast(Box::new(checked_argument), t, range))
+                    } else {
+                        Err(Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("Second argument of 'cast' is not a type"),
+                            *target_type.range(),
+                        ))
+                    }
                 }
                 _ => Err(Error::new_with_range(
                     ErrorType::TypeCheck,
@@ -748,6 +754,11 @@ impl<'a> TypeChecker<'a> {
                 self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
                 range,
             )),
+            ParsedExpression::Type { value, range } => {
+                let type_id = self.check_type(&value)?;
+
+                Ok(Expression::Type(type_id, range))
+            }
         }
     }
 }

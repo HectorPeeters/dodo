@@ -784,6 +784,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                 Ok(result_reg)
             }
             Expression::Cast(child, _, _) => self.visit_expression(*child),
+            Expression::Type(_, _) => unreachable!(),
         }
     }
 }

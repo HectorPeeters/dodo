@@ -310,6 +310,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
                 self.to_c_type(cast_type),
                 self.visit_expression(*expr)?
             )),
+            Expression::Type(_, _) => unreachable!(),
         }
     }
 }
