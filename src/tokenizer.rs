@@ -108,6 +108,11 @@ pub enum TokenType {
     #[token("}")]
     RightBrace,
 
+    #[token("[")]
+    LeftSquareParen,
+    #[token("]")]
+    RightSquareParen,
+
     #[error]
     Error,
 }

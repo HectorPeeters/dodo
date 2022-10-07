@@ -125,6 +125,11 @@ pub enum ParsedExpression {
         child: Box<ParsedExpression>,
         range: SourceRange,
     },
+    ArrayAccessor {
+        expr: Box<ParsedExpression>,
+        index: Box<ParsedExpression>,
+        range: SourceRange,
+    },
     StringLiteral {
         value: String,
         range: SourceRange,
@@ -201,6 +206,7 @@ impl<'a> Parser<'a> {
         infix_fns.insert(TokenType::DoubleAmpersand, (Self::parse_binary_operator, 6));
 
         infix_fns.insert(TokenType::Dot, (Self::parse_field_accessor, 13));
+        infix_fns.insert(TokenType::LeftSquareParen, (Self::parse_array_accessor, 13));
 
         Self {
             tokens,
@@ -365,6 +371,23 @@ impl<'a> Parser<'a> {
         Ok(ParsedExpression::FieldAccessor {
             name,
             child: Box::new(left),
+            range: (start_index..self.current_index(true)).into(),
+        })
+    }
+
+    fn parse_array_accessor(
+        &mut self,
+        start_index: usize,
+        left: ParsedExpression,
+        _precedence: usize,
+    ) -> Result<ParsedExpression> {
+        self.consume_assert(TokenType::LeftSquareParen)?;
+        let index = self.parse_expression(0)?;
+        self.consume_assert(TokenType::RightSquareParen)?;
+
+        Ok(ParsedExpression::ArrayAccessor {
+            expr: Box::new(left),
+            index: Box::new(index),
             range: (start_index..self.current_index(true)).into(),
         })
     }
@@ -547,6 +570,7 @@ impl<'a> Parser<'a> {
             TokenType::LeftBrace,
             TokenType::Comma,
             TokenType::Equals,
+            TokenType::RightSquareParen,
         ];
 
         let token_type = self.peek()?.token_type;

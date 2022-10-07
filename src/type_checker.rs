@@ -749,6 +749,41 @@ impl<'a> TypeChecker<'a> {
                     range,
                 ))
             }
+            ParsedExpression::ArrayAccessor { expr, index, range } => {
+                let expr = self.check_expression(*expr)?;
+
+                if !self.project.is_ptr_type(expr.get_type()) {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Cannot user array accessor of non-pointer type"),
+                        range,
+                    ));
+                }
+
+                let inner_type = self.project.get_inner_type(expr.get_type());
+
+                let index = Expression::Widen(
+                    Box::new(self.check_expression(*index)?),
+                    BUILTIN_TYPE_U64,
+                    range,
+                );
+                let index_type = index.get_type();
+                let index_range = *index.range();
+
+                // Convert $expr[$index] into *($expr + $index)
+                Ok(Expression::UnaryOperator(
+                    UnaryOperatorType::Deref,
+                    Box::new(Expression::BinaryOperator(
+                        BinaryOperatorType::Add,
+                        Box::new(expr),
+                        Box::new(index),
+                        index_type,
+                        index_range,
+                    )),
+                    inner_type,
+                    range,
+                ))
+            }
             ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
                 value,
                 self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),

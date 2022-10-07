@@ -1,0 +1,13 @@
+extern "printf";
+extern "exit";
+
+fn main() {
+    let x: u8* = "Test";
+
+    printf("%c\n", x[0]);
+    printf("%c\n", x[1]);
+    printf("%c\n", x[2]);
+    printf("%c\n", x[3]);
+    
+    exit(0);
+}
