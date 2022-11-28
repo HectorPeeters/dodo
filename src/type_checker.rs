@@ -126,8 +126,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 Ok(UpperStatement::StructDeclaratin(name, checked_fields))
             }
             ParsedUpperStatement::ExternDeclaration { name, range } => {
-                self.scope
-                    .insert(name, TypeScopeEntry::ExternalFuction())?;
+                self.scope.insert(name, TypeScopeEntry::ExternalFuction())?;
                 Ok(UpperStatement::ExternDeclaration(name, range))
             }
             ParsedUpperStatement::Function {
@@ -199,10 +198,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     parameters,
                     return_type,
                     checked_body,
-                    checked_annotations
-                        .into_iter()
-                        .map(|(x, y)| (x.to_string(), y))
-                        .collect::<Vec<_>>(),
+                    checked_annotations,
                     range,
                 ))
             }
@@ -256,17 +252,14 @@ impl<'a, 'b> TypeChecker<'a> {
                     name,
                     value_type,
                     value,
-                    checked_annotations
-                        .into_iter()
-                        .map(|(x, y)| (x.to_string(), y))
-                        .collect::<Vec<_>>(),
+                    checked_annotations,
                     range,
                 ))
             }
         }
     }
 
-    fn check_statement(&mut self, statement: ParsedStatement) -> Result<Statement> {
+    fn check_statement(&mut self, statement: ParsedStatement<'b>) -> Result<Statement<'b>> {
         match statement {
             ParsedStatement::Block {
                 children,
@@ -296,10 +289,10 @@ impl<'a, 'b> TypeChecker<'a> {
                 let value_type = self.check_type(&value_type)?;
 
                 self.scope
-                    .insert(&name, TypeScopeEntry::Value(value_type))
+                    .insert(name, TypeScopeEntry::Value(value_type))
                     .map_err(|x| x.with_range(range))?;
 
-                Ok(Statement::Declaration(name.clone(), value_type, range))
+                Ok(Statement::Declaration(name, value_type, range))
             }
             ParsedStatement::Assignment { left, right, range } => {
                 let left_checked = self.check_expression(left)?;
@@ -413,7 +406,7 @@ impl<'a, 'b> TypeChecker<'a> {
         }
     }
 
-    fn check_expression(&mut self, expression: ParsedExpression) -> Result<Expression> {
+    fn check_expression(&mut self, expression: ParsedExpression<'b>) -> Result<Expression<'b>> {
         match expression {
             ParsedExpression::BinaryOperator {
                 op_type,
@@ -516,7 +509,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 arguments,
                 range,
             } => {
-                if self.is_external_function(&name, &range)? {
+                if self.is_external_function(name, &range)? {
                     return Ok(Expression::FunctionCall(
                         name,
                         arguments
@@ -528,7 +521,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     ));
                 }
 
-                let (arg_types, return_type) = self.get_scope_function_type(&name, &range)?;
+                let (arg_types, return_type) = self.get_scope_function_type(name, &range)?;
 
                 assert_eq!(arguments.len(), arg_types.len());
 
@@ -564,7 +557,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 name,
                 mut arguments,
                 range,
-            } => match &name[..] {
+            } => match name {
                 "cast" => {
                     if arguments.len() != 2 {
                         return Err(Error::new_with_range(
@@ -609,7 +602,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 Ok(Expression::BooleanLiteral(value, BUILTIN_TYPE_BOOL, range))
             }
             ParsedExpression::VariableRef { name, range } => {
-                let value_type = self.get_scope_value_type(&name, &range)?;
+                let value_type = self.get_scope_value_type(name, &range)?;
 
                 Ok(Expression::VariableRef(name, value_type, range))
             }
@@ -630,7 +623,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 let struct_data = self.project.get_struct(struct_type).clone();
 
                 for (expected_name, _) in &struct_data.fields {
-                    if !fields.iter().any(|f| &f.0 == expected_name) {
+                    if !fields.iter().any(|f| f.0 == expected_name) {
                         return Err(Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!("Missing field '{expected_name}' in struct constructor"),
@@ -699,7 +692,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     let field_type = struct_type
                         .fields
                         .iter()
-                        .find(|(n, _)| n == &name)
+                        .find(|(n, _)| n == name)
                         .map(|(_, t)| t);
 
                     if field_type.is_none() {
@@ -731,7 +724,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     let field_type = struct_type
                         .fields
                         .iter()
-                        .find(|(n, _)| n == &name)
+                        .find(|(n, _)| n == name)
                         .map(|(_, t)| t);
 
                     if field_type.is_none() {
@@ -818,14 +811,14 @@ mod tests {
         let mut type_checker = TypeChecker::new(&mut project);
 
         type_checker.check_statement(ParsedStatement::Declaration {
-            name: "test".to_string(),
+            name: "test",
             value_type: ParsedType::Named("u16".to_string()),
             range: (0..0).into(),
         })?;
 
         let ast = ParsedStatement::Assignment {
             left: ParsedExpression::VariableRef {
-                name: "test".to_string(),
+                name: "test",
                 range: (0..0).into(),
             },
             right: ParsedExpression::IntegerLiteral {
@@ -838,7 +831,7 @@ mod tests {
         assert_eq!(
             type_checker.check_statement(ast)?,
             Statement::Assignment(
-                Expression::VariableRef("test".to_string(), BUILTIN_TYPE_U16, (0..0).into()),
+                Expression::VariableRef("test", BUILTIN_TYPE_U16, (0..0).into()),
                 Expression::Widen(
                     Box::new(Expression::IntegerLiteral(
                         12,

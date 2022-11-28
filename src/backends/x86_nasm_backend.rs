@@ -3,7 +3,7 @@ use super::x86_instruction::{
 };
 use super::x86_instruction::{RAX, RBP, RDX, RSP};
 use super::Backend;
-use crate::ast::UpperStatement;
+use crate::ast::{Annotations, UpperStatement};
 use crate::project::{Project, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
 use crate::types::Type;
@@ -40,23 +40,23 @@ impl LValueLocation {
     }
 }
 
-struct GlobalConst {
+struct GlobalConst<'a> {
     index: usize,
-    value: Expression,
-    annotations: Vec<(String, Option<Expression>)>,
+    value: Expression<'a>,
+    annotations: Vec<(&'a str, Option<Expression<'a>>)>,
 }
 
-pub struct X86NasmBackend<'a> {
+pub struct X86NasmBackend<'a, 'b> {
     project: &'a mut Project,
     instructions: Vec<X86Instruction>,
     label_index: usize,
     scope: Scope<ScopeLocation>,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     current_function_end_label: usize,
-    global_consts: Vec<GlobalConst>,
+    global_consts: Vec<GlobalConst<'b>>,
 }
 
-impl<'a> X86NasmBackend<'a> {
+impl<'a, 'b> X86NasmBackend<'a, 'b> {
     pub fn new(project: &'a mut Project) -> Self {
         let mut result = Self {
             project,
@@ -95,11 +95,7 @@ impl<'a> X86NasmBackend<'a> {
         result
     }
 
-    fn store_global_const(
-        &mut self,
-        value: Expression,
-        annotations: Vec<(String, Option<Expression>)>,
-    ) -> usize {
+    fn store_global_const(&mut self, value: Expression<'b>, annotations: Annotations<'b>) -> usize {
         let index = self.get_new_label();
         self.global_consts.push(GlobalConst {
             index,
@@ -143,7 +139,7 @@ impl<'a> X86NasmBackend<'a> {
                 instructions.push(instruction);
             }
             Expression::StringLiteral(value, _, _) => {
-                let mut string_bytes = value.as_bytes().to_vec();
+                let mut string_bytes = value.to_string().as_bytes().to_vec();
                 string_bytes.push(0);
                 instructions.push(Db(string_bytes));
             }
@@ -178,7 +174,7 @@ impl<'a> X86NasmBackend<'a> {
         for global in &self.global_consts {
             let section_annotation = global.annotations
                     .iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
                         Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
@@ -232,12 +228,12 @@ impl<'a> X86NasmBackend<'a> {
 
     fn generate_lvalue(
         &mut self,
-        expression: Expression,
+        expression: Expression<'b>,
         range: SourceRange,
     ) -> Result<(LValueLocation, Option<X86Register>)> {
         match expression {
             Expression::VariableRef(name, _, _) => {
-                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+                let location = self.scope.find(name).map_err(|x| x.with_range(range))?;
 
                 match location {
                     ScopeLocation::Stack(offset) => {
@@ -252,7 +248,7 @@ impl<'a> X86NasmBackend<'a> {
                 Ok((LValueLocation::Register(dest_reg, 0), Some(dest_reg)))
             }
             Expression::FieldAccessor(name, child, _, _) => {
-                let offset = self.get_struct_field_offset(&name, child.get_type());
+                let offset = self.get_struct_field_offset(name, child.get_type());
 
                 let (child_location, child_reg) = self.generate_lvalue(*child, range)?;
 
@@ -263,8 +259,8 @@ impl<'a> X86NasmBackend<'a> {
     }
 }
 
-impl<'a> Backend for X86NasmBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
+impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
+    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         self.visit_upper_statement(statement)
     }
 
@@ -336,8 +332,8 @@ impl<'a> Backend for X86NasmBackend<'a> {
     }
 }
 
-impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
+impl<'a, 'b> ConsumingAstVisitor<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(_, _) => {}
             UpperStatement::ExternDeclaration(symbol, _) => {
@@ -353,18 +349,18 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                 assert_eq!(self.current_function_end_label, 0);
                 self.current_function_end_label = self.get_new_label();
 
-                let no_return = annotations.iter().any(|(name, _)| name == "noreturn");
+                let no_return = annotations.iter().any(|(name, _)| *name == "noreturn");
 
                 let section_annotation = annotations
                     .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
                         Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
                     });
 
                 if let Some(section_name) = section_annotation {
-                    self.instr(Section(section_name));
+                    self.instr(Section(section_name.to_string()));
                 }
 
                 self.instr(Function(if name == "main" {
@@ -417,11 +413,11 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
         Ok(())
     }
 
-    fn visit_statement(&mut self, statement: Statement) -> Result<()> {
+    fn visit_statement(&mut self, statement: Statement<'b>) -> Result<()> {
         match statement {
             Statement::Declaration(name, _value_type, range) => {
                 self.scope
-                    .insert(&name, ScopeLocation::Stack(self.scope.size()?))
+                    .insert(name, ScopeLocation::Stack(self.scope.size()?))
                     .map_err(|x| x.with_range(range))?;
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
@@ -527,7 +523,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
         Ok(())
     }
 
-    fn visit_expression(&mut self, expression: Expression) -> Result<X86Register> {
+    fn visit_expression(&mut self, expression: Expression<'b>) -> Result<X86Register> {
         match expression {
             Expression::IntegerLiteral(value, value_type, _range) => {
                 let register = self.get_next_register();
@@ -662,7 +658,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                 Ok(left_reg)
             }
             Expression::VariableRef(name, value_type, range) => {
-                let location = self.scope.find(&name).map_err(|x| x.with_range(range))?;
+                let location = self.scope.find(name).map_err(|x| x.with_range(range))?;
                 let register = self.get_next_register();
 
                 let value_size = self.project.get_type_size(value_type);
@@ -713,7 +709,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                     self.instr(Mov(RAX, Constant(0)));
                 }
 
-                self.instr(Call(Reference(name)));
+                self.instr(Call(Reference(name.to_string())));
 
                 for reg in (0..GENERAL_PURPOSE_REGISTER_COUNT).rev() {
                     if self.allocated_registers[reg] {
@@ -757,7 +753,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
                 let value_type_size = self.project.get_type_size(value_type);
                 assert!(value_type_size <= 64);
 
-                let offset = self.get_struct_field_offset(&name, child.get_type());
+                let offset = self.get_struct_field_offset(name, child.get_type());
                 let child_reg = self.visit_expression(*child)?;
 
                 let result_reg = self.get_next_register();

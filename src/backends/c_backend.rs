@@ -26,8 +26,8 @@ impl<'a> CBackend<'a> {
     }
 }
 
-impl<'a> Backend for CBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
+impl<'a> Backend<'a> for CBackend<'a> {
+    fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
         self.visit_upper_statement(statement)
     }
 
@@ -82,8 +82,8 @@ impl<'a> CBackend<'a> {
     }
 }
 
-impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
+impl<'a> ConsumingAstVisitor<'a, (), (), String> for CBackend<'a> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(name, fields) => {
                 let formatted_fields = fields
@@ -113,7 +113,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
 
                 let section_annotation = annotations
                     .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
                         Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
@@ -142,7 +142,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
 
                 let section_annotation = annotations
                     .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if name == "section" ))
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
                         Some(Expression::StringLiteral(value, _, _)) => value,
                         _ => unreachable!()
@@ -163,7 +163,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
         }
     }
 
-    fn visit_statement(&mut self, statement: Statement) -> Result<()> {
+    fn visit_statement(&mut self, statement: Statement<'a>) -> Result<()> {
         match statement {
             Statement::Block(statements, scoped, _) => {
                 if scoped {
@@ -228,7 +228,7 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
         }
     }
 
-    fn visit_expression(&mut self, expression: Expression) -> Result<String> {
+    fn visit_expression(&mut self, expression: Expression<'a>) -> Result<String> {
         match expression {
             Expression::BinaryOperator(op, left, right, _, _) => {
                 let left = self.visit_expression(*left)?;
@@ -272,14 +272,8 @@ impl<'a> ConsumingAstVisitor<(), (), String> for CBackend<'a> {
             }
             Expression::IntegerLiteral(value, _, _) => Ok(format!("{}", value)),
             Expression::BooleanLiteral(value, _, _) => Ok(format!("{}", value)),
-            Expression::VariableRef(name, _, _) => Ok(name),
-            Expression::StringLiteral(value, _, _) => Ok(format!(
-                "\"{}\"",
-                value
-                    .replace('\n', "\\n")
-                    .replace('\t', "\\t")
-                    .replace('\"', "\\\"")
-            )),
+            Expression::VariableRef(name, _, _) => Ok(name.to_string()),
+            Expression::StringLiteral(value, _, _) => Ok(format!("\"{}\"", value.inner())),
             Expression::StructLiteral(fields, struct_type, _) => {
                 let c_type = self.to_c_type(struct_type);
 

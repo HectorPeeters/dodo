@@ -1,8 +1,10 @@
+use std::fmt;
+
 use crate::error::Result;
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::TypeId;
 
-pub type Annotations = Vec<(String, Option<Expression>)>;
+pub type Annotations<'a> = Vec<(&'a str, Option<Expression<'a>>)>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UpperStatement<'a> {
@@ -10,29 +12,35 @@ pub enum UpperStatement<'a> {
         String,
         Vec<(&'a str, TypeId)>,
         TypeId,
-        Statement,
-        Annotations,
+        Statement<'a>,
+        Annotations<'a>,
         SourceRange,
     ),
     StructDeclaratin(&'a str, Vec<(&'a str, TypeId)>),
-    ConstDeclaration(&'a str, TypeId, Expression, Annotations, SourceRange),
+    ConstDeclaration(
+        &'a str,
+        TypeId,
+        Expression<'a>,
+        Annotations<'a>,
+        SourceRange,
+    ),
     ExternDeclaration(&'a str, SourceRange),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    Block(Vec<Statement>, bool, SourceRange),
-    Declaration(String, TypeId, SourceRange),
-    Assignment(Expression, Expression, SourceRange),
-    Expression(Expression, SourceRange),
-    While(Expression, Box<Statement>, SourceRange),
+pub enum Statement<'a> {
+    Block(Vec<Statement<'a>>, bool, SourceRange),
+    Declaration(&'a str, TypeId, SourceRange),
+    Assignment(Expression<'a>, Expression<'a>, SourceRange),
+    Expression(Expression<'a>, SourceRange),
+    While(Expression<'a>, Box<Statement<'a>>, SourceRange),
     If(
-        Expression,
-        Box<Statement>,
-        Option<Box<Statement>>,
+        Expression<'a>,
+        Box<Statement<'a>>,
+        Option<Box<Statement<'a>>>,
         SourceRange,
     ),
-    Return(Expression, SourceRange),
+    Return(Expression<'a>, SourceRange),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -104,28 +112,65 @@ impl UnaryOperatorType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
+pub struct EscapedString<'a> {
+    inner: &'a str,
+}
+
+impl<'a> EscapedString<'a> {
+    pub fn new(inner: &'a str) -> Self {
+        Self { inner }
+    }
+
+    pub fn inner(&self) -> &'a str {
+        self.inner
+    }
+}
+
+impl<'a> From<&'a str> for EscapedString<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<'a> fmt::Display for EscapedString<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.inner
+                .replace("\\\"", "\"")
+                .replace("\\t", "\t")
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\'", "'")
+                .replace("\\\"", "\"")
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expression<'a> {
     BinaryOperator(
         BinaryOperatorType,
-        Box<Expression>,
-        Box<Expression>,
+        Box<Expression<'a>>,
+        Box<Expression<'a>>,
         TypeId,
         SourceRange,
     ),
-    UnaryOperator(UnaryOperatorType, Box<Expression>, TypeId, SourceRange),
-    FunctionCall(String, Vec<Expression>, TypeId, SourceRange),
+    UnaryOperator(UnaryOperatorType, Box<Expression<'a>>, TypeId, SourceRange),
+    FunctionCall(&'a str, Vec<Expression<'a>>, TypeId, SourceRange),
     IntegerLiteral(u64, TypeId, SourceRange),
     BooleanLiteral(bool, TypeId, SourceRange),
-    VariableRef(String, TypeId, SourceRange),
-    StringLiteral(String, TypeId, SourceRange),
-    StructLiteral(Vec<(String, Expression)>, TypeId, SourceRange),
-    FieldAccessor(String, Box<Expression>, TypeId, SourceRange),
-    Widen(Box<Expression>, TypeId, SourceRange),
-    Cast(Box<Expression>, TypeId, SourceRange),
+    VariableRef(&'a str, TypeId, SourceRange),
+    StringLiteral(EscapedString<'a>, TypeId, SourceRange),
+    StructLiteral(Vec<(&'a str, Expression<'a>)>, TypeId, SourceRange),
+    FieldAccessor(&'a str, Box<Expression<'a>>, TypeId, SourceRange),
+    Widen(Box<Expression<'a>>, TypeId, SourceRange),
+    Cast(Box<Expression<'a>>, TypeId, SourceRange),
     Type(TypeId, SourceRange),
 }
 
-impl Expression {
+impl<'a> Expression<'a> {
     pub fn get_type(&self) -> TypeId {
         use Expression::*;
 
@@ -173,10 +218,10 @@ pub trait AstTransformer<U, S, E> {
     fn transform_expression(&mut self, expression: Expression) -> Result<E>;
 }
 
-pub trait ConsumingAstVisitor<U, S, E> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement) -> Result<U>;
+pub trait ConsumingAstVisitor<'a, U, S, E> {
+    fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<U>;
 
-    fn visit_statement(&mut self, statement: Statement) -> Result<S>;
+    fn visit_statement(&mut self, statement: Statement<'a>) -> Result<S>;
 
-    fn visit_expression(&mut self, expression: Expression) -> Result<E>;
+    fn visit_expression(&mut self, expression: Expression<'a>) -> Result<E>;
 }

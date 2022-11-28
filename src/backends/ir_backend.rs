@@ -26,7 +26,7 @@ pub struct IrBackend<'a> {
     main_block: Option<IrBlockIndex>,
 }
 
-impl<'a> IrBackend<'a> {
+impl<'a, 'b> IrBackend<'a> {
     pub fn new(project: &'a mut Project) -> Self {
         Self {
             project,
@@ -37,7 +37,7 @@ impl<'a> IrBackend<'a> {
         }
     }
 
-    fn gen_statement(&mut self, statement: Statement) -> Result<()> {
+    fn gen_statement(&mut self, statement: Statement<'b>) -> Result<()> {
         match statement {
             Statement::Block(children, scoped, _) => {
                 if scoped {
@@ -60,7 +60,7 @@ impl<'a> IrBackend<'a> {
                     .new_register(self.project.get_type_size(value_type).into());
 
                 self.scope
-                    .insert(&name, IrScopeLocation::Reg(destination_reg))
+                    .insert(name, IrScopeLocation::Reg(destination_reg))
                     .map_err(|e| e.with_range(range))
             }
             Statement::Assignment(lhs, rhs, _) => {
@@ -68,7 +68,7 @@ impl<'a> IrBackend<'a> {
                     let value_reg = self.gen_expression(rhs)?;
 
                     let result_location =
-                        self.scope.find(&name).map_err(|e| e.with_range(range))?;
+                        self.scope.find(name).map_err(|e| e.with_range(range))?;
 
                     if let IrScopeLocation::Reg(result_reg) = result_location {
                         self.builder
@@ -174,7 +174,11 @@ impl<'a> IrBackend<'a> {
         }
     }
 
-    fn gen_constant(&mut self, expression: Expression, expression_type: TypeId) -> Result<IrValue> {
+    fn gen_constant(
+        &mut self,
+        expression: Expression<'b>,
+        expression_type: TypeId,
+    ) -> Result<IrValue> {
         use IrValue::*;
 
         match expression {
@@ -200,7 +204,7 @@ impl<'a> IrBackend<'a> {
                 assert_eq!(expression_type, u8_ptr);
                 assert_eq!(value_type, u8_ptr,);
 
-                let index = self.builder.add_string(value);
+                let index = self.builder.add_string(value.to_string());
 
                 Ok(String(index))
             }
@@ -225,7 +229,7 @@ impl<'a> IrBackend<'a> {
         }
     }
 
-    fn gen_expression(&mut self, expression: Expression) -> Result<IrRegister> {
+    fn gen_expression(&mut self, expression: Expression<'b>) -> Result<IrRegister> {
         match expression {
             Expression::BinaryOperator(op, left, right, result_type, _) => {
                 let left_reg = self.gen_expression(*left)?;
@@ -265,14 +269,14 @@ impl<'a> IrBackend<'a> {
                     self.builder.add_instruction(IrInstruction::Push(arg_reg));
                 }
 
-                let function_block_id = self.builder.find_block_index(&name);
+                let function_block_id = self.builder.find_block_index(name);
 
                 if let Some(function_block_id) = function_block_id {
                     self.builder
                         .add_instruction(IrInstruction::Call(function_block_id));
                 } else {
                     self.builder
-                        .add_instruction(IrInstruction::CallExtern(name, arg_count));
+                        .add_instruction(IrInstruction::CallExtern(name.to_string(), arg_count));
                 }
 
                 if return_type != BUILTIN_TYPE_VOID {
@@ -312,7 +316,7 @@ impl<'a> IrBackend<'a> {
                 Ok(reg)
             }
             Expression::VariableRef(name, _, range) => {
-                let location = self.scope.find(&name).map_err(|e| e.with_range(range))?;
+                let location = self.scope.find(name).map_err(|e| e.with_range(range))?;
                 match location {
                     IrScopeLocation::Reg(reg) => Ok(reg),
                     IrScopeLocation::Global(index) => {
@@ -326,7 +330,7 @@ impl<'a> IrBackend<'a> {
                 }
             }
             Expression::StringLiteral(value, _, _) => {
-                let string_index = self.builder.add_string(value);
+                let string_index = self.builder.add_string(value.to_string());
                 let dest_reg = self.builder.new_register(IrRegisterSize::Quad);
                 self.builder.add_instruction(IrInstruction::MovImm(
                     dest_reg,
@@ -355,8 +359,8 @@ impl<'a> IrBackend<'a> {
     }
 }
 
-impl<'a> Backend for IrBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement) -> Result<()> {
+impl<'a, 'b> Backend<'b> for IrBackend<'a> {
+    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         match statement {
             UpperStatement::Function(name, params, return_type, body, _annotations, range) => {
                 let function_block = self.builder.add_block(&name);
