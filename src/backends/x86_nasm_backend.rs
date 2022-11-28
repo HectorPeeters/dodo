@@ -148,7 +148,7 @@ impl<'a> X86NasmBackend<'a> {
                 instructions.push(Db(string_bytes));
             }
             Expression::BooleanLiteral(value, _, _) => {
-                instructions.push(Db(vec![if *value { 1 } else { 0 }]));
+                instructions.push(Db(vec![u8::from(*value)]));
             }
             Expression::StructLiteral(fields, _, _) => {
                 for field in fields {
@@ -410,7 +410,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
             }
             UpperStatement::ConstDeclaration(name, _, value, annotations, _range) => {
                 let position = self.store_global_const(value, annotations);
-                self.scope.insert(&name, ScopeLocation::Global(position))?;
+                self.scope.insert(name, ScopeLocation::Global(position))?;
             }
         }
 
@@ -540,7 +540,7 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
             Expression::BooleanLiteral(value, _, _range) => {
                 let register = self.get_next_register();
 
-                self.instr(Mov(Reg(register, 8), Constant(if value { 1 } else { 0 })));
+                self.instr(Mov(Reg(register, 8), Constant(u64::from(value))));
 
                 Ok(register)
             }

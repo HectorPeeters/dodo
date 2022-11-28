@@ -185,7 +185,7 @@ impl<'a> IrBackend<'a> {
                     BUILTIN_TYPE_U8 => Ok(U8(value as u8)),
                     BUILTIN_TYPE_U16 => Ok(U16(value as u16)),
                     BUILTIN_TYPE_U32 => Ok(U32(value as u32)),
-                    BUILTIN_TYPE_U64 => Ok(U64(value as u64)),
+                    BUILTIN_TYPE_U64 => Ok(U64(value)),
                     _ => unreachable!(),
                 }
             }
@@ -375,7 +375,7 @@ impl<'a> Backend for IrBackend<'a> {
                     self.builder.add_instruction(IrInstruction::Pop(param_reg));
 
                     self.scope
-                        .insert(&param_name, IrScopeLocation::Reg(param_reg))
+                        .insert(param_name, IrScopeLocation::Reg(param_reg))
                         .map_err(|e| e.with_range(range))?;
                 }
 
@@ -397,7 +397,7 @@ impl<'a> Backend for IrBackend<'a> {
                 self.global_consts.push(const_value);
                 let index = self.global_consts.len() - 1;
 
-                self.scope.insert(&name, IrScopeLocation::Global(index))?;
+                self.scope.insert(name, IrScopeLocation::Global(index))?;
 
                 Ok(())
             }

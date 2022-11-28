@@ -67,7 +67,7 @@ impl IrValue {
             U32(x) => format!("{}", *x),
             U64(x) => format!("{}", *x),
             // TODO: when we have something better than printf we can switch to 'true' and 'false'
-            Bool(x) => (if *x { 1 } else { 0 }).to_string(),
+            Bool(x) => u32::from(*x).to_string(),
             String(index) => builder.strings[*index].to_string(),
             Uninitialized() => "uninitalized".to_string(),
         }

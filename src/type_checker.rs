@@ -127,7 +127,7 @@ impl<'a, 'b> TypeChecker<'a> {
             }
             ParsedUpperStatement::ExternDeclaration { name, range } => {
                 self.scope
-                    .insert(&name, TypeScopeEntry::ExternalFuction())?;
+                    .insert(name, TypeScopeEntry::ExternalFuction())?;
                 Ok(UpperStatement::ExternDeclaration(name, range))
             }
             ParsedUpperStatement::Function {
@@ -147,7 +147,7 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 self.scope
                     .insert(
-                        &name,
+                        name,
                         TypeScopeEntry::Function(checked_parameters, checked_return_type),
                     )
                     .map_err(|x| x.with_range(range))?;
@@ -236,7 +236,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 self.scope
-                    .insert(&name, TypeScopeEntry::Global(value_type))?;
+                    .insert(name, TypeScopeEntry::Global(value_type))?;
 
                 let checked_annotations = annotations
                     .into_iter()
@@ -583,7 +583,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     } else {
                         Err(Error::new_with_range(
                             ErrorType::TypeCheck,
-                            format!("Second argument of 'cast' is not a type"),
+                            "Second argument of 'cast' is not a type".to_string(),
                             *target_type.range(),
                         ))
                     }
@@ -764,7 +764,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 if !self.project.is_ptr_type(expr.get_type()) {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
-                        format!("Cannot user array accessor of non-pointer type"),
+                        "Cannot user array accessor of non-pointer type".to_string(),
                         range,
                     ));
                 }

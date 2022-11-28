@@ -50,7 +50,7 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<Strin
     file.hash(&mut hasher);
     let test_code = hasher.finish();
 
-    let tokens = tokenize(&source)?;
+    let tokens = tokenize(source)?;
 
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
