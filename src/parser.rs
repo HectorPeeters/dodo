@@ -12,32 +12,32 @@ pub enum ParsedType {
     Ptr(Box<ParsedType>),
 }
 
-pub type ParsedAnnotations = Vec<(String, Option<ParsedExpression>)>;
-pub type NameTypePairs = Vec<(String, ParsedType)>;
+pub type ParsedAnnotations<'a> = Vec<(&'a str, Option<ParsedExpression>)>;
+pub type NameTypePairs<'a> = Vec<(&'a str, ParsedType)>;
 
 #[derive(Debug, PartialEq)]
-pub enum ParsedUpperStatement {
+pub enum ParsedUpperStatement<'a> {
     Function {
-        name: String,
-        parameters: NameTypePairs,
+        name: &'a str,
+        parameters: NameTypePairs<'a>,
         return_type: ParsedType,
         body: ParsedStatement,
-        annotations: ParsedAnnotations,
+        annotations: ParsedAnnotations<'a>,
         range: SourceRange,
     },
     StructDeclaration {
-        name: String,
-        fields: NameTypePairs,
+        name: &'a str,
+        fields: NameTypePairs<'a>,
     },
     ConstDeclaration {
-        name: String,
+        name: &'a str,
         value_type: ParsedType,
         value: ParsedExpression,
-        annotations: ParsedAnnotations,
+        annotations: ParsedAnnotations<'a>,
         range: SourceRange,
     },
     ExternDeclaration {
-        name: String,
+        name: &'a str,
         range: SourceRange,
     },
 }
@@ -642,6 +642,8 @@ impl<'a> Parser<'a> {
         let let_start = self.current_index(false);
         self.consume_assert(TokenType::Let)?;
         let (name, value_type) = self.parse_identifier_type()?;
+        // TODO: get rid of this
+        let name = name.to_string();
 
         if self.peek()?.token_type == TokenType::Equals {
             // We have a declaration and assignment combined
@@ -731,23 +733,23 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_identifier_type(&mut self) -> Result<(String, ParsedType)> {
+    fn parse_identifier_type(&mut self) -> Result<(&'a str, ParsedType)> {
         let identifier = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::Colon)?;
 
         let value_type = self.parse_type()?;
 
-        Ok((identifier.to_string(), value_type))
+        Ok((identifier, value_type))
     }
 
-    fn parse_function(&mut self, annotations: ParsedAnnotations) -> Result<ParsedUpperStatement> {
+    fn parse_function(
+        &mut self,
+        annotations: ParsedAnnotations<'a>,
+    ) -> Result<ParsedUpperStatement<'a>> {
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
 
-        let name = self
-            .consume_assert(TokenType::Identifier)?
-            .value
-            .to_string();
+        let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
 
         let mut parameters = vec![];
@@ -828,15 +830,12 @@ impl<'a> Parser<'a> {
 
     fn parse_const_declaration(
         &mut self,
-        annotations: ParsedAnnotations,
-    ) -> Result<ParsedUpperStatement> {
+        annotations: ParsedAnnotations<'a>,
+    ) -> Result<ParsedUpperStatement<'a>> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Const)?;
-        let name = self
-            .consume_assert(TokenType::Identifier)?
-            .value
-            .to_string();
+        let name = self.consume_assert(TokenType::Identifier)?.value;
 
         self.consume_assert(TokenType::Colon)?;
         let value_type = self.parse_type()?;
@@ -855,7 +854,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_extern(&mut self) -> Result<ParsedUpperStatement> {
+    fn parse_extern(&mut self) -> Result<ParsedUpperStatement<'a>> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Extern)?;
@@ -863,27 +862,21 @@ impl<'a> Parser<'a> {
         self.consume_assert(TokenType::SemiColon)?;
 
         Ok(ParsedUpperStatement::ExternDeclaration {
-            name: symbol[1..symbol.len() - 1].to_string(),
+            name: &symbol[1..symbol.len() - 1],
             range: (start_index..self.current_index(true)).into(),
         })
     }
 
-    fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatement> {
+    fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatement<'a>> {
         self.consume_assert(TokenType::Struct)?;
-        let name = self
-            .consume_assert(TokenType::Identifier)?
-            .value
-            .to_string();
+        let name = self.consume_assert(TokenType::Identifier)?.value;
 
         self.consume_assert(TokenType::LeftBrace)?;
 
         let mut fields = vec![];
 
         while self.peek()?.token_type != TokenType::RightBrace {
-            let field_name = self
-                .consume_assert(TokenType::Identifier)?
-                .value
-                .to_string();
+            let field_name = self.consume_assert(TokenType::Identifier)?.value;
 
             self.consume_assert(TokenType::Colon)?;
 
@@ -899,15 +892,12 @@ impl<'a> Parser<'a> {
         Ok(ParsedUpperStatement::StructDeclaration { name, fields })
     }
 
-    fn parse_annotations(&mut self) -> Result<ParsedAnnotations> {
+    fn parse_annotations(&mut self) -> Result<ParsedAnnotations<'a>> {
         let mut annotations = vec![];
 
         while self.peek()?.token_type == TokenType::At {
             self.consume_assert(TokenType::At)?;
-            let name = self
-                .consume_assert(TokenType::Identifier)?
-                .value
-                .to_string();
+            let name = self.consume_assert(TokenType::Identifier)?.value;
 
             if self.peek()?.token_type != TokenType::LeftParen {
                 annotations.push((name, None));
@@ -924,7 +914,7 @@ impl<'a> Parser<'a> {
         Ok(annotations)
     }
 
-    pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement> {
+    pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement<'a>> {
         let annotations = self.parse_annotations()?;
 
         let token = self.peek()?;
@@ -947,7 +937,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = Result<ParsedUpperStatement>;
+    type Item = Result<ParsedUpperStatement<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.eof() {
@@ -986,10 +976,8 @@ mod tests {
         Ok(result)
     }
 
-    fn parse_function(input: &str) -> Result<ParsedUpperStatement> {
-        let tokens = tokenize(input)?;
-
-        let mut parser = Parser::new(&tokens);
+    fn parse_function<'a>(tokens: &'a [Token<'a>]) -> Result<ParsedUpperStatement<'a>> {
+        let mut parser = Parser::new(tokens);
         parser.parse_function(vec![])
     }
 
@@ -1179,11 +1167,12 @@ mod tests {
 
     #[test]
     fn parse_simple_function() -> Result<()> {
-        let func = parse_function("fn test() { return 12; }")?;
+        let tokens = tokenize("fn test() { return 12; }")?;
+        let func = parse_function(&tokens)?;
         assert_eq!(
             func,
             ParsedUpperStatement::Function {
-                name: "test".to_string(),
+                name: "test",
                 parameters: vec![],
                 return_type: ParsedType::Named("void".to_string()),
                 body: ParsedStatement::Block {
@@ -1206,11 +1195,12 @@ mod tests {
 
     #[test]
     fn parse_function_return_type() -> Result<()> {
-        let func = parse_function("fn test() u8 { return 12; }")?;
+        let tokens = tokenize("fn test() u8 { return 12; }")?;
+        let func = parse_function(&tokens)?;
         assert_eq!(
             func,
             ParsedUpperStatement::Function {
-                name: "test".to_string(),
+                name: "test",
                 parameters: vec![],
                 return_type: ParsedType::Named("u8".to_string()),
                 body: ParsedStatement::Block {

@@ -28,7 +28,7 @@ pub struct TypeChecker<'a> {
     current_function_return_type: TypeId,
 }
 
-impl<'a> TypeChecker<'a> {
+impl<'a, 'b> TypeChecker<'a> {
     pub fn new(project: &'a mut Project) -> Self {
         Self {
             project,
@@ -102,8 +102,8 @@ impl<'a> TypeChecker<'a> {
 
     pub fn check_upper_statement(
         &mut self,
-        statement: ParsedUpperStatement,
-    ) -> Result<UpperStatement> {
+        statement: ParsedUpperStatement<'b>,
+    ) -> Result<UpperStatement<'b>> {
         match statement {
             ParsedUpperStatement::StructDeclaration { name, fields } => {
                 let checked_fields = fields
@@ -115,8 +115,11 @@ impl<'a> TypeChecker<'a> {
                     .collect::<Result<Vec<_>>>()?;
 
                 let complete_type = Type::Struct(StructType {
-                    name: name.clone(),
-                    fields: checked_fields.clone(),
+                    name: name.to_string(),
+                    fields: checked_fields
+                        .iter()
+                        .map(|(x, y)| (x.to_string(), *y))
+                        .collect::<Vec<_>>(),
                 });
                 self.project.find_or_add_type(complete_type);
 
@@ -192,11 +195,14 @@ impl<'a> TypeChecker<'a> {
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok(UpperStatement::Function(
-                    name.clone(),
+                    name.to_string(),
                     parameters,
                     return_type,
                     checked_body,
-                    checked_annotations,
+                    checked_annotations
+                        .into_iter()
+                        .map(|(x, y)| (x.to_string(), y))
+                        .collect::<Vec<_>>(),
                     range,
                 ))
             }
@@ -250,7 +256,10 @@ impl<'a> TypeChecker<'a> {
                     name,
                     value_type,
                     value,
-                    checked_annotations,
+                    checked_annotations
+                        .into_iter()
+                        .map(|(x, y)| (x.to_string(), y))
+                        .collect::<Vec<_>>(),
                     range,
                 ))
             }

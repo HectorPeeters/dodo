@@ -341,7 +341,8 @@ impl<'a> ConsumingAstVisitor<(), (), X86Register> for X86NasmBackend<'a> {
         match statement {
             UpperStatement::StructDeclaratin(_, _) => {}
             UpperStatement::ExternDeclaration(symbol, _) => {
-                self.instr(Extern(symbol));
+                // TODO: get rid of this to_string call
+                self.instr(Extern(symbol.to_string()));
             }
             UpperStatement::Function(name, args, _ret_type, body, annotations, range) => {
                 self.scope.push();

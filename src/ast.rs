@@ -5,18 +5,18 @@ use crate::types::TypeId;
 pub type Annotations = Vec<(String, Option<Expression>)>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UpperStatement {
+pub enum UpperStatement<'a> {
     Function(
         String,
-        Vec<(String, TypeId)>,
+        Vec<(&'a str, TypeId)>,
         TypeId,
         Statement,
         Annotations,
         SourceRange,
     ),
-    StructDeclaratin(String, Vec<(String, TypeId)>),
-    ConstDeclaration(String, TypeId, Expression, Annotations, SourceRange),
-    ExternDeclaration(String, SourceRange),
+    StructDeclaratin(&'a str, Vec<(&'a str, TypeId)>),
+    ConstDeclaration(&'a str, TypeId, Expression, Annotations, SourceRange),
+    ExternDeclaration(&'a str, SourceRange),
 }
 
 #[derive(Debug, Clone, PartialEq)]
