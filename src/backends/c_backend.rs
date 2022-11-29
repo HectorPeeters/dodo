@@ -1,7 +1,6 @@
 use super::Backend;
 use crate::ast::{
-    BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType,
-    UpperStatement,
+    AstTransformer, BinaryOperatorType, Expression, Statement, UnaryOperatorType, UpperStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::project::{
@@ -82,7 +81,7 @@ impl<'a> CBackend<'a> {
     }
 }
 
-impl<'a> ConsumingAstVisitor<'a, (), (), String> for CBackend<'a> {
+impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(name, fields) => {

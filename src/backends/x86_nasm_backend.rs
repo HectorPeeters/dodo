@@ -8,7 +8,7 @@ use crate::project::{Project, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
 use crate::types::Type;
 use crate::{
-    ast::{BinaryOperatorType, ConsumingAstVisitor, Expression, Statement, UnaryOperatorType},
+    ast::{AstTransformer, BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
     scope::Scope,
     types::TypeId,
@@ -332,7 +332,7 @@ impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ConsumingAstVisitor<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {
+impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {
     fn visit_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         match statement {
             UpperStatement::StructDeclaratin(_, _) => {}

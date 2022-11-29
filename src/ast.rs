@@ -210,15 +210,7 @@ impl<'a> Expression<'a> {
     }
 }
 
-pub trait AstTransformer<U, S, E> {
-    fn transform_upper_statement(&mut self, statement: UpperStatement) -> Result<U>;
-
-    fn transform_statement(&mut self, statement: Statement) -> Result<S>;
-
-    fn transform_expression(&mut self, expression: Expression) -> Result<E>;
-}
-
-pub trait ConsumingAstVisitor<'a, U, S, E> {
+pub trait AstTransformer<'a, U, S, E> {
     fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<U>;
 
     fn visit_statement(&mut self, statement: Statement<'a>) -> Result<S>;

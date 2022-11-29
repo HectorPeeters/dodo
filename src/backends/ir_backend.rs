@@ -67,8 +67,7 @@ impl<'a, 'b> IrBackend<'a> {
                 if let Expression::VariableRef(name, _, range) = lhs {
                     let value_reg = self.gen_expression(rhs)?;
 
-                    let result_location =
-                        self.scope.find(name).map_err(|e| e.with_range(range))?;
+                    let result_location = self.scope.find(name).map_err(|e| e.with_range(range))?;
 
                     if let IrScopeLocation::Reg(result_reg) = result_location {
                         self.builder
