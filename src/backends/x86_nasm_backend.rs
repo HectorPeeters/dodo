@@ -4,8 +4,10 @@ use super::x86_instruction::{
 use super::x86_instruction::{RAX, RBP, RDX, RSP};
 use super::Backend;
 use crate::ast::{
-    Annotations, ConstDeclaration, FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration,
-    IntegerLiteralExpr, UnaryOperatorExpr, UpperStatement, VariableRefExpr, WidenExpr,
+    Annotations, AssignmentStatement, BlockStatement, ConstDeclaration, DeclarationStatement,
+    ExpressionStatement, FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IfStatement,
+    IntegerLiteralExpr, ReturnStatement, UnaryOperatorExpr, UpperStatement, VariableRefExpr,
+    WhileStatement, WidenExpr,
 };
 use crate::project::{Project, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
@@ -443,21 +445,25 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
     fn visit_statement(&mut self, statement: Statement<'b>) -> Result<()> {
         match statement {
-            Statement::Declaration(name, _value_type, range) => {
+            Statement::Declaration(DeclarationStatement {
+                name,
+                type_id: _,
+                range,
+            }) => {
                 self.scope
                     .insert(name, ScopeLocation::Stack(self.scope.size()?))
                     .map_err(|x| x.with_range(range))?;
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
-            Statement::Assignment(lhs, rhs, range) => {
-                assert!(!self.project.is_struct_type(rhs.get_type()));
+            Statement::Assignment(AssignmentStatement { left, right, range }) => {
+                assert!(!self.project.is_struct_type(right.get_type()));
 
-                let value_size = self.project.get_type_size(rhs.get_type());
-                let value_reg = self.visit_expression(rhs)?;
+                let value_size = self.project.get_type_size(right.get_type());
+                let value_reg = self.visit_expression(right)?;
                 let value_operand = Reg(value_reg, value_size);
 
-                let (lvalue_operand, reg_to_free) = self.generate_lvalue(lhs, range)?;
+                let (lvalue_operand, reg_to_free) = self.generate_lvalue(left, range)?;
 
                 match lvalue_operand {
                     LValueLocation::Stack(offset) => {
@@ -474,34 +480,43 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.free_register(value_reg);
             }
-            Statement::While(cond, stmt, _range) => {
+            Statement::While(WhileStatement {
+                condition,
+                body,
+                range: _,
+            }) => {
                 let start_label = self.get_new_label();
                 let end_label = self.get_new_label();
 
                 self.instr(LabelDef(start_label));
 
-                let cond_size = self.project.get_type_size(cond.get_type());
-                let register = self.visit_expression(cond)?;
+                let condition_size = self.project.get_type_size(condition.get_type());
+                let register = self.visit_expression(condition)?;
 
-                self.instr(Cmp(Reg(register, cond_size), Constant(0)));
+                self.instr(Cmp(Reg(register, condition_size), Constant(0)));
                 self.instr(Jz(Label(end_label)));
 
-                self.visit_statement(*stmt)?;
+                self.visit_statement(*body)?;
 
                 self.instr(Jmp(Label(start_label)));
                 self.instr(LabelDef(end_label));
 
                 self.free_register(register);
             }
-            Statement::If(cond, stmt, else_body, _range) => {
+            Statement::If(IfStatement {
+                condition,
+                if_body,
+                else_body,
+                range: _,
+            }) => {
                 let end_label = self.get_new_label();
                 let else_label = self.get_new_label();
 
-                let cond_size = self.project.get_type_size(cond.get_type());
-                let cond_register = self.visit_expression(cond)?;
+                let condition_size = self.project.get_type_size(condition.get_type());
+                let condition_register = self.visit_expression(condition)?;
 
-                self.instr(Cmp(Reg(cond_register, cond_size), Constant(0)));
-                self.free_register(cond_register);
+                self.instr(Cmp(Reg(condition_register, condition_size), Constant(0)));
+                self.free_register(condition_register);
 
                 if else_body.is_none() {
                     self.instr(Jz(Label(end_label)));
@@ -509,7 +524,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     self.instr(Jz(Label(else_label)));
                 }
 
-                self.visit_statement(*stmt)?;
+                self.visit_statement(*if_body)?;
 
                 if let Some(else_body) = else_body {
                     self.instr(Jmp(Label(end_label)));
@@ -521,21 +536,25 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.instr(LabelDef(end_label));
             }
-            Statement::Return(expr, _range) => {
-                let expr_size = self.project.get_type_size(expr.get_type());
-                let value_reg = self.visit_expression(expr).unwrap();
+            Statement::Return(ReturnStatement { value, range: _ }) => {
+                let expr_size = self.project.get_type_size(value.get_type());
+                let value_reg = self.visit_expression(value).unwrap();
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
                 self.instr(Jmp(Label(self.current_function_end_label)));
 
                 self.free_register(value_reg);
             }
-            Statement::Block(stmts, scoped, _) => {
+            Statement::Block(BlockStatement {
+                children,
+                scoped,
+                range: _,
+            }) => {
                 if scoped {
                     self.scope.push();
                 }
 
-                for stmt in stmts {
+                for stmt in children {
                     self.visit_statement(stmt)?;
                 }
 
@@ -543,7 +562,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     self.scope.pop();
                 }
             }
-            Statement::Expression(expr, _range) => {
+            Statement::Expression(ExpressionStatement { expr, range: _ }) => {
                 let register = self.visit_expression(expr)?;
                 self.free_register(register);
             }

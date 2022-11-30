@@ -1,8 +1,9 @@
 use super::Backend;
 use crate::ast::{
-    AstTransformer, BinaryOperatorType, CastExpr, ConstDeclaration, Expression, FieldAccessorExpr,
-    FunctionCallExpr, FunctionDeclaration, Statement, StructDeclaration, StructLiteralExpr,
-    UnaryOperatorType, UpperStatement,
+    AssignmentStatement, AstTransformer, BinaryOperatorType, BlockStatement, CastExpr,
+    ConstDeclaration, DeclarationStatement, Expression, FieldAccessorExpr, FunctionCallExpr,
+    FunctionDeclaration, IfStatement, Statement, StructDeclaration, StructLiteralExpr,
+    UnaryOperatorType, UpperStatement, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::project::{
@@ -183,12 +184,16 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
     fn visit_statement(&mut self, statement: Statement<'a>) -> Result<()> {
         match statement {
-            Statement::Block(statements, scoped, _) => {
+            Statement::Block(BlockStatement {
+                children,
+                scoped,
+                range: _,
+            }) => {
                 if scoped {
                     self.buffer.push_str("{\n");
                 }
 
-                for statement in statements {
+                for statement in children {
                     self.visit_statement(statement)?;
                 }
 
@@ -198,37 +203,54 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(())
             }
-            Statement::Declaration(name, type_, _) => {
+            Statement::Declaration(DeclarationStatement {
+                name,
+                type_id,
+                range: _,
+            }) => {
                 self.buffer
-                    .push_str(&format!("{} {};\n", self.to_c_type(type_), name));
+                    .push_str(&format!("{} {};\n", self.to_c_type(type_id), name));
                 Ok(())
             }
-            Statement::Assignment(lhs, rhs, _) => {
-                let lhs = self.visit_expression(lhs)?;
-                let rhs = self.visit_expression(rhs)?;
-                self.buffer.push_str(&format!("{} = {};\n", lhs, rhs));
+            Statement::Assignment(AssignmentStatement {
+                left,
+                right,
+                range: _,
+            }) => {
+                let left = self.visit_expression(left)?;
+                let right = self.visit_expression(right)?;
+                self.buffer.push_str(&format!("{} = {};\n", left, right));
                 Ok(())
             }
-            Statement::Expression(expr, _) => {
-                let expr = self.visit_expression(expr)?;
+            Statement::Expression(expr_stmt) => {
+                let expr = self.visit_expression(expr_stmt.expr)?;
                 self.buffer.push_str(&expr);
                 self.buffer.push_str(";\n");
                 Ok(())
             }
-            Statement::While(cond, body, _) => {
-                let cond = self.visit_expression(cond)?;
+            Statement::While(WhileStatement {
+                condition,
+                body,
+                range: _,
+            }) => {
+                let condition = self.visit_expression(condition)?;
 
-                self.buffer.push_str(&format!("while ({}) {{", cond));
+                self.buffer.push_str(&format!("while ({}) {{", condition));
                 self.visit_statement(*body)?;
                 self.buffer.push('}');
 
                 Ok(())
             }
-            Statement::If(cond, body, else_body, _) => {
-                let cond = self.visit_expression(cond)?;
+            Statement::If(IfStatement {
+                condition,
+                if_body,
+                else_body,
+                range: _,
+            }) => {
+                let condition = self.visit_expression(condition)?;
 
-                self.buffer.push_str(&format!("if ({}) ", cond));
-                self.visit_statement(*body)?;
+                self.buffer.push_str(&format!("if ({}) ", condition));
+                self.visit_statement(*if_body)?;
 
                 if let Some(else_body) = else_body {
                     self.buffer.push_str(" else ");
@@ -237,9 +259,9 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(())
             }
-            Statement::Return(expr, _) => {
-                let expr = self.visit_expression(expr)?;
-                self.buffer.push_str(&format!("return {};", expr));
+            Statement::Return(return_expr) => {
+                let value = self.visit_expression(return_expr.value)?;
+                self.buffer.push_str(&format!("return {};", value));
 
                 Ok(())
             }

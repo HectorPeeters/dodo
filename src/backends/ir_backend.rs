@@ -1,8 +1,8 @@
 use super::Backend;
 use crate::ast::{
-    BinaryOperatorType, BooleanLiteralExpr, ConstDeclaration, Expression, FunctionCallExpr,
-    FunctionDeclaration, IntegerLiteralExpr, Statement, StringLiteralExpr, VariableRefExpr,
-    WidenExpr,
+    AssignmentStatement, BinaryOperatorType, BlockStatement, BooleanLiteralExpr, ConstDeclaration,
+    DeclarationStatement, Expression, FunctionCallExpr, FunctionDeclaration, IfStatement,
+    IntegerLiteralExpr, Statement, StringLiteralExpr, VariableRefExpr, WhileStatement, WidenExpr,
 };
 use crate::error::Result;
 use crate::interpreter::Interpreter;
@@ -43,7 +43,11 @@ impl<'a, 'b> IrBackend<'a> {
 
     fn gen_statement(&mut self, statement: Statement<'b>) -> Result<()> {
         match statement {
-            Statement::Block(children, scoped, _) => {
+            Statement::Block(BlockStatement {
+                children,
+                scoped,
+                range: _,
+            }) => {
                 if scoped {
                     self.scope.push();
                 }
@@ -58,23 +62,31 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(())
             }
-            Statement::Declaration(name, value_type, range) => {
+            Statement::Declaration(DeclarationStatement {
+                name,
+                type_id,
+                range,
+            }) => {
                 let destination_reg = self
                     .builder
-                    .new_register(self.project.get_type_size(value_type).into());
+                    .new_register(self.project.get_type_size(type_id).into());
 
                 self.scope
                     .insert(name, IrScopeLocation::Reg(destination_reg))
                     .map_err(|e| e.with_range(range))
             }
-            Statement::Assignment(lhs, rhs, _) => {
+            Statement::Assignment(AssignmentStatement {
+                left,
+                right,
+                range: _,
+            }) => {
                 if let Expression::VariableRef(VariableRefExpr {
                     name,
                     type_id: _,
                     range,
-                }) = lhs
+                }) = left
                 {
-                    let value_reg = self.gen_expression(rhs)?;
+                    let value_reg = self.gen_expression(right)?;
 
                     let result_location = self.scope.find(name).map_err(|e| e.with_range(range))?;
 
@@ -90,8 +102,12 @@ impl<'a, 'b> IrBackend<'a> {
 
                 todo!()
             }
-            Statement::Expression(expr, _) => self.gen_expression(expr).map(|_| ()),
-            Statement::While(condition, body, _) => {
+            Statement::Expression(expr_stmt) => self.gen_expression(expr_stmt.expr).map(|_| ()),
+            Statement::While(WhileStatement {
+                condition,
+                body,
+                range: _,
+            }) => {
                 let condition_block = self.builder.add_block("condition_block");
                 let while_body_block = self.builder.add_block("while_block");
                 let continue_block = self.builder.add_block("continue_block");
@@ -121,7 +137,12 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(())
             }
-            Statement::If(condition, body, else_body, _) => {
+            Statement::If(IfStatement {
+                condition,
+                if_body,
+                else_body,
+                range: _,
+            }) => {
                 let condition_reg = self.gen_expression(condition)?;
                 let if_body_block = self.builder.add_block("if_block");
                 let continue_block = self.builder.add_block("continue_block");
@@ -138,7 +159,7 @@ impl<'a, 'b> IrBackend<'a> {
 
                     self.builder.push_block(if_body_block);
 
-                    self.gen_statement(*body)?;
+                    self.gen_statement(*if_body)?;
                     self.builder
                         .add_instruction(IrInstruction::Jmp(continue_block));
 
@@ -161,7 +182,7 @@ impl<'a, 'b> IrBackend<'a> {
 
                     self.builder.push_block(if_body_block);
 
-                    self.gen_statement(*body)?;
+                    self.gen_statement(*if_body)?;
                     self.builder
                         .add_instruction(IrInstruction::Jmp(continue_block));
 
@@ -172,8 +193,8 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(())
             }
-            Statement::Return(value, _) => {
-                let value_reg = self.gen_expression(value)?;
+            Statement::Return(ret_stmt) => {
+                let value_reg = self.gen_expression(ret_stmt.value)?;
                 self.builder.add_instruction(IrInstruction::Push(value_reg));
                 self.builder.add_instruction(IrInstruction::Ret());
 

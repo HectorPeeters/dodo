@@ -47,19 +47,62 @@ pub enum UpperStatement<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct BlockStatement<'a> {
+    pub children: Vec<Statement<'a>>,
+    pub scoped: bool,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct DeclarationStatement<'a> {
+    pub name: &'a str,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AssignmentStatement<'a> {
+    pub left: Expression<'a>,
+    pub right: Expression<'a>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ExpressionStatement<'a> {
+    pub expr: Expression<'a>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct WhileStatement<'a> {
+    pub condition: Expression<'a>,
+    pub body: Box<Statement<'a>>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IfStatement<'a> {
+    pub condition: Expression<'a>,
+    pub if_body: Box<Statement<'a>>,
+    pub else_body: Option<Box<Statement<'a>>>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ReturnStatement<'a> {
+    pub value: Expression<'a>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Statement<'a> {
-    Block(Vec<Statement<'a>>, bool, SourceRange),
-    Declaration(&'a str, TypeId, SourceRange),
-    Assignment(Expression<'a>, Expression<'a>, SourceRange),
-    Expression(Expression<'a>, SourceRange),
-    While(Expression<'a>, Box<Statement<'a>>, SourceRange),
-    If(
-        Expression<'a>,
-        Box<Statement<'a>>,
-        Option<Box<Statement<'a>>>,
-        SourceRange,
-    ),
-    Return(Expression<'a>, SourceRange),
+    Block(BlockStatement<'a>),
+    Declaration(DeclarationStatement<'a>),
+    Assignment(AssignmentStatement<'a>),
+    Expression(ExpressionStatement<'a>),
+    While(WhileStatement<'a>),
+    If(IfStatement<'a>),
+    Return(ReturnStatement<'a>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

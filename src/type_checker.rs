@@ -1,8 +1,9 @@
 use crate::ast::{
-    BinaryOperatorExpr, BooleanLiteralExpr, CastExpr, ConstDeclaration, ExternDeclaration,
-    FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IntegerLiteralExpr,
-    StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr, UnaryOperatorExpr,
-    UpperStatement, VariableRefExpr, WidenExpr,
+    AssignmentStatement, BinaryOperatorExpr, BlockStatement, BooleanLiteralExpr, CastExpr,
+    ConstDeclaration, DeclarationStatement, ExpressionStatement, ExternDeclaration,
+    FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IfStatement, IntegerLiteralExpr,
+    ReturnStatement, StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr,
+    UnaryOperatorExpr, UpperStatement, VariableRefExpr, WhileStatement, WidenExpr,
 };
 use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
 use crate::project::{
@@ -298,57 +299,73 @@ impl<'a, 'b> TypeChecker<'a> {
                     self.scope.pop();
                 }
 
-                Ok(Statement::Block(children, scoped, range))
+                Ok(Statement::Block(BlockStatement {
+                    children,
+                    scoped,
+                    range,
+                }))
             }
             ParsedStatement::Declaration {
                 name,
                 value_type,
                 range,
             } => {
-                let value_type = self.check_type(&value_type)?;
+                let type_id = self.check_type(&value_type)?;
 
                 self.scope
-                    .insert(name, TypeScopeEntry::Value(value_type))
+                    .insert(name, TypeScopeEntry::Value(type_id))
                     .map_err(|x| x.with_range(range))?;
 
-                Ok(Statement::Declaration(name, value_type, range))
+                Ok(Statement::Declaration(DeclarationStatement {
+                    name,
+                    type_id,
+                    range,
+                }))
             }
             ParsedStatement::Assignment { left, right, range } => {
-                let left_checked = self.check_expression(left)?;
-                let mut right_checked = self.check_expression(right)?;
+                let left = self.check_expression(left)?;
+                let mut right = self.check_expression(right)?;
 
-                if left_checked.get_type() == right_checked.get_type() {
-                    return Ok(Statement::Assignment(left_checked, right_checked, range));
+                if left.get_type() == right.get_type() {
+                    return Ok(Statement::Assignment(AssignmentStatement {
+                        left,
+                        right,
+                        range,
+                    }));
                 }
 
                 let new_type = self
-                    .widen_assignment(left_checked.get_type(), right_checked.get_type())
+                    .widen_assignment(left.get_type(), right.get_type())
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                right_checked.get_type(),
-                                left_checked.get_type(),
+                                right.get_type(),
+                                left.get_type(),
                             ),
                             range,
                         )
                     })?;
 
-                if new_type != right_checked.get_type() {
-                    right_checked = Expression::Widen(WidenExpr {
-                        expr: Box::new(right_checked),
+                if new_type != right.get_type() {
+                    right = Expression::Widen(WidenExpr {
+                        expr: Box::new(right),
                         type_id: new_type,
                         range,
                     });
                 }
 
-                Ok(Statement::Assignment(left_checked, right_checked, range))
+                Ok(Statement::Assignment(AssignmentStatement {
+                    left,
+                    right,
+                    range,
+                }))
             }
             ParsedStatement::Expression { expr, range } => {
                 let expr = self.check_expression(expr)?;
 
-                Ok(Statement::Expression(expr, range))
+                Ok(Statement::Expression(ExpressionStatement { expr, range }))
             }
             ParsedStatement::If {
                 condition,
@@ -369,35 +386,44 @@ impl<'a, 'b> TypeChecker<'a> {
                     ));
                 }
 
-                let body = self.check_statement(*body)?;
+                let if_body = Box::new(self.check_statement(*body)?);
 
                 let else_body = match else_body {
                     Some(b) => Some(Box::new(self.check_statement(*b)?)),
                     None => None,
                 };
 
-                Ok(Statement::If(condition, Box::new(body), else_body, range))
+                Ok(Statement::If(IfStatement {
+                    condition,
+                    if_body,
+                    else_body,
+                    range,
+                }))
             }
             ParsedStatement::While {
                 condition,
                 body,
                 range,
             } => {
-                let cond = self.check_expression(condition)?;
-                if cond.get_type() != BUILTIN_TYPE_BOOL {
+                let condition = self.check_expression(condition)?;
+                if condition.get_type() != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
-                            cond.get_type()
+                            condition.get_type()
                         ),
                         range,
                     ));
                 }
 
-                let body = self.check_statement(*body)?;
+                let body = Box::new(self.check_statement(*body)?);
 
-                Ok(Statement::While(cond, Box::new(body), range))
+                Ok(Statement::While(WhileStatement {
+                    condition,
+                    body,
+                    range,
+                }))
             }
             ParsedStatement::Return { value, range } => {
                 let mut value = self.check_expression(value)?;
@@ -426,7 +452,7 @@ impl<'a, 'b> TypeChecker<'a> {
                             });
                         }
 
-                        Ok(Statement::Return(value, range))
+                        Ok(Statement::Return(ReturnStatement { value, range }))
                     }
                 }
             }
