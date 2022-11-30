@@ -452,7 +452,7 @@ impl<'a, 'b> TypeChecker<'a> {
                             });
                         }
 
-                        Ok(Statement::Return(ReturnStatement { value, range }))
+                        Ok(Statement::Return(ReturnStatement { expr: value, range }))
                     }
                 }
             }
@@ -922,19 +922,23 @@ mod tests {
 
         assert_eq!(
             type_checker.check_statement(ast)?,
-            Statement::Assignment(
-                Expression::VariableRef("test", BUILTIN_TYPE_U16, (0..0).into()),
-                Expression::Widen(
-                    Box::new(Expression::IntegerLiteral(IntegerLiteralExpr {
+            Statement::Assignment(AssignmentStatement {
+                left: Expression::VariableRef(VariableRefExpr {
+                    name: "test",
+                    type_id: BUILTIN_TYPE_U16,
+                    range: (0..0).into()
+                }),
+                right: Expression::Widen(WidenExpr {
+                    expr: Box::new(Expression::IntegerLiteral(IntegerLiteralExpr {
                         value: 12,
                         type_id: BUILTIN_TYPE_U8,
                         range: (0..0).into()
                     })),
-                    BUILTIN_TYPE_U16,
-                    (0..0).into(),
-                ),
-                (0..0).into(),
-            )
+                    type_id: BUILTIN_TYPE_U16,
+                    range: (0..0).into(),
+                }),
+                range: (0..0).into(),
+            })
         );
 
         Ok(())

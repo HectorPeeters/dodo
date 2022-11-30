@@ -288,6 +288,8 @@ impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
         // Generating assembly
 
+        println!("Instruction count: {}", self.instructions.len());
+
         let assembly_file = output.with_extension("asm");
         let mut assembly_output = File::create(&assembly_file).unwrap();
         self.write_data(&mut assembly_output);
@@ -536,7 +538,10 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.instr(LabelDef(end_label));
             }
-            Statement::Return(ReturnStatement { value, range: _ }) => {
+            Statement::Return(ReturnStatement {
+                expr: value,
+                range: _,
+            }) => {
                 let expr_size = self.project.get_type_size(value.get_type());
                 let value_reg = self.visit_expression(value).unwrap();
 

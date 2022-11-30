@@ -194,7 +194,7 @@ impl<'a, 'b> IrBackend<'a> {
                 Ok(())
             }
             Statement::Return(ret_stmt) => {
-                let value_reg = self.gen_expression(ret_stmt.value)?;
+                let value_reg = self.gen_expression(ret_stmt.expr)?;
                 self.builder.add_instruction(IrInstruction::Push(value_reg));
                 self.builder.add_instruction(IrInstruction::Ret());
 
@@ -432,7 +432,7 @@ impl<'a, 'b> Backend<'b> for IrBackend<'a> {
                 annotations: _,
                 range,
             }) => {
-                let function_block = self.builder.add_block(&name);
+                let function_block = self.builder.add_block(name);
 
                 if name == "main" {
                     self.main_block = Some(function_block);

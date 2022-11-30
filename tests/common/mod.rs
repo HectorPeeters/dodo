@@ -4,6 +4,7 @@ use dodo::{
         BackendType,
     },
     error::Result,
+    optimisations::optimize,
     parser::Parser,
     project::Project,
     tokenizer::tokenize,
@@ -58,10 +59,12 @@ fn run_test(file: &str, source: &str, backend_type: BackendType) -> Result<Strin
     let mut project = Project::new(file);
 
     let mut type_checker = TypeChecker::new(&mut project);
-    let statements = statements
+    let mut statements = statements
         .into_iter()
         .map(|x| type_checker.check_upper_statement(x))
         .collect::<Result<Vec<_>>>()?;
+
+    statements = optimize(statements);
 
     let mut backend: Box<dyn Backend> = match backend_type {
         BackendType::C => Box::new(CBackend::new(&mut project)),

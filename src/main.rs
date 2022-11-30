@@ -1,5 +1,8 @@
 use clap::StructOpt;
 use dodo::backends::BackendType;
+use dodo::backends::{
+    c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend,
+};
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::tokenizer::tokenize;
@@ -27,6 +30,9 @@ struct Args {
     #[clap(short, long)]
     run: bool,
 
+    #[clap(short = 'O', long)]
+    optimize: bool,
+
     #[clap(long)]
     dont_compile: bool,
 }
@@ -44,9 +50,7 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use dodo::backends::{
-        c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend,
-    };
+    use dodo::optimisations::optimize;
 
     let args = Args::parse();
 
@@ -85,7 +89,7 @@ fn main() -> Result<()> {
     let mut project = Project::new(source_file);
 
     let mut type_checker = TypeChecker::new(&mut project);
-    let statements = unwrap_or_error(
+    let mut statements = unwrap_or_error(
         statements
             .into_iter()
             .map(|x| type_checker.check_upper_statement(x))
@@ -96,6 +100,12 @@ fn main() -> Result<()> {
     if args.print_typed_ast {
         println!("Typed ast:");
         println!("{:#?}", statements);
+    }
+
+    // Optimisation
+
+    if args.optimize {
+        statements = optimize(statements);
     }
 
     // Backend

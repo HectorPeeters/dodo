@@ -260,7 +260,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             Statement::Return(return_expr) => {
-                let value = self.visit_expression(return_expr.value)?;
+                let value = self.visit_expression(return_expr.expr)?;
                 self.buffer.push_str(&format!("return {};", value));
 
                 Ok(())

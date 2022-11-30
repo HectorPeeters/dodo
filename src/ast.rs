@@ -90,7 +90,7 @@ pub struct IfStatement<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct ReturnStatement<'a> {
-    pub value: Expression<'a>,
+    pub expr: Expression<'a>,
     pub range: SourceRange,
 }
 
