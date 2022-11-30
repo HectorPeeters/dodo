@@ -7,24 +7,43 @@ use crate::types::TypeId;
 pub type Annotations<'a> = Vec<(&'a str, Option<Expression<'a>>)>;
 
 #[derive(Debug, PartialEq)]
+pub struct FunctionDeclaration<'a> {
+    pub name: &'a str,
+    pub params: Vec<(&'a str, TypeId)>,
+    pub return_type: TypeId,
+    pub body: Statement<'a>,
+    pub annotations: Annotations<'a>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StructDeclaration<'a> {
+    pub name: &'a str,
+    pub fields: Vec<(&'a str, TypeId)>,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ConstDeclaration<'a> {
+    pub name: &'a str,
+    pub value: Expression<'a>,
+    pub annotations: Annotations<'a>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ExternDeclaration<'a> {
+    pub name: &'a str,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum UpperStatement<'a> {
-    Function(
-        String,
-        Vec<(&'a str, TypeId)>,
-        TypeId,
-        Statement<'a>,
-        Annotations<'a>,
-        SourceRange,
-    ),
-    StructDeclaratin(&'a str, Vec<(&'a str, TypeId)>),
-    ConstDeclaration(
-        &'a str,
-        TypeId,
-        Expression<'a>,
-        Annotations<'a>,
-        SourceRange,
-    ),
-    ExternDeclaration(&'a str, SourceRange),
+    Function(FunctionDeclaration<'a>),
+    StructDeclaration(StructDeclaration<'a>),
+    ConstDeclaration(ConstDeclaration<'a>),
+    ExternDeclaration(ExternDeclaration<'a>),
 }
 
 #[derive(Debug, PartialEq)]

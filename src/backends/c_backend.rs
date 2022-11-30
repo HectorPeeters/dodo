@@ -1,7 +1,8 @@
 use super::Backend;
 use crate::ast::{
-    AstTransformer, BinaryOperatorType, CastExpr, Expression, FieldAccessorExpr, FunctionCallExpr,
-    Statement, StructLiteralExpr, UnaryOperatorType, UpperStatement,
+    AstTransformer, BinaryOperatorType, CastExpr, ConstDeclaration, Expression, FieldAccessorExpr,
+    FunctionCallExpr, FunctionDeclaration, Statement, StructDeclaration, StructLiteralExpr,
+    UnaryOperatorType, UpperStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::project::{
@@ -85,7 +86,11 @@ impl<'a> CBackend<'a> {
 impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
     fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
         match statement {
-            UpperStatement::StructDeclaratin(name, fields) => {
+            UpperStatement::StructDeclaration(StructDeclaration {
+                name,
+                fields,
+                range: _,
+            }) => {
                 let formatted_fields = fields
                     .into_iter()
                     .map(|(name, field_type)| format!("\t{} {};", self.to_c_type(field_type), name))
@@ -97,9 +102,16 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(())
             }
-            UpperStatement::ExternDeclaration(_, _) => Ok(()),
-            UpperStatement::Function(name, args, return_type, body, annotations, _) => {
-                let args = args
+            UpperStatement::ExternDeclaration(_) => Ok(()),
+            UpperStatement::Function(FunctionDeclaration {
+                name,
+                params,
+                return_type,
+                body,
+                annotations,
+                range: _,
+            }) => {
+                let params = params
                     .into_iter()
                     .map(|(name, type_)| format!("{} {}", self.to_c_type(type_), name))
                     .collect::<Vec<_>>()
@@ -126,7 +138,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 self.buffer.push_str(&format!(
                     "{} {}({}) {}\n",
-                    return_type, name, args, section_attribute
+                    return_type, name, params, section_attribute
                 ));
 
                 self.visit_statement(body)?;
@@ -135,8 +147,14 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(())
             }
-            UpperStatement::ConstDeclaration(name, value_type, value, annotations, _range) => {
-                let c_type = self.to_c_type(value_type);
+            UpperStatement::ConstDeclaration(ConstDeclaration {
+                name,
+                value,
+                annotations,
+                type_id,
+                range: _,
+            }) => {
+                let c_type = self.to_c_type(type_id);
 
                 let c_value = self.visit_expression(value)?;
 

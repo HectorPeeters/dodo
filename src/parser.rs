@@ -28,6 +28,7 @@ pub enum ParsedUpperStatement<'a> {
     StructDeclaration {
         name: &'a str,
         fields: NameTypePairs<'a>,
+        range: SourceRange,
     },
     ConstDeclaration {
         name: &'a str,
@@ -846,6 +847,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatement<'a>> {
+        let start_index = self.current_index(false);
+
         self.consume_assert(TokenType::Struct)?;
         let name = self.consume_assert(TokenType::Identifier)?.value;
 
@@ -867,7 +870,11 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::RightBrace)?;
 
-        Ok(ParsedUpperStatement::StructDeclaration { name, fields })
+        Ok(ParsedUpperStatement::StructDeclaration {
+            name,
+            fields,
+            range: (start_index..self.current_index(true)).into(),
+        })
     }
 
     fn parse_annotations(&mut self) -> Result<ParsedAnnotations<'a>> {

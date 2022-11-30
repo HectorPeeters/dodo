@@ -1,6 +1,7 @@
 use crate::ast::{
-    BinaryOperatorExpr, BooleanLiteralExpr, CastExpr, FieldAccessorExpr, FunctionCallExpr,
-    IntegerLiteralExpr, StringLiteralExpr, StructLiteralExpr, TypeExpr, UnaryOperatorExpr,
+    BinaryOperatorExpr, BooleanLiteralExpr, CastExpr, ConstDeclaration, ExternDeclaration,
+    FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IntegerLiteralExpr,
+    StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr, UnaryOperatorExpr,
     UpperStatement, VariableRefExpr, WidenExpr,
 };
 use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
@@ -109,7 +110,11 @@ impl<'a, 'b> TypeChecker<'a> {
         statement: ParsedUpperStatement<'b>,
     ) -> Result<UpperStatement<'b>> {
         match statement {
-            ParsedUpperStatement::StructDeclaration { name, fields } => {
+            ParsedUpperStatement::StructDeclaration {
+                name,
+                fields,
+                range,
+            } => {
                 let checked_fields = fields
                     .into_iter()
                     .map(|(name, parsed_type)| match self.check_type(&parsed_type) {
@@ -127,11 +132,18 @@ impl<'a, 'b> TypeChecker<'a> {
                 });
                 self.project.find_or_add_type(complete_type);
 
-                Ok(UpperStatement::StructDeclaratin(name, checked_fields))
+                Ok(UpperStatement::StructDeclaration(StructDeclaration {
+                    name,
+                    fields: checked_fields,
+                    range,
+                }))
             }
             ParsedUpperStatement::ExternDeclaration { name, range } => {
                 self.scope.insert(name, TypeScopeEntry::ExternalFuction())?;
-                Ok(UpperStatement::ExternDeclaration(name, range))
+                Ok(UpperStatement::ExternDeclaration(ExternDeclaration {
+                    name,
+                    range,
+                }))
             }
             ParsedUpperStatement::Function {
                 name,
@@ -157,7 +169,7 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 self.scope.push();
 
-                let parameters = parameters
+                let params = parameters
                     .into_iter()
                     .map(
                         |(param_name, param_type)| match self.check_type(&param_type) {
@@ -167,7 +179,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     )
                     .collect::<Result<Vec<_>>>()?;
 
-                for (param_name, param_type) in &parameters {
+                for (param_name, param_type) in &params {
                     self.scope
                         .insert(param_name, TypeScopeEntry::Value(*param_type))
                         .map_err(|x| x.with_range(range))?;
@@ -197,14 +209,14 @@ impl<'a, 'b> TypeChecker<'a> {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(UpperStatement::Function(
-                    name.to_string(),
-                    parameters,
+                Ok(UpperStatement::Function(FunctionDeclaration {
+                    name,
+                    params,
                     return_type,
-                    checked_body,
-                    checked_annotations,
+                    body: checked_body,
+                    annotations: checked_annotations,
                     range,
-                ))
+                }))
             }
             ParsedUpperStatement::ConstDeclaration {
                 name,
@@ -215,17 +227,17 @@ impl<'a, 'b> TypeChecker<'a> {
             } => {
                 let mut value = self.check_expression(value)?;
 
-                let value_type = self.check_type(&value_type)?;
+                let type_id = self.check_type(&value_type)?;
 
                 let new_type = self
-                    .widen_assignment(value_type, value.get_type())
+                    .widen_assignment(type_id, value.get_type())
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen const type {:?} to {:?}",
                                 value.get_type(),
-                                value_type
+                                type_id
                             ),
                             range,
                         )
@@ -239,8 +251,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     });
                 }
 
-                self.scope
-                    .insert(name, TypeScopeEntry::Global(value_type))?;
+                self.scope.insert(name, TypeScopeEntry::Global(type_id))?;
 
                 let checked_annotations = annotations
                     .into_iter()
@@ -256,13 +267,13 @@ impl<'a, 'b> TypeChecker<'a> {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(UpperStatement::ConstDeclaration(
+                Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
                     name,
-                    value_type,
+                    type_id,
                     value,
-                    checked_annotations,
+                    annotations: checked_annotations,
                     range,
-                ))
+                }))
             }
         }
     }

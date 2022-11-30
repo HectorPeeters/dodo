@@ -1,7 +1,8 @@
 use super::Backend;
 use crate::ast::{
-    BinaryOperatorType, BooleanLiteralExpr, Expression, FunctionCallExpr, IntegerLiteralExpr,
-    Statement, StringLiteralExpr, VariableRefExpr, WidenExpr,
+    BinaryOperatorType, BooleanLiteralExpr, ConstDeclaration, Expression, FunctionCallExpr,
+    FunctionDeclaration, IntegerLiteralExpr, Statement, StringLiteralExpr, VariableRefExpr,
+    WidenExpr,
 };
 use crate::error::Result;
 use crate::interpreter::Interpreter;
@@ -402,7 +403,14 @@ impl<'a, 'b> IrBackend<'a> {
 impl<'a, 'b> Backend<'b> for IrBackend<'a> {
     fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         match statement {
-            UpperStatement::Function(name, params, return_type, body, _annotations, range) => {
+            UpperStatement::Function(FunctionDeclaration {
+                name,
+                params,
+                return_type,
+                body,
+                annotations: _,
+                range,
+            }) => {
                 let function_block = self.builder.add_block(&name);
 
                 if name == "main" {
@@ -434,9 +442,15 @@ impl<'a, 'b> Backend<'b> for IrBackend<'a> {
 
                 Ok(())
             }
-            UpperStatement::StructDeclaratin(_, _) => todo!(),
-            UpperStatement::ConstDeclaration(name, value_type, value, _, _) => {
-                let const_value = self.gen_constant(value, value_type)?;
+            UpperStatement::StructDeclaration(_) => todo!(),
+            UpperStatement::ConstDeclaration(ConstDeclaration {
+                name,
+                value,
+                annotations: _,
+                type_id,
+                range: _,
+            }) => {
+                let const_value = self.gen_constant(value, type_id)?;
 
                 self.global_consts.push(const_value);
                 let index = self.global_consts.len() - 1;
@@ -445,7 +459,7 @@ impl<'a, 'b> Backend<'b> for IrBackend<'a> {
 
                 Ok(())
             }
-            UpperStatement::ExternDeclaration(_, _) => Ok(()),
+            UpperStatement::ExternDeclaration(_) => Ok(()),
         }
     }
 

@@ -4,8 +4,8 @@ use super::x86_instruction::{
 use super::x86_instruction::{RAX, RBP, RDX, RSP};
 use super::Backend;
 use crate::ast::{
-    Annotations, FieldAccessorExpr, FunctionCallExpr, IntegerLiteralExpr, UnaryOperatorExpr,
-    UpperStatement, VariableRefExpr, WidenExpr,
+    Annotations, ConstDeclaration, FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration,
+    IntegerLiteralExpr, UnaryOperatorExpr, UpperStatement, VariableRefExpr, WidenExpr,
 };
 use crate::project::{Project, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
@@ -354,15 +354,21 @@ impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
 impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {
     fn visit_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
         match statement {
-            UpperStatement::StructDeclaratin(_, _) => {}
-            UpperStatement::ExternDeclaration(symbol, _) => {
-                // TODO: get rid of this to_string call
-                self.instr(Extern(symbol.to_string()));
+            UpperStatement::StructDeclaration(_) => {}
+            UpperStatement::ExternDeclaration(extern_decl) => {
+                self.instr(Extern(extern_decl.name.to_string()));
             }
-            UpperStatement::Function(name, args, _ret_type, body, annotations, range) => {
+            UpperStatement::Function(FunctionDeclaration {
+                name,
+                params,
+                return_type: _,
+                body,
+                annotations,
+                range,
+            }) => {
                 self.scope.push();
 
-                assert!(args.len() <= 6);
+                assert!(params.len() <= 6);
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
 
                 assert_eq!(self.current_function_end_label, 0);
@@ -382,19 +388,16 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     self.instr(Section(section_name.to_string()));
                 }
 
-                self.instr(Function(if name == "main" {
-                    "_start".to_string()
-                } else {
-                    name
-                }));
+                let function_name = if name == "main" { "_start" } else { name };
+                self.instr(Function(function_name.to_string()));
 
                 self.write_prologue();
 
-                if !args.is_empty() {
-                    self.instr(Sub(RSP, Constant((STACK_OFFSET * args.len()) as u64)));
+                if !params.is_empty() {
+                    self.instr(Sub(RSP, Constant((STACK_OFFSET * params.len()) as u64)));
                 }
 
-                for ((arg_name, arg_type), arg_reg) in args.iter().zip(ARGUMENT_REGISTERS) {
+                for ((arg_name, arg_type), arg_reg) in params.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.scope.size()?;
 
                     self.scope
@@ -423,7 +426,13 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
-            UpperStatement::ConstDeclaration(name, _, value, annotations, _range) => {
+            UpperStatement::ConstDeclaration(ConstDeclaration {
+                name,
+                value,
+                annotations,
+                type_id: _,
+                range: _,
+            }) => {
                 let position = self.store_global_const(value, annotations);
                 self.scope.insert(name, ScopeLocation::Global(position))?;
             }
