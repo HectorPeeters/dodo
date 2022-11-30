@@ -1,5 +1,8 @@
 use super::Backend;
-use crate::ast::{BinaryOperatorType, Expression, Statement};
+use crate::ast::{
+    BinaryOperatorType, BooleanLiteralExpr, Expression, FunctionCallExpr, IntegerLiteralExpr,
+    Statement, StringLiteralExpr, VariableRefExpr, WidenExpr,
+};
 use crate::error::Result;
 use crate::interpreter::Interpreter;
 use crate::ir::{IrBlockIndex, IrBuilder, IrInstruction, IrRegister, IrRegisterSize, IrValue};
@@ -64,7 +67,12 @@ impl<'a, 'b> IrBackend<'a> {
                     .map_err(|e| e.with_range(range))
             }
             Statement::Assignment(lhs, rhs, _) => {
-                if let Expression::VariableRef(name, _, range) = lhs {
+                if let Expression::VariableRef(VariableRefExpr {
+                    name,
+                    type_id: _,
+                    range,
+                }) = lhs
+                {
                     let value_reg = self.gen_expression(rhs)?;
 
                     let result_location = self.scope.find(name).map_err(|e| e.with_range(range))?;
@@ -181,10 +189,14 @@ impl<'a, 'b> IrBackend<'a> {
         use IrValue::*;
 
         match expression {
-            Expression::IntegerLiteral(value, value_type, _) => {
-                assert_eq!(expression_type, value_type);
+            Expression::IntegerLiteral(IntegerLiteralExpr {
+                value,
+                type_id,
+                range: _,
+            }) => {
+                assert_eq!(expression_type, type_id);
 
-                match value_type {
+                match type_id {
                     BUILTIN_TYPE_U8 => Ok(U8(value as u8)),
                     BUILTIN_TYPE_U16 => Ok(U16(value as u16)),
                     BUILTIN_TYPE_U32 => Ok(U32(value as u32)),
@@ -192,27 +204,39 @@ impl<'a, 'b> IrBackend<'a> {
                     _ => unreachable!(),
                 }
             }
-            Expression::BooleanLiteral(value, value_type, _) => {
+            Expression::BooleanLiteral(BooleanLiteralExpr {
+                value,
+                type_id,
+                range: _,
+            }) => {
                 assert_eq!(expression_type, BUILTIN_TYPE_BOOL);
-                assert_eq!(value_type, BUILTIN_TYPE_BOOL);
+                assert_eq!(type_id, BUILTIN_TYPE_BOOL);
 
                 Ok(IrValue::Bool(value))
             }
-            Expression::StringLiteral(value, value_type, _) => {
+            Expression::StringLiteral(StringLiteralExpr {
+                value,
+                type_id,
+                range: _,
+            }) => {
                 let u8_ptr = self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8));
                 assert_eq!(expression_type, u8_ptr);
-                assert_eq!(value_type, u8_ptr,);
+                assert_eq!(type_id, u8_ptr,);
 
                 let index = self.builder.add_string(value.to_string());
 
                 Ok(String(index))
             }
-            Expression::StructLiteral(_, _, _) => todo!(),
-            Expression::Widen(inner, value_type, _) => {
-                let inner_type = inner.get_type();
-                let inner_value = self.gen_constant(*inner, inner_type)?;
+            Expression::StructLiteral(_) => todo!(),
+            Expression::Widen(WidenExpr {
+                expr,
+                type_id,
+                range: _,
+            }) => {
+                let inner_type = expr.get_type();
+                let inner_value = self.gen_constant(*expr, inner_type)?;
 
-                let result_value = match (inner_value, value_type) {
+                let result_value = match (inner_value, type_id) {
                     (U8(x), BUILTIN_TYPE_U16) => U16(x as u16),
                     (U8(x), BUILTIN_TYPE_U32) => U32(x as u32),
                     (U8(x), BUILTIN_TYPE_U64) => U64(x as u64),
@@ -230,15 +254,15 @@ impl<'a, 'b> IrBackend<'a> {
 
     fn gen_expression(&mut self, expression: Expression<'b>) -> Result<IrRegister> {
         match expression {
-            Expression::BinaryOperator(op, left, right, result_type, _) => {
-                let left_reg = self.gen_expression(*left)?;
-                let right_reg = self.gen_expression(*right)?;
+            Expression::BinaryOperator(binop) => {
+                let left_reg = self.gen_expression(*binop.left)?;
+                let right_reg = self.gen_expression(*binop.right)?;
 
                 let destination_reg = self
                     .builder
-                    .new_register(self.project.get_type_size(result_type).into());
+                    .new_register(self.project.get_type_size(binop.type_id).into());
 
-                let instruction = match op {
+                let instruction = match binop.op_type {
                     BinaryOperatorType::Add => IrInstruction::Add,
                     BinaryOperatorType::Subtract => IrInstruction::Sub,
                     BinaryOperatorType::Multiply => IrInstruction::Mul,
@@ -260,8 +284,13 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(destination_reg)
             }
-            Expression::UnaryOperator(_, _, _, _) => todo!(),
-            Expression::FunctionCall(name, args, return_type, _) => {
+            Expression::UnaryOperator(_) => todo!(),
+            Expression::FunctionCall(FunctionCallExpr {
+                name,
+                args,
+                type_id,
+                range: _,
+            }) => {
                 let arg_count = args.len();
                 for arg in args {
                     let arg_reg = self.gen_expression(arg)?;
@@ -278,10 +307,10 @@ impl<'a, 'b> IrBackend<'a> {
                         .add_instruction(IrInstruction::CallExtern(name.to_string(), arg_count));
                 }
 
-                if return_type != BUILTIN_TYPE_VOID {
+                if type_id != BUILTIN_TYPE_VOID {
                     let result_reg = self
                         .builder
-                        .new_register(self.project.get_type_size(return_type).into());
+                        .new_register(self.project.get_type_size(type_id).into());
                     self.builder.add_instruction(IrInstruction::Pop(result_reg));
                     Ok(result_reg)
                 } else {
@@ -289,12 +318,16 @@ impl<'a, 'b> IrBackend<'a> {
                     Ok(result_reg)
                 }
             }
-            Expression::IntegerLiteral(value, value_type, _) => {
+            Expression::IntegerLiteral(IntegerLiteralExpr {
+                value,
+                type_id,
+                range: _,
+            }) => {
                 let result_reg = self
                     .builder
-                    .new_register(self.project.get_type_size(value_type).into());
+                    .new_register(self.project.get_type_size(type_id).into());
 
-                let value = match value_type {
+                let value = match type_id {
                     BUILTIN_TYPE_U8 => IrValue::U8(value as u8),
                     BUILTIN_TYPE_U16 => IrValue::U16(value as u16),
                     BUILTIN_TYPE_U32 => IrValue::U32(value as u32),
@@ -307,14 +340,18 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(result_reg)
             }
-            Expression::BooleanLiteral(value, _, _) => {
+            Expression::BooleanLiteral(bool_lit) => {
                 let reg = self.builder.new_register(IrRegisterSize::Byte);
                 self.builder
-                    .add_instruction(IrInstruction::MovImm(reg, IrValue::Bool(value)));
+                    .add_instruction(IrInstruction::MovImm(reg, IrValue::Bool(bool_lit.value)));
 
                 Ok(reg)
             }
-            Expression::VariableRef(name, _, range) => {
+            Expression::VariableRef(VariableRefExpr {
+                name,
+                type_id: _,
+                range,
+            }) => {
                 let location = self.scope.find(name).map_err(|e| e.with_range(range))?;
                 match location {
                     IrScopeLocation::Reg(reg) => Ok(reg),
@@ -328,8 +365,8 @@ impl<'a, 'b> IrBackend<'a> {
                     }
                 }
             }
-            Expression::StringLiteral(value, _, _) => {
-                let string_index = self.builder.add_string(value.to_string());
+            Expression::StringLiteral(str_lit) => {
+                let string_index = self.builder.add_string(str_lit.value.to_string());
                 let dest_reg = self.builder.new_register(IrRegisterSize::Quad);
                 self.builder.add_instruction(IrInstruction::MovImm(
                     dest_reg,
@@ -338,13 +375,17 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(dest_reg)
             }
-            Expression::StructLiteral(_, _, _) => todo!(),
-            Expression::FieldAccessor(_, _, _, _) => todo!(),
+            Expression::StructLiteral(_) => todo!(),
+            Expression::FieldAccessor(_) => todo!(),
             // TODO: this probably isn't sufficient
-            Expression::Widen(expr, target_type, _) => {
+            Expression::Widen(WidenExpr {
+                expr,
+                type_id,
+                range: _,
+            }) => {
                 let result_reg = self
                     .builder
-                    .new_register(self.project.get_type_size(target_type).into());
+                    .new_register(self.project.get_type_size(type_id).into());
                 let expr_reg = self.gen_expression(*expr)?;
 
                 self.builder
@@ -352,8 +393,8 @@ impl<'a, 'b> IrBackend<'a> {
 
                 Ok(result_reg)
             }
-            Expression::Cast(_, _, _) => todo!(),
-            Expression::Type(_, _) => unreachable!(),
+            Expression::Cast(_) => todo!(),
+            Expression::Type(_) => unreachable!(),
         }
     }
 }

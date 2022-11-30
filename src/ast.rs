@@ -6,7 +6,7 @@ use crate::types::TypeId;
 
 pub type Annotations<'a> = Vec<(&'a str, Option<Expression<'a>>)>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum UpperStatement<'a> {
     Function(
         String,
@@ -27,7 +27,7 @@ pub enum UpperStatement<'a> {
     ExternDeclaration(&'a str, SourceRange),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Statement<'a> {
     Block(Vec<Statement<'a>>, bool, SourceRange),
     Declaration(&'a str, TypeId, SourceRange),
@@ -111,7 +111,7 @@ impl UnaryOperatorType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct EscapedString<'a> {
     inner: &'a str,
 }
@@ -148,26 +148,108 @@ impl<'a> fmt::Display for EscapedString<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
+pub struct BinaryOperatorExpr<'a> {
+    pub op_type: BinaryOperatorType,
+    pub left: Box<Expression<'a>>,
+    pub right: Box<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct UnaryOperatorExpr<'a> {
+    pub op_type: UnaryOperatorType,
+    pub expr: Box<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionCallExpr<'a> {
+    pub name: &'a str,
+    pub args: Vec<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IntegerLiteralExpr {
+    pub value: u64,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BooleanLiteralExpr {
+    pub value: bool,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VariableRefExpr<'a> {
+    pub name: &'a str,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StringLiteralExpr<'a> {
+    pub value: EscapedString<'a>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StructLiteralExpr<'a> {
+    pub fields: Vec<(&'a str, Expression<'a>)>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FieldAccessorExpr<'a> {
+    pub name: &'a str,
+    pub expr: Box<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct WidenExpr<'a> {
+    pub expr: Box<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CastExpr<'a> {
+    pub expr: Box<Expression<'a>>,
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypeExpr {
+    pub type_id: TypeId,
+    pub range: SourceRange,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expression<'a> {
-    BinaryOperator(
-        BinaryOperatorType,
-        Box<Expression<'a>>,
-        Box<Expression<'a>>,
-        TypeId,
-        SourceRange,
-    ),
-    UnaryOperator(UnaryOperatorType, Box<Expression<'a>>, TypeId, SourceRange),
-    FunctionCall(&'a str, Vec<Expression<'a>>, TypeId, SourceRange),
-    IntegerLiteral(u64, TypeId, SourceRange),
-    BooleanLiteral(bool, TypeId, SourceRange),
-    VariableRef(&'a str, TypeId, SourceRange),
-    StringLiteral(EscapedString<'a>, TypeId, SourceRange),
-    StructLiteral(Vec<(&'a str, Expression<'a>)>, TypeId, SourceRange),
-    FieldAccessor(&'a str, Box<Expression<'a>>, TypeId, SourceRange),
-    Widen(Box<Expression<'a>>, TypeId, SourceRange),
-    Cast(Box<Expression<'a>>, TypeId, SourceRange),
-    Type(TypeId, SourceRange),
+    BinaryOperator(BinaryOperatorExpr<'a>),
+    UnaryOperator(UnaryOperatorExpr<'a>),
+    FunctionCall(FunctionCallExpr<'a>),
+    IntegerLiteral(IntegerLiteralExpr),
+    BooleanLiteral(BooleanLiteralExpr),
+    VariableRef(VariableRefExpr<'a>),
+    StringLiteral(StringLiteralExpr<'a>),
+    StructLiteral(StructLiteralExpr<'a>),
+    FieldAccessor(FieldAccessorExpr<'a>),
+    Widen(WidenExpr<'a>),
+    Cast(CastExpr<'a>),
+    Type(TypeExpr),
 }
 
 impl<'a> Expression<'a> {
@@ -175,18 +257,18 @@ impl<'a> Expression<'a> {
         use Expression::*;
 
         match self {
-            BinaryOperator(_, _, _, t, _) => *t,
-            UnaryOperator(_, _, t, _) => *t,
-            FunctionCall(_, _, t, _) => *t,
-            IntegerLiteral(_, t, _) => *t,
-            BooleanLiteral(_, t, _) => *t,
-            VariableRef(_, t, _) => *t,
-            StringLiteral(_, t, _) => *t,
-            StructLiteral(_, t, _) => *t,
-            FieldAccessor(_, _, t, _) => *t,
-            Widen(_, t, _) => *t,
-            Cast(_, t, _) => *t,
-            Type(t, _) => *t,
+            BinaryOperator(x) => x.type_id,
+            UnaryOperator(x) => x.type_id,
+            FunctionCall(x) => x.type_id,
+            IntegerLiteral(x) => x.type_id,
+            BooleanLiteral(x) => x.type_id,
+            VariableRef(x) => x.type_id,
+            StringLiteral(x) => x.type_id,
+            StructLiteral(x) => x.type_id,
+            FieldAccessor(x) => x.type_id,
+            Widen(x) => x.type_id,
+            Cast(x) => x.type_id,
+            Type(x) => x.type_id,
         }
     }
 
@@ -194,18 +276,18 @@ impl<'a> Expression<'a> {
         use Expression::*;
 
         match self {
-            BinaryOperator(_, _, _, _, r) => r,
-            UnaryOperator(_, _, _, r) => r,
-            FunctionCall(_, _, _, r) => r,
-            IntegerLiteral(_, _, r) => r,
-            BooleanLiteral(_, _, r) => r,
-            VariableRef(_, _, r) => r,
-            StringLiteral(_, _, r) => r,
-            StructLiteral(_, _, r) => r,
-            FieldAccessor(_, _, _, r) => r,
-            Widen(_, _, r) => r,
-            Cast(_, _, r) => r,
-            Type(_, r) => r,
+            BinaryOperator(x) => &x.range,
+            UnaryOperator(x) => &x.range,
+            FunctionCall(x) => &x.range,
+            IntegerLiteral(x) => &x.range,
+            BooleanLiteral(x) => &x.range,
+            VariableRef(x) => &x.range,
+            StringLiteral(x) => &x.range,
+            StructLiteral(x) => &x.range,
+            FieldAccessor(x) => &x.range,
+            Widen(x) => &x.range,
+            Cast(x) => &x.range,
+            Type(x) => &x.range,
         }
     }
 }

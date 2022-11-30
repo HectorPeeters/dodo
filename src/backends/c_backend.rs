@@ -1,6 +1,7 @@
 use super::Backend;
 use crate::ast::{
-    AstTransformer, BinaryOperatorType, Expression, Statement, UnaryOperatorType, UpperStatement,
+    AstTransformer, BinaryOperatorType, CastExpr, Expression, FieldAccessorExpr, FunctionCallExpr,
+    Statement, StructLiteralExpr, UnaryOperatorType, UpperStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::project::{
@@ -114,7 +115,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     .into_iter()
                     .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
                         _ => unreachable!()
                     });
 
@@ -143,7 +144,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     .into_iter()
                     .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
                         _ => unreachable!()
                     });
 
@@ -229,11 +230,11 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
     fn visit_expression(&mut self, expression: Expression<'a>) -> Result<String> {
         match expression {
-            Expression::BinaryOperator(op, left, right, _, _) => {
-                let left = self.visit_expression(*left)?;
-                let right = self.visit_expression(*right)?;
+            Expression::BinaryOperator(binop) => {
+                let left = self.visit_expression(*binop.left)?;
+                let right = self.visit_expression(*binop.right)?;
 
-                Ok(match op {
+                Ok(match binop.op_type {
                     BinaryOperatorType::Add => format!("({} + {})", left, right),
                     BinaryOperatorType::Subtract => format!("({} - {})", left, right),
                     BinaryOperatorType::Multiply => format!("({} * {})", left, right),
@@ -251,16 +252,21 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     BinaryOperatorType::LogicalAnd => format!("({} && {})", left, right),
                 })
             }
-            Expression::UnaryOperator(op, expr, _, _) => {
-                let expr = self.visit_expression(*expr)?;
+            Expression::UnaryOperator(unop) => {
+                let expr = self.visit_expression(*unop.expr)?;
 
-                Ok(match op {
+                Ok(match unop.op_type {
                     UnaryOperatorType::Negate => format!("(-{})", expr),
                     UnaryOperatorType::Ref => format!("(&{})", expr),
                     UnaryOperatorType::Deref => format!("(*{})", expr),
                 })
             }
-            Expression::FunctionCall(name, args, _, _) => {
+            Expression::FunctionCall(FunctionCallExpr {
+                name,
+                args,
+                type_id: _,
+                range: _,
+            }) => {
                 let args = args
                     .into_iter()
                     .map(|x| self.visit_expression(x))
@@ -269,12 +275,16 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(format!("{}({})", name, args))
             }
-            Expression::IntegerLiteral(value, _, _) => Ok(format!("{}", value)),
-            Expression::BooleanLiteral(value, _, _) => Ok(format!("{}", value)),
-            Expression::VariableRef(name, _, _) => Ok(name.to_string()),
-            Expression::StringLiteral(value, _, _) => Ok(format!("\"{}\"", value.inner())),
-            Expression::StructLiteral(fields, struct_type, _) => {
-                let c_type = self.to_c_type(struct_type);
+            Expression::IntegerLiteral(int_lit) => Ok(format!("{}", int_lit.value)),
+            Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
+            Expression::VariableRef(var_ref) => Ok(var_ref.name.to_string()),
+            Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
+            Expression::StructLiteral(StructLiteralExpr {
+                fields,
+                type_id,
+                range: _,
+            }) => {
+                let c_type = self.to_c_type(type_id);
 
                 let formatted_fields = fields
                     .into_iter()
@@ -287,9 +297,14 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 Ok(format!("({}){{\n{}\n}}", c_type, formatted_fields))
             }
-            Expression::FieldAccessor(name, child, _, _) => {
-                let child_type = child.get_type();
-                let child_source = self.visit_expression(*child)?;
+            Expression::FieldAccessor(FieldAccessorExpr {
+                name,
+                expr,
+                type_id: _,
+                range: _,
+            }) => {
+                let child_type = expr.get_type();
+                let child_source = self.visit_expression(*expr)?;
 
                 if self.project.is_ptr_type(child_type) {
                     Ok(format!("{}->{}", child_source, name))
@@ -297,13 +312,17 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     Ok(format!("{}.{}", child_source, name))
                 }
             }
-            Expression::Widen(expr, _, _) => self.visit_expression(*expr),
-            Expression::Cast(expr, cast_type, _) => Ok(format!(
+            Expression::Widen(widen) => self.visit_expression(*widen.expr),
+            Expression::Cast(CastExpr {
+                expr,
+                type_id,
+                range: _,
+            }) => Ok(format!(
                 "({})({})",
-                self.to_c_type(cast_type),
+                self.to_c_type(type_id),
                 self.visit_expression(*expr)?
             )),
-            Expression::Type(_, _) => unreachable!(),
+            Expression::Type(_) => unreachable!(),
         }
     }
 }

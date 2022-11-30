@@ -3,10 +3,12 @@ use super::x86_instruction::{
 };
 use super::x86_instruction::{RAX, RBP, RDX, RSP};
 use super::Backend;
-use crate::ast::{Annotations, UpperStatement};
-use crate::project::{Project, BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID};
+use crate::ast::{
+    Annotations, FieldAccessorExpr, FunctionCallExpr, IntegerLiteralExpr, UnaryOperatorExpr,
+    UpperStatement, VariableRefExpr, WidenExpr,
+};
+use crate::project::{Project, BUILTIN_TYPE_VOID};
 use crate::tokenizer::SourceRange;
-use crate::types::Type;
 use crate::{
     ast::{AstTransformer, BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
@@ -125,29 +127,29 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         let mut instructions = vec![];
 
         match expression {
-            Expression::IntegerLiteral(value, _, _) => {
+            Expression::IntegerLiteral(int_lit) => {
                 use X86Instruction::*;
 
                 let instruction = match size {
-                    8 => Db(vec![*value as u8]),
-                    16 => Dw(vec![*value as u16]),
-                    32 => Dd(vec![*value as u32]),
-                    64 => Dq(vec![*value]),
+                    8 => Db(vec![int_lit.value as u8]),
+                    16 => Dw(vec![int_lit.value as u16]),
+                    32 => Dd(vec![int_lit.value as u32]),
+                    64 => Dq(vec![int_lit.value]),
                     _ => unreachable!(),
                 };
 
                 instructions.push(instruction);
             }
-            Expression::StringLiteral(value, _, _) => {
-                let mut string_bytes = value.to_string().as_bytes().to_vec();
+            Expression::StringLiteral(str_lit) => {
+                let mut string_bytes = str_lit.value.to_string().as_bytes().to_vec();
                 string_bytes.push(0);
                 instructions.push(Db(string_bytes));
             }
-            Expression::BooleanLiteral(value, _, _) => {
-                instructions.push(Db(vec![u8::from(*value)]));
+            Expression::BooleanLiteral(bool_lit) => {
+                instructions.push(Db(vec![u8::from(bool_lit.value)]));
             }
-            Expression::StructLiteral(fields, _, _) => {
-                for field in fields {
+            Expression::StructLiteral(struct_lit) => {
+                for field in &struct_lit.fields {
                     let mut field_instructions = self.get_data_instructions(
                         &field.1,
                         self.project.get_type_size(field.1.get_type()),
@@ -156,9 +158,13 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                     instructions.append(&mut field_instructions);
                 }
             }
-            Expression::Widen(expr, widen_type, _) => {
+            Expression::Widen(WidenExpr {
+                expr,
+                type_id,
+                range: _,
+            }) => {
                 let mut child_instructions =
-                    self.get_data_instructions(expr, self.project.get_type_size(*widen_type));
+                    self.get_data_instructions(expr, self.project.get_type_size(*type_id));
 
                 instructions.append(&mut child_instructions);
             }
@@ -176,7 +182,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                     .iter()
                     .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
                         _ => unreachable!()
                     });
 
@@ -232,8 +238,11 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         range: SourceRange,
     ) -> Result<(LValueLocation, Option<X86Register>)> {
         match expression {
-            Expression::VariableRef(name, _, _) => {
-                let location = self.scope.find(name).map_err(|x| x.with_range(range))?;
+            Expression::VariableRef(var_ref) => {
+                let location = self
+                    .scope
+                    .find(var_ref.name)
+                    .map_err(|x| x.with_range(range))?;
 
                 match location {
                     ScopeLocation::Stack(offset) => {
@@ -242,15 +251,25 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                     ScopeLocation::Global(_) => todo!(),
                 }
             }
-            Expression::UnaryOperator(UnaryOperatorType::Deref, expr, _value_type, _) => {
+            Expression::UnaryOperator(UnaryOperatorExpr {
+                op_type: UnaryOperatorType::Deref,
+                expr,
+                type_id: _,
+                range: _,
+            }) => {
                 let dest_reg = self.visit_expression(*expr)?;
 
                 Ok((LValueLocation::Register(dest_reg, 0), Some(dest_reg)))
             }
-            Expression::FieldAccessor(name, child, _, _) => {
-                let offset = self.get_struct_field_offset(name, child.get_type());
+            Expression::FieldAccessor(FieldAccessorExpr {
+                name,
+                expr,
+                type_id: _,
+                range,
+            }) => {
+                let offset = self.get_struct_field_offset(name, expr.get_type());
 
-                let (child_location, child_reg) = self.generate_lvalue(*child, range)?;
+                let (child_location, child_reg) = self.generate_lvalue(*expr, range)?;
 
                 Ok((child_location.offset(offset), child_reg))
             }
@@ -355,7 +374,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     .into_iter()
                     .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
                     .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(value, _, _)) => value,
+                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
                         _ => unreachable!()
                     });
 
@@ -525,29 +544,42 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
     fn visit_expression(&mut self, expression: Expression<'b>) -> Result<X86Register> {
         match expression {
-            Expression::IntegerLiteral(value, value_type, _range) => {
+            Expression::IntegerLiteral(IntegerLiteralExpr {
+                value,
+                type_id,
+                range: _,
+            }) => {
                 let register = self.get_next_register();
 
-                let value_size = self.project.get_type_size(value_type);
+                let value_size = self.project.get_type_size(type_id);
                 self.instr(Mov(Reg(register, value_size), Constant(value)));
 
                 Ok(register)
             }
-            Expression::BooleanLiteral(value, _, _range) => {
+            Expression::BooleanLiteral(bool_lit) => {
                 let register = self.get_next_register();
 
-                self.instr(Mov(Reg(register, 8), Constant(u64::from(value))));
+                self.instr(Mov(Reg(register, 8), Constant(u64::from(bool_lit.value))));
 
                 Ok(register)
             }
-            Expression::UnaryOperator(UnaryOperatorType::Ref, expr, ref_type, _range) => {
+            Expression::UnaryOperator(UnaryOperatorExpr {
+                op_type: UnaryOperatorType::Ref,
+                expr,
+                type_id: _,
+                range: _,
+            }) => {
                 let result_reg = self.get_next_register();
 
                 match &*expr {
-                    Expression::VariableRef(name, _, range) => {
+                    Expression::VariableRef(VariableRefExpr {
+                        name,
+                        type_id,
+                        range,
+                    }) => {
                         let location = self.scope.find(name).map_err(|x| x.with_range(*range))?;
 
-                        let value_size = self.project.get_type_size(ref_type);
+                        let value_size = self.project.get_type_size(*type_id);
 
                         match location {
                             ScopeLocation::Stack(offset) => self.instr(Lea(
@@ -563,34 +595,34 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     _ => unreachable!(),
                 }
             }
-            Expression::UnaryOperator(op, expr, _, _range) => {
-                let expr_size = self.project.get_type_size(expr.get_type());
+            Expression::UnaryOperator(unop) => {
+                let expr_size = self.project.get_type_size(unop.expr.get_type());
 
-                let reg = self.visit_expression(*expr)?;
+                let reg = self.visit_expression(*unop.expr)?;
                 let result_reg = self.get_next_register();
 
-                match op {
+                match unop.op_type {
                     UnaryOperatorType::Deref => {
                         self.instr(Mov(Reg(result_reg, expr_size), RegIndirect(reg, 0)));
                     }
-                    _ => todo!("Cannot generate code for {:?}", op),
+                    _ => todo!("Cannot generate code for {:?}", unop.op_type),
                 }
 
                 self.free_register(reg);
                 Ok(result_reg)
             }
-            Expression::BinaryOperator(op, left, right, _, _range) => {
-                let left_size = self.project.get_type_size(left.get_type());
-                let right_size = self.project.get_type_size(right.get_type());
-                let left_reg = self.visit_expression(*left)?;
-                let right_reg = self.visit_expression(*right)?;
+            Expression::BinaryOperator(binop) => {
+                let left_size = self.project.get_type_size(binop.left.get_type());
+                let right_size = self.project.get_type_size(binop.right.get_type());
+                let left_reg = self.visit_expression(*binop.left)?;
+                let right_reg = self.visit_expression(*binop.right)?;
 
                 assert_eq!(left_size, right_size);
 
                 let left_op = Reg(left_reg, left_size);
                 let right_op = Reg(right_reg, right_size);
 
-                match op {
+                match binop.op_type {
                     BinaryOperatorType::Add => {
                         self.instr(Add(left_op, right_op));
                     }
@@ -657,11 +689,15 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 self.free_register(right_reg);
                 Ok(left_reg)
             }
-            Expression::VariableRef(name, value_type, range) => {
+            Expression::VariableRef(VariableRefExpr {
+                name,
+                type_id,
+                range,
+            }) => {
                 let location = self.scope.find(name).map_err(|x| x.with_range(range))?;
                 let register = self.get_next_register();
 
-                let value_size = self.project.get_type_size(value_type);
+                let value_size = self.project.get_type_size(type_id);
 
                 match location {
                     ScopeLocation::Stack(offset) => self.instr(Mov(
@@ -669,8 +705,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         RegIndirect(Rbp, offset * 16),
                     )),
                     ScopeLocation::Global(index) => {
-                        if self.project.is_ptr_type(value_type)
-                            || self.project.is_struct_type(value_type)
+                        if self.project.is_ptr_type(type_id) || self.project.is_struct_type(type_id)
                         {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
@@ -681,7 +716,12 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(register)
             }
-            Expression::FunctionCall(name, args, return_type, _range) => {
+            Expression::FunctionCall(FunctionCallExpr {
+                name,
+                args,
+                type_id,
+                range: _,
+            }) => {
                 assert!(args.len() <= 6);
 
                 let arg_count = args.len();
@@ -720,8 +760,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 let result_register = self.get_next_register();
 
-                if return_type != BUILTIN_TYPE_VOID {
-                    let return_type_size = self.project.get_type_size(return_type);
+                if type_id != BUILTIN_TYPE_VOID {
+                    let return_type_size = self.project.get_type_size(type_id);
 
                     self.instr(Mov(
                         Reg(result_register, return_type_size),
@@ -737,24 +777,24 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(result_register)
             }
-            Expression::StringLiteral(value, _, range) => {
-                let u8_pointer_type = self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8));
-
-                let label = self.store_global_const(
-                    Expression::StringLiteral(value, u8_pointer_type, range),
-                    vec![],
-                );
+            Expression::StringLiteral(str_lit) => {
+                let label = self.store_global_const(Expression::StringLiteral(str_lit), vec![]);
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
             }
-            Expression::StructLiteral(_fields, _struct_type, _) => unreachable!(),
-            Expression::FieldAccessor(name, child, value_type, _) => {
-                let value_type_size = self.project.get_type_size(value_type);
+            Expression::StructLiteral(_) => todo!(),
+            Expression::FieldAccessor(FieldAccessorExpr {
+                name,
+                expr,
+                type_id,
+                range: _,
+            }) => {
+                let value_type_size = self.project.get_type_size(type_id);
                 assert!(value_type_size <= 64);
 
-                let offset = self.get_struct_field_offset(name, child.get_type());
-                let child_reg = self.visit_expression(*child)?;
+                let offset = self.get_struct_field_offset(name, expr.get_type());
+                let child_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
                 self.instr(Mov(
@@ -766,9 +806,13 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(result_reg)
             }
-            Expression::Widen(expr, widen_type, _range) => {
+            Expression::Widen(WidenExpr {
+                expr,
+                type_id,
+                range: _,
+            }) => {
                 let expr_size = self.project.get_type_size(expr.get_type());
-                let widen_size = self.project.get_type_size(widen_type);
+                let widen_size = self.project.get_type_size(type_id);
 
                 assert!(expr_size < widen_size);
                 let expr_reg = self.visit_expression(*expr)?;
@@ -780,8 +824,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(result_reg)
             }
-            Expression::Cast(child, _, _) => self.visit_expression(*child),
-            Expression::Type(_, _) => unreachable!(),
+            Expression::Cast(cast) => self.visit_expression(*cast.expr),
+            Expression::Type(_) => unreachable!(),
         }
     }
 }

@@ -1,4 +1,8 @@
-use crate::ast::UpperStatement;
+use crate::ast::{
+    BinaryOperatorExpr, BooleanLiteralExpr, CastExpr, FieldAccessorExpr, FunctionCallExpr,
+    IntegerLiteralExpr, StringLiteralExpr, StructLiteralExpr, TypeExpr, UnaryOperatorExpr,
+    UpperStatement, VariableRefExpr, WidenExpr,
+};
 use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
 use crate::project::{
     Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
@@ -228,7 +232,11 @@ impl<'a, 'b> TypeChecker<'a> {
                     })?;
 
                 if new_type != value.get_type() {
-                    value = Expression::Widen(Box::new(value), new_type, range);
+                    value = Expression::Widen(WidenExpr {
+                        expr: Box::new(value),
+                        type_id: new_type,
+                        range,
+                    });
                 }
 
                 self.scope
@@ -317,7 +325,11 @@ impl<'a, 'b> TypeChecker<'a> {
                     })?;
 
                 if new_type != right_checked.get_type() {
-                    right_checked = Expression::Widen(Box::new(right_checked), new_type, range);
+                    right_checked = Expression::Widen(WidenExpr {
+                        expr: Box::new(right_checked),
+                        type_id: new_type,
+                        range,
+                    });
                 }
 
                 Ok(Statement::Assignment(left_checked, right_checked, range))
@@ -394,9 +406,13 @@ impl<'a, 'b> TypeChecker<'a> {
                         ),
                         range,
                     )),
-                    Some(t) => {
-                        if t != value_type {
-                            value = Expression::Widen(Box::new(value), t, range);
+                    Some(type_id) => {
+                        if type_id != value_type {
+                            value = Expression::Widen(WidenExpr {
+                                expr: Box::new(value),
+                                type_id,
+                                range,
+                            });
                         }
 
                         Ok(Statement::Return(value, range))
@@ -438,22 +454,34 @@ impl<'a, 'b> TypeChecker<'a> {
                 // TODO: this needs a thorough rework, comparing references won't work
                 if self.project.is_ptr_type(left_type) && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
-                    return Ok(Expression::BinaryOperator(
+                    return Ok(Expression::BinaryOperator(BinaryOperatorExpr {
                         op_type,
-                        Box::new(left),
-                        Box::new(Expression::Widen(Box::new(right), left_type, range)),
-                        left_type,
+                        left: Box::new(left),
+                        right: Box::new(Expression::Widen(WidenExpr {
+                            expr: Box::new(right),
+                            type_id: left_type,
+                            range,
+                        })),
+                        type_id: left_type,
                         range,
-                    ));
+                    }));
                 }
 
                 let result_type = match left_size.cmp(&right_size) {
                     Ordering::Greater => {
-                        right = Expression::Widen(Box::new(right), left_type, range);
+                        right = Expression::Widen(WidenExpr {
+                            expr: Box::new(right),
+                            type_id: left_type,
+                            range,
+                        });
                         left_type
                     }
                     Ordering::Less => {
-                        left = Expression::Widen(Box::new(left), right_type, range);
+                        left = Expression::Widen(WidenExpr {
+                            expr: Box::new(left),
+                            type_id: right_type,
+                            range,
+                        });
                         right_type
                     }
                     _ => left_type,
@@ -467,13 +495,13 @@ impl<'a, 'b> TypeChecker<'a> {
                     result_type
                 };
 
-                Ok(Expression::BinaryOperator(
+                Ok(Expression::BinaryOperator(BinaryOperatorExpr {
                     op_type,
-                    Box::new(left),
-                    Box::new(right),
-                    result_type,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    type_id: result_type,
                     range,
-                ))
+                }))
             }
             ParsedExpression::UnaryOperator {
                 op_type,
@@ -484,50 +512,50 @@ impl<'a, 'b> TypeChecker<'a> {
                 let expr_type = expr.get_type();
 
                 match op_type {
-                    UnaryOperatorType::Negate => Ok(Expression::UnaryOperator(
-                        UnaryOperatorType::Negate,
-                        Box::new(expr),
-                        expr_type,
+                    UnaryOperatorType::Negate => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
+                        op_type: UnaryOperatorType::Negate,
+                        expr: Box::new(expr),
+                        type_id: expr_type,
                         range,
-                    )),
-                    UnaryOperatorType::Ref => Ok(Expression::UnaryOperator(
-                        UnaryOperatorType::Ref,
-                        Box::new(expr),
-                        self.project.find_or_add_type(Type::Ptr(expr_type)),
+                    })),
+                    UnaryOperatorType::Ref => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
+                        op_type: UnaryOperatorType::Ref,
+                        expr: Box::new(expr),
+                        type_id: self.project.find_or_add_type(Type::Ptr(expr_type)),
                         range,
-                    )),
-                    UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(
-                        UnaryOperatorType::Deref,
-                        Box::new(expr),
-                        self.project.get_inner_type(expr_type),
+                    })),
+                    UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
+                        op_type: UnaryOperatorType::Deref,
+                        expr: Box::new(expr),
+                        type_id: self.project.get_inner_type(expr_type),
                         range,
-                    )),
+                    })),
                 }
             }
             ParsedExpression::FunctionCall {
                 name,
-                arguments,
+                arguments: args,
                 range,
             } => {
                 if self.is_external_function(name, &range)? {
-                    return Ok(Expression::FunctionCall(
+                    return Ok(Expression::FunctionCall(FunctionCallExpr {
                         name,
-                        arguments
+                        args: args
                             .into_iter()
                             .map(|arg| self.check_expression(arg))
                             .collect::<Result<Vec<_>>>()?,
-                        BUILTIN_TYPE_U64,
+                        type_id: BUILTIN_TYPE_U64,
                         range,
-                    ));
+                    }));
                 }
 
                 let (arg_types, return_type) = self.get_scope_function_type(name, &range)?;
 
-                assert_eq!(arguments.len(), arg_types.len());
+                assert_eq!(args.len(), arg_types.len());
 
                 let mut new_args = vec![];
 
-                for (arg, expected_type) in arguments.into_iter().zip(arg_types.iter()) {
+                for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
                     let arg = self.check_expression(arg)?;
                     let arg_type = arg.get_type();
 
@@ -545,13 +573,22 @@ impl<'a, 'b> TypeChecker<'a> {
                             })?;
 
                     if new_type != arg_type {
-                        new_args.push(Expression::Widen(Box::new(arg), new_type, range));
+                        new_args.push(Expression::Widen(WidenExpr {
+                            expr: Box::new(arg),
+                            type_id: new_type,
+                            range,
+                        }));
                     } else {
                         new_args.push(arg);
                     }
                 }
 
-                Ok(Expression::FunctionCall(name, new_args, return_type, range))
+                Ok(Expression::FunctionCall(FunctionCallExpr {
+                    name,
+                    args: new_args,
+                    type_id: return_type,
+                    range,
+                }))
             }
             ParsedExpression::IntrinsicCall {
                 name,
@@ -571,8 +608,12 @@ impl<'a, 'b> TypeChecker<'a> {
 
                     let target_type = self.check_expression(arguments.remove(0))?;
 
-                    if let Expression::Type(t, _) = target_type {
-                        Ok(Expression::Cast(Box::new(checked_argument), t, range))
+                    if let Expression::Type(expr_type) = target_type {
+                        Ok(Expression::Cast(CastExpr {
+                            expr: Box::new(checked_argument),
+                            type_id: expr_type.type_id,
+                            range,
+                        }))
                     } else {
                         Err(Error::new_with_range(
                             ErrorType::TypeCheck,
@@ -588,23 +629,37 @@ impl<'a, 'b> TypeChecker<'a> {
                 )),
             },
             ParsedExpression::IntegerLiteral { value, range } => {
-                if value <= 255 {
-                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U8, range))
+                let type_id = if value <= 255 {
+                    BUILTIN_TYPE_U8
                 } else if value <= 65535 {
-                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U16, range))
+                    BUILTIN_TYPE_U16
                 } else if value <= 4294967295 {
-                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U32, range))
+                    BUILTIN_TYPE_U32
                 } else {
-                    Ok(Expression::IntegerLiteral(value, BUILTIN_TYPE_U64, range))
-                }
+                    BUILTIN_TYPE_U64
+                };
+
+                Ok(Expression::IntegerLiteral(IntegerLiteralExpr {
+                    value,
+                    type_id,
+                    range,
+                }))
             }
             ParsedExpression::BooleanLiteral { value, range } => {
-                Ok(Expression::BooleanLiteral(value, BUILTIN_TYPE_BOOL, range))
+                Ok(Expression::BooleanLiteral(BooleanLiteralExpr {
+                    value,
+                    type_id: BUILTIN_TYPE_BOOL,
+                    range,
+                }))
             }
             ParsedExpression::VariableRef { name, range } => {
-                let value_type = self.get_scope_value_type(name, &range)?;
+                let type_id = self.get_scope_value_type(name, &range)?;
 
-                Ok(Expression::VariableRef(name, value_type, range))
+                Ok(Expression::VariableRef(VariableRefExpr {
+                    name,
+                    type_id,
+                    range,
+                }))
             }
             ParsedExpression::StructLiteral {
                 struct_type,
@@ -669,17 +724,21 @@ impl<'a, 'b> TypeChecker<'a> {
                         })?;
 
                     if new_type != checked_value.get_type() {
-                        checked_value = Expression::Widen(Box::new(checked_value), new_type, range);
+                        checked_value = Expression::Widen(WidenExpr {
+                            expr: Box::new(checked_value),
+                            type_id: new_type,
+                            range,
+                        });
                     }
 
                     checked_fields.push((field_name, checked_value));
                 }
 
-                Ok(Expression::StructLiteral(
-                    checked_fields,
-                    struct_type,
+                Ok(Expression::StructLiteral(StructLiteralExpr {
+                    fields: checked_fields,
+                    type_id: struct_type,
                     range,
-                ))
+                }))
             }
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child = self.check_expression(*child)?;
@@ -695,22 +754,19 @@ impl<'a, 'b> TypeChecker<'a> {
                         .find(|(n, _)| n == name)
                         .map(|(_, t)| t);
 
-                    if field_type.is_none() {
-                        return Err(Error::new_with_range(
+                    return match field_type {
+                        Some(field_type) => Ok(Expression::FieldAccessor(FieldAccessorExpr {
+                            name,
+                            expr: Box::new(child),
+                            type_id: *field_type,
+                            range,
+                        })),
+                        None => Err(Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!("No field '{name}' exists on type {}", child.get_type()),
                             range,
-                        ));
-                    }
-
-                    let field_type = field_type.unwrap();
-
-                    return Ok(Expression::FieldAccessor(
-                        name,
-                        Box::new(child),
-                        *field_type,
-                        range,
-                    ));
+                        )),
+                    };
                 }
 
                 let is_struct_pointer = self
@@ -727,22 +783,19 @@ impl<'a, 'b> TypeChecker<'a> {
                         .find(|(n, _)| n == name)
                         .map(|(_, t)| t);
 
-                    if field_type.is_none() {
-                        return Err(Error::new_with_range(
+                    return match field_type {
+                        Some(field_type) => Ok(Expression::FieldAccessor(FieldAccessorExpr {
+                            name,
+                            expr: Box::new(child),
+                            type_id: *field_type,
+                            range,
+                        })),
+                        None => Err(Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!("No field '{name}' exists on type {}", child.get_type()),
                             range,
-                        ));
-                    }
-
-                    let field_type = field_type.unwrap();
-
-                    return Ok(Expression::FieldAccessor(
-                        name,
-                        Box::new(child),
-                        *field_type,
-                        range,
-                    ));
+                        )),
+                    };
                 }
 
                 Err(Error::new_with_range(
@@ -764,37 +817,39 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 let inner_type = self.project.get_inner_type(expr.get_type());
 
-                let index = Expression::Widen(
-                    Box::new(self.check_expression(*index)?),
-                    BUILTIN_TYPE_U64,
+                let index = Expression::Widen(WidenExpr {
+                    expr: Box::new(self.check_expression(*index)?),
+                    type_id: BUILTIN_TYPE_U64,
                     range,
-                );
+                });
                 let index_type = index.get_type();
                 let index_range = *index.range();
 
                 // Convert $expr[$index] into *($expr + $index)
-                Ok(Expression::UnaryOperator(
-                    UnaryOperatorType::Deref,
-                    Box::new(Expression::BinaryOperator(
-                        BinaryOperatorType::Add,
-                        Box::new(expr),
-                        Box::new(index),
-                        index_type,
-                        index_range,
-                    )),
-                    inner_type,
+                Ok(Expression::UnaryOperator(UnaryOperatorExpr {
+                    op_type: UnaryOperatorType::Deref,
+                    expr: Box::new(Expression::BinaryOperator(BinaryOperatorExpr {
+                        op_type: BinaryOperatorType::Add,
+                        left: Box::new(expr),
+                        right: Box::new(index),
+                        type_id: index_type,
+                        range: index_range,
+                    })),
+                    type_id: inner_type,
                     range,
-                ))
+                }))
             }
-            ParsedExpression::StringLiteral { value, range } => Ok(Expression::StringLiteral(
-                value,
-                self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
-                range,
-            )),
+            ParsedExpression::StringLiteral { value, range } => {
+                Ok(Expression::StringLiteral(StringLiteralExpr {
+                    value,
+                    type_id: self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
+                    range,
+                }))
+            }
             ParsedExpression::Type { value, range } => {
                 let type_id = self.check_type(&value)?;
 
-                Ok(Expression::Type(type_id, range))
+                Ok(Expression::Type(TypeExpr { type_id, range }))
             }
         }
     }
@@ -833,11 +888,11 @@ mod tests {
             Statement::Assignment(
                 Expression::VariableRef("test", BUILTIN_TYPE_U16, (0..0).into()),
                 Expression::Widen(
-                    Box::new(Expression::IntegerLiteral(
-                        12,
-                        BUILTIN_TYPE_U8,
-                        (0..0).into()
-                    )),
+                    Box::new(Expression::IntegerLiteral(IntegerLiteralExpr {
+                        value: 12,
+                        type_id: BUILTIN_TYPE_U8,
+                        range: (0..0).into()
+                    })),
                     BUILTIN_TYPE_U16,
                     (0..0).into(),
                 ),
