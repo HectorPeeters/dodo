@@ -599,7 +599,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
             Expression::UnaryOperator(UnaryOperatorExpr {
                 op_type: UnaryOperatorType::Ref,
                 expr,
-                type_id: _,
+                type_id,
                 range: _,
             }) => {
                 let result_reg = self.get_next_register();
@@ -607,12 +607,12 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 match &*expr {
                     Expression::VariableRef(VariableRefExpr {
                         name,
-                        type_id,
+                        type_id: _,
                         range,
                     }) => {
                         let location = self.scope.find(name).map_err(|x| x.with_range(*range))?;
 
-                        let value_size = self.project.get_type_size(*type_id);
+                        let value_size = self.project.get_type_size(type_id);
 
                         match location {
                             ScopeLocation::Stack(offset) => self.instr(Lea(
