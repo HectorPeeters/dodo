@@ -98,7 +98,7 @@ fn run_test(
         .collect::<Result<Vec<_>>>()?;
 
     if enable_optimization {
-        statements = optimise(statements, &project);
+        statements = optimise(statements, &project, true);
     }
 
     let mut backend: Box<dyn Backend> = match backend_type {

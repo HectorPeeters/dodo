@@ -19,6 +19,7 @@ pub trait OptimisationStep<'a>: AstWalker<'a> {
 pub fn optimise<'a, 'b>(
     mut statements: Vec<UpperStatement<'a>>,
     project: &'b Project,
+    print_optimisations: bool,
 ) -> Vec<UpperStatement<'a>> {
     loop {
         let mut performed_optimisation = false;
@@ -36,11 +37,13 @@ pub fn optimise<'a, 'b>(
                 .collect::<Vec<_>>();
 
             if pass.performed_optimisations() != 0 {
-                println!(
-                    "Optimisation performed: {}({})",
-                    pass.name(),
-                    pass.performed_optimisations()
-                );
+                if print_optimisations {
+                    println!(
+                        "Optimisation performed: {} x{}",
+                        pass.name(),
+                        pass.performed_optimisations()
+                    );
+                }
                 performed_optimisation = true;
             }
         }
