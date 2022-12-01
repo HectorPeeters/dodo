@@ -76,6 +76,12 @@ impl<'a> AstWalker<'a> for MathIdentities {
                 self.performed_optimisations += 1;
                 *right
             }
+            (BinaryOperatorType::Divide, left, box Expression::IntegerLiteral(right))
+                if right.value == 1 =>
+            {
+                self.performed_optimisations += 1;
+                *left
+            }
             x => Expression::BinaryOperator(BinaryOperatorExpr {
                 op_type: x.0,
                 left: x.1,

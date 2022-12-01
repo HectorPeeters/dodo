@@ -23,10 +23,18 @@ fn mul_one() {
     printf("%u %u\n", y, z);
 }
 
+fn div_one() {
+    let x: u32 = 12;
+    let y: u32 = x / 1;
+
+    printf("%u\n", y);
+}
+
 fn main() {
     plus_zero();
     mul_zero();
     mul_one();
+    div_one();
 
     exit(0);
 }

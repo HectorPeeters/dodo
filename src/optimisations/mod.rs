@@ -26,8 +26,8 @@ pub fn optimise<'a, 'b>(
 
         let passes: [Box<dyn OptimisationStep>; 3] = [
             Box::<UnnecessaryWiden>::default(),
-            Box::new(ConstantFold::new(project)),
             Box::<MathIdentities>::default(),
+            Box::new(ConstantFold::new(project)),
         ];
 
         for mut pass in passes {
