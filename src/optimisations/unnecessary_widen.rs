@@ -1,4 +1,4 @@
-use crate::ast::{Expression, IntegerLiteralExpr, WidenExpr};
+use crate::ast::{BinaryOperatorExpr, Expression, IntegerLiteralExpr, WidenExpr};
 
 use super::ast_walker::AstWalker;
 use super::OptimisationStep;
@@ -30,6 +30,32 @@ impl<'a> AstWalker<'a> for UnnecessaryWiden {
 
                 Expression::IntegerLiteral(IntegerLiteralExpr {
                     value: int_lit.value,
+                    type_id,
+                    range,
+                })
+            }
+            WidenExpr {
+                expr: box Expression::BinaryOperator(binop),
+                type_id,
+                range,
+            } => {
+                self.performed_optimisations += 1;
+
+                let left_range = *binop.left.range();
+                let right_range = *binop.right.range();
+
+                Expression::BinaryOperator(BinaryOperatorExpr {
+                    op_type: binop.op_type,
+                    left: Box::new(Expression::Widen(WidenExpr {
+                        expr: binop.left,
+                        type_id,
+                        range: left_range,
+                    })),
+                    right: Box::new(Expression::Widen(WidenExpr {
+                        expr: binop.right,
+                        type_id,
+                        range: right_range,
+                    })),
                     type_id,
                     range,
                 })

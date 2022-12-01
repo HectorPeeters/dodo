@@ -1,15 +1,24 @@
 use crate::ast::{BinaryOperatorExpr, BinaryOperatorType, Expression, IntegerLiteralExpr};
-use crate::project::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
+use crate::project::Project;
 
 use super::ast_walker::AstWalker;
 use super::OptimisationStep;
 
-#[derive(Default)]
-pub struct ConstantFold {
+pub struct ConstantFold<'b> {
     performed_optimisations: usize,
+    project: &'b Project,
 }
 
-impl<'a> OptimisationStep<'a> for ConstantFold {
+impl<'b> ConstantFold<'b> {
+    pub fn new(project: &'b Project) -> Self {
+        Self {
+            performed_optimisations: 0,
+            project,
+        }
+    }
+}
+
+impl<'a, 'b> OptimisationStep<'a> for ConstantFold<'b> {
     fn name(&self) -> &'static str {
         "constant fold"
     }
@@ -20,28 +29,35 @@ impl<'a> OptimisationStep<'a> for ConstantFold {
 }
 
 macro_rules! impl_binop {
-    ($left:ident, $right:ident, $binop:ident, $op:ident, $opt_count:expr) => {{
+    ($left:expr, $right:expr, $binop:expr, $op:ident, $type_id:expr, $range:expr, $self:ident) => {{
         assert_eq!($left.type_id, $right.type_id);
 
-        let value = match $left.type_id {
-            BUILTIN_TYPE_U8 => ($left.value as u8).$op(($right.value as u8).into()) as u64,
-            BUILTIN_TYPE_U16 => ($left.value as u16).$op(($right.value as u16).into()) as u64,
-            BUILTIN_TYPE_U32 => ($left.value as u32).$op(($right.value as u32).into()) as u64,
-            BUILTIN_TYPE_U64 => $left.value.$op(($right.value as u32).into()),
-            _ => unreachable!(),
-        };
+        // TODO: this should be fixed for shl and shr
+        let mut result = IntegerLiteralExpr::new(
+            $left.value.$op($right.value.try_into().unwrap()),
+            $binop.range,
+        );
 
-        $opt_count += 1;
+        if $self.project.get_type_size(result.type_id) > $self.project.get_type_size($binop.type_id)
+        {
+            return Expression::BinaryOperator(BinaryOperatorExpr {
+                op_type: $binop.op_type,
+                left: Box::new(Expression::IntegerLiteral($left)),
+                right: Box::new(Expression::IntegerLiteral($right)),
+                type_id: $type_id,
+                range: $range,
+            });
+        }
 
-        Expression::IntegerLiteral(IntegerLiteralExpr {
-            value,
-            type_id: $left.type_id,
-            range: $binop.range,
-        })
+        $self.performed_optimisations += 1;
+
+        result.type_id = $binop.type_id;
+
+        Expression::IntegerLiteral(result)
     }};
 }
 
-impl<'a> AstWalker<'a> for ConstantFold {
+impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
     fn visit_binop(&mut self, binop: BinaryOperatorExpr<'a>) -> Expression<'a> {
         match (binop.op_type, binop.left, binop.right) {
             (
@@ -54,7 +70,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_add,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             (
@@ -67,7 +85,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_sub,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             (
@@ -80,7 +100,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_mul,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             (
@@ -93,7 +115,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_div,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             (
@@ -106,7 +130,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_shl,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             (
@@ -119,7 +145,9 @@ impl<'a> AstWalker<'a> for ConstantFold {
                     right,
                     binop,
                     wrapping_shr,
-                    self.performed_optimisations
+                    binop.type_id,
+                    binop.range,
+                    self
                 )
             }
             x => Expression::BinaryOperator(BinaryOperatorExpr {

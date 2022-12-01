@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::error::Result;
+use crate::project::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::TypeId;
 
@@ -240,6 +241,26 @@ pub struct IntegerLiteralExpr {
     pub value: u64,
     pub type_id: TypeId,
     pub range: SourceRange,
+}
+
+impl IntegerLiteralExpr {
+    pub fn new(value: u64, range: SourceRange) -> Self {
+        let type_id = if value <= 255 {
+            BUILTIN_TYPE_U8
+        } else if value <= 65535 {
+            BUILTIN_TYPE_U16
+        } else if value <= 4294967295 {
+            BUILTIN_TYPE_U32
+        } else {
+            BUILTIN_TYPE_U64
+        };
+
+        Self {
+            value,
+            type_id,
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

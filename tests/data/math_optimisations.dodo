@@ -1,0 +1,13 @@
+extern "printf";
+extern "exit";
+
+fn plus_zero() {
+    let x: u32 = 0 + 12 + 0 - 0;
+    printf("%u\n", x);
+}
+
+fn main() {
+    plus_zero();
+
+    exit(0);
+}

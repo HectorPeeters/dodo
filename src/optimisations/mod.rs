@@ -1,13 +1,14 @@
-pub mod ast_walker;
-pub mod constant_fold;
-pub mod unnecessary_widen;
-
-pub use constant_fold::*;
-pub use unnecessary_widen::*;
-
-use crate::ast::UpperStatement;
+mod ast_walker;
+mod constant_fold;
+mod math_identities;
+mod unnecessary_widen;
 
 use self::ast_walker::AstWalker;
+use self::constant_fold::ConstantFold;
+use self::math_identities::MathIdentities;
+use self::unnecessary_widen::UnnecessaryWiden;
+use crate::ast::UpperStatement;
+use crate::project::Project;
 
 pub trait OptimisationStep<'a>: AstWalker<'a> {
     fn name(&self) -> &'static str;
@@ -15,13 +16,17 @@ pub trait OptimisationStep<'a>: AstWalker<'a> {
     fn performed_optimisations(&self) -> usize;
 }
 
-pub fn optimise(mut statements: Vec<UpperStatement<'_>>) -> Vec<UpperStatement<'_>> {
+pub fn optimise<'a, 'b>(
+    mut statements: Vec<UpperStatement<'a>>,
+    project: &'b Project,
+) -> Vec<UpperStatement<'a>> {
     loop {
         let mut performed_optimisation = false;
 
-        let passes: [Box<dyn OptimisationStep>; 2] = [
+        let passes: [Box<dyn OptimisationStep>; 3] = [
             Box::<UnnecessaryWiden>::default(),
-            Box::<ConstantFold>::default(),
+            Box::new(ConstantFold::new(project)),
+            Box::<MathIdentities>::default(),
         ];
 
         for mut pass in passes {

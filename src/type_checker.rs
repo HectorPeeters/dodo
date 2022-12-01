@@ -7,8 +7,7 @@ use crate::ast::{
 };
 use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
 use crate::project::{
-    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
-    BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
+    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
 };
 use crate::types::{StructType, TypeId};
 use crate::{
@@ -665,23 +664,9 @@ impl<'a, 'b> TypeChecker<'a> {
                     range,
                 )),
             },
-            ParsedExpression::IntegerLiteral { value, range } => {
-                let type_id = if value <= 255 {
-                    BUILTIN_TYPE_U8
-                } else if value <= 65535 {
-                    BUILTIN_TYPE_U16
-                } else if value <= 4294967295 {
-                    BUILTIN_TYPE_U32
-                } else {
-                    BUILTIN_TYPE_U64
-                };
-
-                Ok(Expression::IntegerLiteral(IntegerLiteralExpr {
-                    value,
-                    type_id,
-                    range,
-                }))
-            }
+            ParsedExpression::IntegerLiteral { value, range } => Ok(Expression::IntegerLiteral(
+                IntegerLiteralExpr::new(value, range),
+            )),
             ParsedExpression::BooleanLiteral { value, range } => {
                 Ok(Expression::BooleanLiteral(BooleanLiteralExpr {
                     value,
@@ -896,6 +881,7 @@ impl<'a, 'b> TypeChecker<'a> {
 mod tests {
     use super::*;
     use crate::error::Result;
+    use crate::project::BUILTIN_TYPE_U16;
 
     #[test]
     fn widen_assignment() -> Result<()> {

@@ -105,7 +105,7 @@ fn main() -> Result<()> {
     // Optimisation
 
     if args.optimise {
-        statements = optimise(statements);
+        statements = optimise(statements, &project);
     }
 
     // Backend
