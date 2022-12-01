@@ -29,14 +29,11 @@ impl<'a, 'b> OptimisationStep<'a> for ConstantFold<'b> {
 }
 
 macro_rules! impl_binop {
-    ($left:expr, $right:expr, $binop:expr, $op:ident, $type_id:expr, $range:expr, $self:ident) => {{
+    ($left:expr, $right:expr, $binop:expr, $op:expr, $type_id:expr, $range:expr, $self:ident) => {{
         assert_eq!($left.type_id, $right.type_id);
 
         // TODO: this should be fixed for shl and shr
-        let mut result = IntegerLiteralExpr::new(
-            $left.value.$op($right.value.try_into().unwrap()),
-            $binop.range,
-        );
+        let mut result = IntegerLiteralExpr::new($op($left.value, $right.value), $binop.range);
 
         if $self.project.get_type_size(result.type_id) > $self.project.get_type_size($binop.type_id)
         {
@@ -69,7 +66,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_add,
+                    |a: u64, b: u64| a.wrapping_add(b),
                     binop.type_id,
                     binop.range,
                     self
@@ -84,7 +81,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_sub,
+                    |a: u64, b: u64| a.wrapping_sub(b),
                     binop.type_id,
                     binop.range,
                     self
@@ -99,7 +96,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_mul,
+                    |a: u64, b: u64| a.wrapping_mul(b),
                     binop.type_id,
                     binop.range,
                     self
@@ -114,7 +111,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_div,
+                    |a: u64, b: u64| a.wrapping_div(b),
                     binop.type_id,
                     binop.range,
                     self
@@ -129,7 +126,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_shl,
+                    |a: u64, b: u64| a.wrapping_shl(b as u32),
                     binop.type_id,
                     binop.range,
                     self
@@ -144,7 +141,7 @@ impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
                     left,
                     right,
                     binop,
-                    wrapping_shr,
+                    |a: u64, b: u64| a.wrapping_shr(b as u32),
                     binop.type_id,
                     binop.range,
                     self
