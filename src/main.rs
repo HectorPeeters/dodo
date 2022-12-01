@@ -26,6 +26,8 @@ struct Args {
     print_ast: bool,
     #[clap(long)]
     print_typed_ast: bool,
+    #[clap(long)]
+    print_optimised_ast: bool,
 
     #[clap(short, long)]
     run: bool,
@@ -106,6 +108,11 @@ fn main() -> Result<()> {
 
     if args.optimise {
         statements = optimise(statements, &project);
+    }
+
+    if args.print_optimised_ast {
+        println!("Optimised ast:");
+        println!("{:#?}", statements);
     }
 
     // Backend
