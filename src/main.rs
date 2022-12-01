@@ -31,7 +31,7 @@ struct Args {
     run: bool,
 
     #[clap(short = 'O', long)]
-    optimize: bool,
+    optimise: bool,
 
     #[clap(long)]
     dont_compile: bool,
@@ -50,7 +50,7 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use dodo::optimisations::optimize;
+    use dodo::optimisations::optimise;
 
     let args = Args::parse();
 
@@ -104,8 +104,8 @@ fn main() -> Result<()> {
 
     // Optimisation
 
-    if args.optimize {
-        statements = optimize(statements);
+    if args.optimise {
+        statements = optimise(statements);
     }
 
     // Backend

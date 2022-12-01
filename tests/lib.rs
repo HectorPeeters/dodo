@@ -4,7 +4,7 @@ use dodo::{
         BackendType,
     },
     error::Result,
-    optimisations::optimize,
+    optimisations::optimise,
     parser::Parser,
     project::Project,
     tokenizer::tokenize,
@@ -23,7 +23,7 @@ fn test_c(path: &str) {
 }
 
 #[test_resources("tests/data/*.dodo")]
-fn test_c_optimized(path: &str) {
+fn test_c_optimised(path: &str) {
     run_passing_test(path, BackendType::C, true);
 }
 
@@ -33,7 +33,7 @@ fn test_x86(path: &str) {
 }
 
 #[test_resources("tests/data/*.dodo")]
-fn test_x86_optimized(path: &str) {
+fn test_x86_optimised(path: &str) {
     run_passing_test(path, BackendType::X86, true);
 }
 
@@ -98,7 +98,7 @@ fn run_test(
         .collect::<Result<Vec<_>>>()?;
 
     if enable_optimization {
-        statements = optimize(statements);
+        statements = optimise(statements);
     }
 
     let mut backend: Box<dyn Backend> = match backend_type {
