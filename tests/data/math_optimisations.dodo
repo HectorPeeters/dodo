@@ -2,12 +2,31 @@ extern "printf";
 extern "exit";
 
 fn plus_zero() {
-    let x: u32 = 0 + 12 + 0 - 0;
-    printf("%u\n", x);
+    let x: u32 = 12;
+    let y: u32 = 0 + x + 0 - 0;
+    printf("%u\n", y);
+}
+
+fn mul_zero() {
+    let x: u32 = 12;
+    let y: u32 = x * 0;
+    let z: u32 = 0 * x;
+
+    printf("%u %u\n", y, z);
+}
+
+fn mul_one() {
+    let x: u32 = 12;
+    let y: u32 = x * 1;
+    let z: u32 = 1 * x;
+
+    printf("%u %u\n", y, z);
 }
 
 fn main() {
     plus_zero();
+    mul_zero();
+    mul_one();
 
     exit(0);
 }
