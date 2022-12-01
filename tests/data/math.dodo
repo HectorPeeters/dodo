@@ -30,7 +30,7 @@ fn subtraction() {
 fn multiplication() {
     let x: u32 = 12;
     let y: u32 = 4;
-
+    
     assert_eq(x * 0, 0);
     assert_eq(0 * x, 0);
     assert_eq(y * 3, 12);
@@ -49,6 +49,7 @@ fn division() {
 
 fn modulo() {
     let x: u32 = 12;
+
     assert_eq(x % 1, 0);
     assert_eq(x % 2, 0);
     assert_eq(x % 3, 0);
@@ -66,27 +67,22 @@ fn modulo() {
 }
 
 fn precedence() {
-    let x: u32 = 12;
-    let y: u32 = 4;
+    let x: u32 = 4;
 
-    assert_eq(x + y * 2, 20); 
-    assert_eq(x * y + 2, 50); 
+    assert_eq(12 + x * 2, 20); 
+    assert_eq(12 * x + 2, 50); 
     
     printf("Precedence success\n");
 }
 
 fn shift() {
-    let x: u32 = 12;
-    assert_eq(x << 2, 48);
-    assert_eq(x >> 2, 3);
+    assert_eq(12 << 2, 48);
+    assert_eq(12 >> 2, 3);
 
     printf("Shift success\n");
 }
 
 fn main() {
-    let x: u32 = 12;
-    let y: u32 = 4;
-
     addition();
     subtraction();
     multiplication();

@@ -8,7 +8,7 @@ pub struct UnnecessaryWiden {
     performed_optimisations: usize,
 }
 
-impl OptimisationStep for UnnecessaryWiden {
+impl<'a> OptimisationStep<'a> for UnnecessaryWiden {
     fn name(&self) -> &'static str {
         "unnecessary widen"
     }
