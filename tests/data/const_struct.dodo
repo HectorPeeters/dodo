@@ -1,0 +1,20 @@
+extern "printf";
+extern "exit";
+
+struct TestData {
+    age: u32,
+    height: u32,
+}
+
+const const_struct: TestData = struct TestData {
+    age = 12,
+    height = 13,
+};
+
+fn main() {
+    printf("Const struct has age %u\n", const_struct.age);
+
+    printf("Const struct has height %u\n", const_struct.height);
+
+    exit(0);
+}

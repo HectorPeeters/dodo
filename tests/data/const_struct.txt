@@ -1,0 +1,2 @@
+Const struct has age 12
+Const struct has height 13

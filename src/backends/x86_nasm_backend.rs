@@ -409,7 +409,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         .map_err(|x| x.with_range(range))?;
 
                     self.instr(Mov(
-                        RegIndirect(Rbp, offset * STACK_OFFSET),
+                        RegIndirect(Rbp, offset * STACK_OFFSET, true),
                         Reg(arg_reg, self.project.get_type_size(*arg_type)),
                     ));
                 }
@@ -469,10 +469,10 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 match lvalue_operand {
                     LValueLocation::Stack(offset) => {
-                        self.instr(Mov(RegIndirect(Rbp, offset), value_operand))
+                        self.instr(Mov(RegIndirect(Rbp, offset, true), value_operand))
                     }
                     LValueLocation::Register(reg, offset) => {
-                        self.instr(Mov(RegIndirect(reg, offset), value_operand))
+                        self.instr(Mov(RegIndirect(reg, offset, true), value_operand))
                     }
                 }
 
@@ -617,7 +617,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         match location {
                             ScopeLocation::Stack(offset) => self.instr(Lea(
                                 Reg(result_reg, value_size),
-                                RegIndirect(Rbp, offset * 16),
+                                RegIndirect(Rbp, offset * 16, true),
                             )),
                             ScopeLocation::Global(index) => {
                                 self.instr(Mov(Reg(result_reg, value_size), Label(index)))
@@ -636,7 +636,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 match unop.op_type {
                     UnaryOperatorType::Deref => {
-                        self.instr(Mov(Reg(result_reg, expr_size), RegIndirect(reg, 0)));
+                        self.instr(Mov(Reg(result_reg, expr_size), RegIndirect(reg, 0, true)));
                     }
                     _ => todo!("Cannot generate code for {:?}", unop.op_type),
                 }
@@ -735,7 +735,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 match location {
                     ScopeLocation::Stack(offset) => self.instr(Mov(
                         Reg(register, value_size),
-                        RegIndirect(Rbp, offset * 16),
+                        RegIndirect(Rbp, offset * 16, true),
                     )),
                     ScopeLocation::Global(index) => {
                         if self.project.is_ptr_type(type_id) || self.project.is_struct_type(type_id)
@@ -826,13 +826,13 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let value_type_size = self.project.get_type_size(type_id);
                 assert!(value_type_size <= 64);
 
-                let offset = self.get_struct_field_offset(name, expr.get_type());
+                let offset = self.get_struct_field_offset(name, expr.get_type()) / 8;
                 let child_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
                 self.instr(Mov(
                     Reg(result_reg, value_type_size),
-                    RegIndirect(child_reg, offset),
+                    RegIndirect(child_reg, offset, false),
                 ));
 
                 self.free_register(child_reg);

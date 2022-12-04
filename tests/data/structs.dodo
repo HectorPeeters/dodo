@@ -1,14 +1,10 @@
 extern "printf";
+extern "exit";
 
 struct TestData {
     age: u32,
     is_alive: bool,
 }
-
-const const_struct: TestData = struct TestData {
-    age = 12,
-    is_alive = true,
-};
 
 fn have_birthday(data: TestData*) {
     data.age = data.age + 1;
@@ -38,5 +34,5 @@ fn main() {
 
     print_message(&data);
 
-    printf("Const struct has age %u\n", const_struct.age);
+    exit(0);
 }

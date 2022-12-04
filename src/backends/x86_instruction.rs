@@ -112,7 +112,7 @@ impl fmt::Display for X86Register {
 #[derive(Clone)]
 pub enum X86Operand {
     Reg(X86Register, usize),
-    RegIndirect(X86Register, usize),
+    RegIndirect(X86Register, usize, bool),
     Constant(u64),
     Label(usize),
     LabelIndirect(usize),
@@ -125,7 +125,13 @@ impl fmt::Display for X86Operand {
 
         match self {
             Reg(r, s) => write!(f, "{}", r.get_string(*s)),
-            RegIndirect(r, offset) => write!(f, "[{r} - {offset}]"),
+            RegIndirect(r, offset, negative) => {
+                if *negative {
+                    write!(f, "[{r} - {offset}]")
+                } else {
+                    write!(f, "[{r} + {offset}]")
+                }
+            }
             Constant(x) => write!(f, "0x{x:x}"),
             Label(l) => write!(f, "L{l}"),
             LabelIndirect(l) => write!(f, "[L{l}]"),
