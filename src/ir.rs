@@ -135,30 +135,30 @@ impl Display for IrInstruction {
         use IrInstruction::*;
 
         match self {
-            Mov(dest_reg, source_reg) => write!(f, "mov\t{} {}", dest_reg, source_reg),
-            MovImm(reg, value) => write!(f, "movimm\t{} {}", reg, value),
-            MovZx(dest_reg, src_reg) => write!(f, "movzx\t{} {}", dest_reg, src_reg),
-            Add(dest, a, b) => write!(f, "add\t{} {} {}", dest, a, b),
-            Sub(dest, a, b) => write!(f, "sub\t{} {} {}", dest, a, b),
-            Mul(dest, a, b) => write!(f, "mul\t{} {} {}", dest, a, b),
-            Div(dest, a, b) => write!(f, "div\t{} {} {}", dest, a, b),
-            Mod(dest, a, b) => write!(f, "mod\t{} {} {}", dest, a, b),
-            Eq(dest, a, b) => write!(f, "eq\t{} {} {}", dest, a, b),
-            Ne(dest, a, b) => write!(f, "ne\t{} {} {}", dest, a, b),
-            Gt(dest, a, b) => write!(f, "gt\t{} {} {}", dest, a, b),
-            GtE(dest, a, b) => write!(f, "gte\t{} {} {}", dest, a, b),
-            Lt(dest, a, b) => write!(f, "lt\t{} {} {}", dest, a, b),
-            LtE(dest, a, b) => write!(f, "lte\t{} {} {}", dest, a, b),
-            Shl(dest, a, b) => write!(f, "shl\t{} {} {}", dest, a, b),
-            Shr(dest, a, b) => write!(f, "shr\t{} {} {}", dest, a, b),
-            Jmp(index) => write!(f, "jmp\t{}", index),
+            Mov(dest_reg, source_reg) => write!(f, "mov\t{dest_reg} {source_reg}"),
+            MovImm(reg, value) => write!(f, "movimm\t{reg} {value}"),
+            MovZx(dest_reg, src_reg) => write!(f, "movzx\t{dest_reg} {src_reg}"),
+            Add(dest, a, b) => write!(f, "add\t{dest} {a} {b}"),
+            Sub(dest, a, b) => write!(f, "sub\t{dest} {a} {b}"),
+            Mul(dest, a, b) => write!(f, "mul\t{dest} {a} {b}"),
+            Div(dest, a, b) => write!(f, "div\t{dest} {a} {b}"),
+            Mod(dest, a, b) => write!(f, "mod\t{dest} {a} {b}"),
+            Eq(dest, a, b) => write!(f, "eq\t{dest} {a} {b}"),
+            Ne(dest, a, b) => write!(f, "ne\t{dest} {a} {b}"),
+            Gt(dest, a, b) => write!(f, "gt\t{dest} {a} {b}"),
+            GtE(dest, a, b) => write!(f, "gte\t{dest} {a} {b}"),
+            Lt(dest, a, b) => write!(f, "lt\t{dest} {a} {b}"),
+            LtE(dest, a, b) => write!(f, "lte\t{dest} {a} {b}"),
+            Shl(dest, a, b) => write!(f, "shl\t{dest} {a} {b}"),
+            Shr(dest, a, b) => write!(f, "shr\t{dest} {a} {b}"),
+            Jmp(index) => write!(f, "jmp\t{index}"),
             CondJmp(true_index, false_index, reg) => {
-                write!(f, "condjmp\t{} {} {}", true_index, false_index, reg)
+                write!(f, "condjmp\t{true_index} {false_index} {reg}")
             }
-            Push(value) => write!(f, "push\t{}", value),
-            Pop(value) => write!(f, "pop\t{}", value),
-            Call(index) => write!(f, "call\t{}", index),
-            CallExtern(name, arg_count) => write!(f, "ecall\t{}[{}]", name, arg_count),
+            Push(value) => write!(f, "push\t{value}"),
+            Pop(value) => write!(f, "pop\t{value}"),
+            Call(index) => write!(f, "call\t{index}"),
+            CallExtern(name, arg_count) => write!(f, "ecall\t{name}[{arg_count}]"),
             Ret() => write!(f, "ret"),
         }
     }
@@ -189,7 +189,7 @@ impl IrBlock {
 impl Display for IrBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for instr in &self.instructions {
-            writeln!(f, "{}", instr)?;
+            writeln!(f, "{instr}")?;
         }
 
         Ok(())
@@ -214,7 +214,7 @@ impl Display for IrBuilder {
 
         for (index, block) in self.blocks.iter().enumerate() {
             writeln!(f, "==== {}: {} ====", index, block.name)?;
-            writeln!(f, "{}\n", block)?;
+            writeln!(f, "{block}\n")?;
         }
         Ok(())
     }
@@ -316,7 +316,7 @@ impl IrBuilder {
             ));
 
             for reachable_block in self.can_jump_blocks(index) {
-                buffer.push_str(&format!("\t{} -> {}\n", index, reachable_block));
+                buffer.push_str(&format!("\t{index} -> {reachable_block}\n"));
             }
         }
 

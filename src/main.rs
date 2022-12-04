@@ -75,7 +75,7 @@ fn main() -> Result<()> {
 
     if args.print_tokens {
         println!("Tokens:");
-        println!("{:#?}", tokens);
+        println!("{tokens:#?}");
     }
 
     // Parsing
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
 
     if args.print_ast {
         println!("Ast:");
-        println!("{:#?}", statements);
+        println!("{statements:#?}");
     }
 
     // Type checking
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
 
     if args.print_typed_ast {
         println!("Typed ast:");
-        println!("{:#?}", statements);
+        println!("{statements:#?}");
     }
 
     // Optimisation
@@ -114,7 +114,7 @@ fn main() -> Result<()> {
 
     if args.print_optimised_ast {
         println!("Optimised ast:");
-        println!("{:#?}", statements);
+        println!("{statements:#?}");
     }
 
     // Backend
@@ -138,7 +138,7 @@ fn main() -> Result<()> {
 
     if args.run {
         let output = backend.run(&output_executable)?;
-        println!("{}", output);
+        println!("{output}");
     }
 
     Ok(())

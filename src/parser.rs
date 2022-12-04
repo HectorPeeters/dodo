@@ -429,7 +429,7 @@ impl<'a> Parser<'a> {
             Ok(value) => Ok(ParsedExpression::IntegerLiteral { value, range }),
             Err(_) => Err(Error::new_with_range(
                 ErrorType::Parser,
-                format!("Failed to parse '{}' to int", value),
+                format!("Failed to parse '{value}' to int"),
                 range,
             )),
         }
@@ -562,8 +562,7 @@ impl<'a> Parser<'a> {
             None => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!(
-                    "Did not expect token '{:?}' while parsing prefix expression",
-                    token_type
+                    "Did not expect token '{token_type:?}' while parsing prefix expression"
                 ),
                 self.peek()?.range,
             )),
@@ -595,8 +594,7 @@ impl<'a> Parser<'a> {
                 None => Err(Error::new_with_range(
                     ErrorType::Parser,
                     format!(
-                        "Did not expect token '{:?}' while parsing infix expression",
-                        token_type
+                        "Did not expect token '{token_type:?}' while parsing infix expression"
                     ),
                     self.peek()?.range,
                 )),

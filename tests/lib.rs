@@ -77,7 +77,7 @@ fn run_test(
     backend_type: BackendType,
     enable_optimization: bool,
 ) -> Result<String> {
-    println!("RUNNING '{}' with backend '{:?}'...", file, backend_type);
+    println!("RUNNING '{file}' with backend '{backend_type:?}'...");
 
     let mut hasher = DefaultHasher::new();
     file.hash(&mut hasher);
@@ -112,7 +112,7 @@ fn run_test(
         .map(|x| backend.process_upper_statement(x))
         .collect::<Result<Vec<_>>>()?;
 
-    let executable_path = format!("/tmp/output_{}", test_code);
+    let executable_path = format!("/tmp/output_{test_code}");
     let executable_path = Path::new(&executable_path);
     backend.finalize(executable_path, false)?;
 

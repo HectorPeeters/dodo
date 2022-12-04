@@ -16,9 +16,9 @@ pub trait OptimisationStep<'a>: AstWalker<'a> {
     fn performed_optimisations(&self) -> usize;
 }
 
-pub fn optimise<'a, 'b>(
+pub fn optimise<'a>(
     mut statements: Vec<UpperStatement<'a>>,
-    project: &'b Project,
+    project: &Project,
     print_optimisations: bool,
 ) -> Vec<UpperStatement<'a>> {
     loop {

@@ -1,4 +1,3 @@
-#![feature(int_log)]
 #![feature(exit_status_error)]
 #![feature(custom_test_frameworks)]
 #![feature(box_patterns)]

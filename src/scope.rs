@@ -19,7 +19,7 @@ impl<T: Clone> Scope<T> {
                 if last_scope.contains_key(name) {
                     Err(Error::new(
                         ErrorType::Scope,
-                        format!("Identifier '{}' already defined in scope", name),
+                        format!("Identifier '{name}' already defined in scope"),
                     ))
                 } else {
                     last_scope.insert(name.to_owned(), data);
@@ -28,7 +28,7 @@ impl<T: Clone> Scope<T> {
             }
             None => Err(Error::new(
                 ErrorType::Scope,
-                format!("Trying to insert '{}' into empty scope", name),
+                format!("Trying to insert '{name}' into empty scope"),
             )),
         }
     }
@@ -49,7 +49,7 @@ impl<T: Clone> Scope<T> {
             .rev()
             .find_map(|x| x.get(name))
             .cloned()
-            .ok_or_else(|| Error::new(ErrorType::Scope, format!("'{}' not found in scope", name)))
+            .ok_or_else(|| Error::new(ErrorType::Scope, format!("'{name}' not found in scope")))
     }
 
     pub fn size(&self) -> Result<usize> {

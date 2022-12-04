@@ -209,7 +209,7 @@ impl fmt::Display for X86Instruction {
                 "db {}",
                 bytes
                     .iter()
-                    .map(|x| format!("{:#04x}", x))
+                    .map(|x| format!("{x:#04x}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -218,7 +218,7 @@ impl fmt::Display for X86Instruction {
                 "dw {}",
                 bytes
                     .iter()
-                    .map(|x| format!("{:#06x}", x))
+                    .map(|x| format!("{x:#06x}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -227,7 +227,7 @@ impl fmt::Display for X86Instruction {
                 "dd {}",
                 bytes
                     .iter()
-                    .map(|x| format!("{:#08x}", x))
+                    .map(|x| format!("{x:#08x}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -236,7 +236,7 @@ impl fmt::Display for X86Instruction {
                 "dq {}",
                 bytes
                     .iter()
-                    .map(|x| format!("{:#10x}", x))
+                    .map(|x| format!("{x:#10x}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -263,7 +263,7 @@ mod tests {
             .into_iter()
             .map(|i| {
                 let register: X86Register = i.into();
-                format!("{}", register)
+                format!("{register}")
             })
             .collect();
 

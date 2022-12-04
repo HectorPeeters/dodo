@@ -95,7 +95,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 // TODO: add range
                 Error::new(
                     ErrorType::TypeCheck,
-                    format!("Could not find type '{}'", name),
+                    format!("Could not find type '{name}'"),
                 )
             }),
             ParsedType::Ptr(inner) => {
@@ -601,8 +601,7 @@ impl<'a, 'b> TypeChecker<'a> {
                                 Error::new_with_range(
                                     ErrorType::TypeCheck,
                                     format!(
-                                        "Cannot widen from type {:?} to {:?}",
-                                        arg_type, expected_type
+                                        "Cannot widen from type {arg_type:?} to {expected_type:?}"
                                     ),
                                     range,
                                 )
@@ -660,7 +659,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
                 _ => Err(Error::new_with_range(
                     ErrorType::TypeCheck,
-                    format!("Unknown intrinsic function '{}'", name),
+                    format!("Unknown intrinsic function '{name}'"),
                     range,
                 )),
             },

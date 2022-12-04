@@ -99,7 +99,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     .join("\n");
 
                 self.buffer
-                    .push_str(&format!("struct {} {{\n{}\n}};\n", name, formatted_fields));
+                    .push_str(&format!("struct {name} {{\n{formatted_fields}\n}};\n"));
 
                 Ok(())
             }
@@ -138,8 +138,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 };
 
                 self.buffer.push_str(&format!(
-                    "{} {}({}) {}\n",
-                    return_type, name, params, section_attribute
+                    "{return_type} {name}({params}) {section_attribute}\n"
                 ));
 
                 self.visit_statement(body)?;
@@ -173,8 +172,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 };
 
                 self.buffer.push_str(&format!(
-                    "const {} {} {} = {};\n",
-                    c_type, name, section_attribute, c_value
+                    "const {c_type} {name} {section_attribute} = {c_value};\n"
                 ));
 
                 Ok(())
@@ -219,7 +217,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let left = self.visit_expression(left)?;
                 let right = self.visit_expression(right)?;
-                self.buffer.push_str(&format!("{} = {};\n", left, right));
+                self.buffer.push_str(&format!("{left} = {right};\n"));
                 Ok(())
             }
             Statement::Expression(expr_stmt) => {
@@ -235,7 +233,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let condition = self.visit_expression(condition)?;
 
-                self.buffer.push_str(&format!("while ({}) {{", condition));
+                self.buffer.push_str(&format!("while ({condition}) {{"));
                 self.visit_statement(*body)?;
                 self.buffer.push('}');
 
@@ -249,7 +247,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let condition = self.visit_expression(condition)?;
 
-                self.buffer.push_str(&format!("if ({}) ", condition));
+                self.buffer.push_str(&format!("if ({condition}) "));
                 self.visit_statement(*if_body)?;
 
                 if let Some(else_body) = else_body {
@@ -261,7 +259,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }
             Statement::Return(return_expr) => {
                 let value = self.visit_expression(return_expr.expr)?;
-                self.buffer.push_str(&format!("return {};", value));
+                self.buffer.push_str(&format!("return {value};"));
 
                 Ok(())
             }
@@ -275,30 +273,30 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 let right = self.visit_expression(*binop.right)?;
 
                 Ok(match binop.op_type {
-                    BinaryOperatorType::Add => format!("({} + {})", left, right),
-                    BinaryOperatorType::Subtract => format!("({} - {})", left, right),
-                    BinaryOperatorType::Multiply => format!("({} * {})", left, right),
-                    BinaryOperatorType::Divide => format!("({} / {})", left, right),
-                    BinaryOperatorType::Modulo => format!("({} % {})", left, right),
-                    BinaryOperatorType::ShiftLeft => format!("({} << {})", left, right),
-                    BinaryOperatorType::ShiftRight => format!("({} >> {})", left, right),
-                    BinaryOperatorType::Equal => format!("({} == {})", left, right),
-                    BinaryOperatorType::NotEqual => format!("({} != {})", left, right),
-                    BinaryOperatorType::LessThan => format!("({} < {})", left, right),
-                    BinaryOperatorType::LessThanEqual => format!("({} <= {})", left, right),
-                    BinaryOperatorType::GreaterThan => format!("({} > {})", left, right),
-                    BinaryOperatorType::GreaterThanEqual => format!("({} >= {})", left, right),
-                    BinaryOperatorType::LogicalOr => format!("({} || {})", left, right),
-                    BinaryOperatorType::LogicalAnd => format!("({} && {})", left, right),
+                    BinaryOperatorType::Add => format!("({left} + {right})"),
+                    BinaryOperatorType::Subtract => format!("({left} - {right})"),
+                    BinaryOperatorType::Multiply => format!("({left} * {right})"),
+                    BinaryOperatorType::Divide => format!("({left} / {right})"),
+                    BinaryOperatorType::Modulo => format!("({left} % {right})"),
+                    BinaryOperatorType::ShiftLeft => format!("({left} << {right})"),
+                    BinaryOperatorType::ShiftRight => format!("({left} >> {right})"),
+                    BinaryOperatorType::Equal => format!("({left} == {right})"),
+                    BinaryOperatorType::NotEqual => format!("({left} != {right})"),
+                    BinaryOperatorType::LessThan => format!("({left} < {right})"),
+                    BinaryOperatorType::LessThanEqual => format!("({left} <= {right})"),
+                    BinaryOperatorType::GreaterThan => format!("({left} > {right})"),
+                    BinaryOperatorType::GreaterThanEqual => format!("({left} >= {right})"),
+                    BinaryOperatorType::LogicalOr => format!("({left} || {right})"),
+                    BinaryOperatorType::LogicalAnd => format!("({left} && {right})"),
                 })
             }
             Expression::UnaryOperator(unop) => {
                 let expr = self.visit_expression(*unop.expr)?;
 
                 Ok(match unop.op_type {
-                    UnaryOperatorType::Negate => format!("(-{})", expr),
-                    UnaryOperatorType::Ref => format!("(&{})", expr),
-                    UnaryOperatorType::Deref => format!("(*{})", expr),
+                    UnaryOperatorType::Negate => format!("(-{expr})"),
+                    UnaryOperatorType::Ref => format!("(&{expr})"),
+                    UnaryOperatorType::Deref => format!("(*{expr})"),
                 })
             }
             Expression::FunctionCall(FunctionCallExpr {
@@ -313,7 +311,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
 
-                Ok(format!("{}({})", name, args))
+                Ok(format!("{name}({args})"))
             }
             Expression::IntegerLiteral(int_lit) => Ok(format!("{}", int_lit.value)),
             Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
@@ -329,13 +327,13 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 let formatted_fields = fields
                     .into_iter()
                     .map(|(name, value)| match self.visit_expression(value) {
-                        Ok(value) => Ok(format!(".{} = {}", name, value)),
+                        Ok(value) => Ok(format!(".{name} = {value}")),
                         Err(e) => Err(e),
                     })
                     .collect::<Result<Vec<_>>>()?
                     .join(",\n");
 
-                Ok(format!("({}){{\n{}\n}}", c_type, formatted_fields))
+                Ok(format!("({c_type}){{\n{formatted_fields}\n}}"))
             }
             Expression::FieldAccessor(FieldAccessorExpr {
                 name,
@@ -347,9 +345,9 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 let child_source = self.visit_expression(*expr)?;
 
                 if self.project.is_ptr_type(child_type) {
-                    Ok(format!("{}->{}", child_source, name))
+                    Ok(format!("{child_source}->{name}"))
                 } else {
-                    Ok(format!("{}.{}", child_source, name))
+                    Ok(format!("{child_source}.{name}"))
                 }
             }
             Expression::Widen(widen) => self.visit_expression(*widen.expr),
