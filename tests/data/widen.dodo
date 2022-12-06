@@ -1,0 +1,23 @@
+extern "exit";
+extern "printf";
+
+fn main() {
+    let x8: u8 = 12;
+    let x16: u16 = 13;
+    let x32: u32 = 14;
+    let x64: u64 = 15;
+
+    // Widen to 16 bit
+    printf("%hu\n", x16 + x8);
+
+    // Widen to 32 bit
+    printf("%u\n", x32 + x8);
+    printf("%u\n", x32 + x16);
+
+    // Widen to 64 bit
+    printf("%llu\n", x64 + x8);
+    printf("%llu\n", x64 + x16);
+    printf("%llu\n", x64 + x32);
+
+    exit(0);
+}

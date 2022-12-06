@@ -851,7 +851,14 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let expr_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
-                self.instr(MovZX(Reg(result_reg, widen_size), Reg(expr_reg, expr_size)));
+
+                // TODO: there should be a better way
+                if expr_size == 32 && widen_size == 64 {
+                    self.instr(Mov(Reg(result_reg, widen_size), Constant(0)));
+                    self.instr(Mov(Reg(result_reg, expr_size), Reg(expr_reg, expr_size)));
+                } else {
+                    self.instr(MovZX(Reg(result_reg, widen_size), Reg(expr_reg, expr_size)));
+                }
 
                 self.free_register(expr_reg);
 
