@@ -91,15 +91,17 @@ impl<'a, 'b> TypeChecker<'a> {
 
     fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
         match parsed_type {
-            ParsedType::Named(name) => self.project.lookup_builtin_type(name).ok_or_else(|| {
-                // TODO: add range
-                Error::new(
-                    ErrorType::TypeCheck,
-                    format!("Could not find type '{name}'"),
-                )
-            }),
-            ParsedType::Ptr(inner) => {
-                let inner = self.check_type(inner)?;
+            ParsedType::Named(name, range) => {
+                self.project.lookup_builtin_type(name).ok_or_else(|| {
+                    Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Could not find type '{name}'"),
+                        *range,
+                    )
+                })
+            }
+            ParsedType::Ptr(inner, range) => {
+                let inner = self.check_type(inner).map_err(|e| e.with_range(*range))?;
                 Ok(self.project.find_or_add_type(Type::Ptr(inner)))
             }
         }

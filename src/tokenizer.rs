@@ -127,6 +127,13 @@ impl SourceRange {
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
+
+    pub fn expand(&self, other: &Self) -> Self {
+        SourceRange {
+            start: self.start.min(other.start),
+            end: self.end.max(other.end),
+        }
+    }
 }
 
 impl From<Range<usize>> for SourceRange {

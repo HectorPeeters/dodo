@@ -8,8 +8,8 @@ use crate::{
 
 #[derive(Debug, PartialEq)]
 pub enum ParsedType {
-    Named(String),
-    Ptr(Box<ParsedType>),
+    Named(String, SourceRange),
+    Ptr(Box<ParsedType>, SourceRange),
 }
 
 pub type ParsedAnnotations<'a> = Vec<(&'a str, Option<ParsedExpression<'a>>)>;
@@ -278,16 +278,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type(&mut self) -> Result<ParsedType> {
-        let mut result = ParsedType::Named(
-            self.consume_assert(TokenType::Identifier)?
-                .value
-                .to_string(),
-        );
+        let token = self.consume_assert(TokenType::Identifier)?;
+        let mut result = ParsedType::Named(token.value.to_string(), token.range);
 
         if self.peek()?.token_type == TokenType::Asterisk {
             self.consume()?;
 
-            result = ParsedType::Ptr(Box::new(result));
+            result = ParsedType::Ptr(Box::new(result), self.peek()?.range.expand(&token.range));
         }
 
         Ok(result)
@@ -561,9 +558,7 @@ impl<'a> Parser<'a> {
             Some(func) => func(self),
             None => Err(Error::new_with_range(
                 ErrorType::Parser,
-                format!(
-                    "Did not expect token '{token_type:?}' while parsing prefix expression"
-                ),
+                format!("Did not expect token '{token_type:?}' while parsing prefix expression"),
                 self.peek()?.range,
             )),
         }?;
@@ -593,9 +588,7 @@ impl<'a> Parser<'a> {
                 }
                 None => Err(Error::new_with_range(
                     ErrorType::Parser,
-                    format!(
-                        "Did not expect token '{token_type:?}' while parsing infix expression"
-                    ),
+                    format!("Did not expect token '{token_type:?}' while parsing infix expression"),
                     self.peek()?.range,
                 )),
             }?;
@@ -749,7 +742,8 @@ impl<'a> Parser<'a> {
         self.consume_assert(TokenType::RightParen)?;
 
         let return_type = if self.peek()?.token_type == TokenType::LeftBrace {
-            ParsedType::Named("void".to_string())
+            // TODO: this range is not completely correct
+            ParsedType::Named("void".to_string(), self.peek()?.range)
         } else {
             self.parse_type()?
         };
