@@ -1155,7 +1155,7 @@ mod tests {
             ParsedUpperStatement::Function {
                 name: "test",
                 parameters: vec![],
-                return_type: ParsedType::Named("void".to_string()),
+                return_type: ParsedType::Named("void".to_string(), (10..11).into()),
                 body: ParsedStatement::Block {
                     children: vec![ParsedStatement::Return {
                         value: ParsedExpression::IntegerLiteral {
@@ -1183,7 +1183,7 @@ mod tests {
             ParsedUpperStatement::Function {
                 name: "test",
                 parameters: vec![],
-                return_type: ParsedType::Named("u8".to_string()),
+                return_type: ParsedType::Named("u8".to_string(), (10..12).into()),
                 body: ParsedStatement::Block {
                     children: vec![ParsedStatement::Return {
                         value: ParsedExpression::IntegerLiteral {

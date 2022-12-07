@@ -65,19 +65,20 @@ impl<'a> Backend<'a> for CBackend<'a> {
 }
 
 impl<'a> CBackend<'a> {
-    fn to_c_type(&self, id: TypeId) -> String {
+    fn to_c_type(&self, id: TypeId) -> Result<String> {
         match id {
-            BUILTIN_TYPE_U8 => "char".to_string(),
-            BUILTIN_TYPE_U16 => "unsigned short".to_string(),
-            BUILTIN_TYPE_U32 => "unsigned int".to_string(),
-            BUILTIN_TYPE_U64 => "unsigned long".to_string(),
-            BUILTIN_TYPE_BOOL => "bool".to_string(),
-            BUILTIN_TYPE_VOID => "void".to_string(),
-            _ if self.project.is_ptr_type(id) => {
-                format!("{}*", self.to_c_type(self.project.get_inner_type(id)))
-            }
-            _ if self.project.is_struct_type(id) => {
-                format!("struct {}", self.project.get_struct(id).name)
+            BUILTIN_TYPE_U8 => Ok("char".to_string()),
+            BUILTIN_TYPE_U16 => Ok("unsigned short".to_string()),
+            BUILTIN_TYPE_U32 => Ok("unsigned int".to_string()),
+            BUILTIN_TYPE_U64 => Ok("unsigned long".to_string()),
+            BUILTIN_TYPE_BOOL => Ok("bool".to_string()),
+            BUILTIN_TYPE_VOID => Ok("void".to_string()),
+            _ if self.project.get_type(id)?.is_ptr() => Ok(format!(
+                "{}*",
+                self.to_c_type(self.project.get_type(id)?.get_deref()?)?
+            )),
+            _ if self.project.get_type(id)?.is_struct() => {
+                Ok(format!("struct {}", self.project.get_struct(id)?.name))
             }
             _ => unreachable!(),
         }
@@ -94,8 +95,10 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let formatted_fields = fields
                     .into_iter()
-                    .map(|(name, field_type)| format!("\t{} {};", self.to_c_type(field_type), name))
-                    .collect::<Vec<_>>()
+                    .map(|(name, field_type)| {
+                        self.to_c_type(field_type).map(|t| format!("\t{t} {name};"))
+                    })
+                    .collect::<Result<Vec<_>>>()?
                     .join("\n");
 
                 self.buffer
@@ -114,14 +117,14 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let params = params
                     .into_iter()
-                    .map(|(name, type_)| format!("{} {}", self.to_c_type(type_), name))
-                    .collect::<Vec<_>>()
+                    .map(|(name, type_)| self.to_c_type(type_).map(|t| format!("{t} {name}")))
+                    .collect::<Result<Vec<_>>>()?
                     .join(", ");
 
                 let return_type = if name == "main" {
                     "int".to_string()
                 } else {
-                    self.to_c_type(return_type)
+                    self.to_c_type(return_type)?
                 };
 
                 let section_annotation = annotations
@@ -154,7 +157,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 type_id,
                 range: _,
             }) => {
-                let c_type = self.to_c_type(type_id);
+                let c_type = self.to_c_type(type_id)?;
 
                 let c_value = self.visit_expression(value)?;
 
@@ -207,7 +210,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 range: _,
             }) => {
                 self.buffer
-                    .push_str(&format!("{} {};\n", self.to_c_type(type_id), name));
+                    .push_str(&format!("{} {};\n", self.to_c_type(type_id)?, name));
                 Ok(())
             }
             Statement::Assignment(AssignmentStatement {
@@ -322,7 +325,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 type_id,
                 range: _,
             }) => {
-                let c_type = self.to_c_type(type_id);
+                let c_type = self.to_c_type(type_id)?;
 
                 let formatted_fields = fields
                     .into_iter()
@@ -341,10 +344,10 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 type_id: _,
                 range: _,
             }) => {
-                let child_type = expr.get_type();
+                let child_type = expr.type_id();
                 let child_source = self.visit_expression(*expr)?;
 
-                if self.project.is_ptr_type(child_type) {
+                if self.project.get_type(child_type)?.is_ptr() {
                     Ok(format!("{child_source}->{name}"))
                 } else {
                     Ok(format!("{child_source}.{name}"))
@@ -357,7 +360,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 range: _,
             }) => Ok(format!(
                 "({})({})",
-                self.to_c_type(type_id),
+                self.to_c_type(type_id)?,
                 self.visit_expression(*expr)?
             )),
             Expression::Type(_) => unreachable!(),

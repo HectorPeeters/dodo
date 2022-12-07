@@ -91,15 +91,10 @@ impl<'a, 'b> TypeChecker<'a> {
 
     fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
         match parsed_type {
-            ParsedType::Named(name, range) => {
-                self.project.lookup_builtin_type(name).ok_or_else(|| {
-                    Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!("Could not find type '{name}'"),
-                        *range,
-                    )
-                })
-            }
+            ParsedType::Named(name, range) => self
+                .project
+                .get_type_id(name)
+                .map_err(|e| e.with_range(*range)),
             ParsedType::Ptr(inner, range) => {
                 let inner = self.check_type(inner).map_err(|e| e.with_range(*range))?;
                 Ok(self.project.find_or_add_type(Type::Ptr(inner)))
@@ -231,21 +226,21 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 let type_id = self.check_type(&value_type)?;
 
-                let new_type = self
-                    .widen_assignment(type_id, value.get_type())
-                    .ok_or_else(|| {
-                        Error::new_with_range(
-                            ErrorType::TypeCheck,
-                            format!(
-                                "Cannot widen const type {:?} to {:?}",
-                                value.get_type(),
-                                type_id
-                            ),
-                            range,
-                        )
-                    })?;
+                let new_type =
+                    self.widen_assignment(type_id, value.type_id())
+                        .ok_or_else(|| {
+                            Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!(
+                                    "Cannot widen const type {:?} to {:?}",
+                                    value.type_id(),
+                                    type_id
+                                ),
+                                range,
+                            )
+                        })?;
 
-                if new_type != value.get_type() {
+                if new_type != value.type_id() {
                     value = Expression::Widen(WidenExpr {
                         expr: Box::new(value),
                         type_id: new_type,
@@ -327,7 +322,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 let left = self.check_expression(left)?;
                 let mut right = self.check_expression(right)?;
 
-                if left.get_type() == right.get_type() {
+                if left.type_id() == right.type_id() {
                     return Ok(Statement::Assignment(AssignmentStatement {
                         left,
                         right,
@@ -336,20 +331,20 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 let new_type = self
-                    .widen_assignment(left.get_type(), right.get_type())
+                    .widen_assignment(left.type_id(), right.type_id())
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                right.get_type(),
-                                left.get_type(),
+                                right.type_id(),
+                                left.type_id(),
                             ),
                             range,
                         )
                     })?;
 
-                if new_type != right.get_type() {
+                if new_type != right.type_id() {
                     right = Expression::Widen(WidenExpr {
                         expr: Box::new(right),
                         type_id: new_type,
@@ -376,12 +371,12 @@ impl<'a, 'b> TypeChecker<'a> {
             } => {
                 let condition = self.check_expression(condition)?;
 
-                if condition.get_type() != BUILTIN_TYPE_BOOL {
+                if condition.type_id() != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {:?}",
-                            condition.get_type()
+                            condition.type_id()
                         ),
                         range,
                     ));
@@ -407,12 +402,12 @@ impl<'a, 'b> TypeChecker<'a> {
                 range,
             } => {
                 let condition = self.check_expression(condition)?;
-                if condition.get_type() != BUILTIN_TYPE_BOOL {
+                if condition.type_id() != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
-                            condition.get_type()
+                            condition.type_id()
                         ),
                         range,
                     ));
@@ -428,7 +423,7 @@ impl<'a, 'b> TypeChecker<'a> {
             }
             ParsedStatement::Return { value, range } => {
                 let mut value = self.check_expression(value)?;
-                let value_type = value.get_type();
+                let value_type = value.type_id();
 
                 assert_ne!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 
@@ -470,11 +465,11 @@ impl<'a, 'b> TypeChecker<'a> {
             } => {
                 // TODO: add support for logic operators
                 let mut left = self.check_expression(*left)?;
-                let left_type = left.get_type();
+                let left_type = left.type_id();
                 let left_size = self.project.get_type_size(left_type);
 
                 let mut right = self.check_expression(*right)?;
-                let right_type = right.get_type();
+                let right_type = right.type_id();
                 let right_size = self.project.get_type_size(right_type);
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
@@ -490,7 +485,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if self.project.is_ptr_type(left_type) && !op_type.is_comparison() {
+                if self.project.get_type(left_type)?.is_ptr() && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
                     return Ok(Expression::BinaryOperator(BinaryOperatorExpr {
                         op_type,
@@ -525,7 +520,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     _ => left_type,
                 };
 
-                assert_eq!(left.get_type(), right.get_type());
+                assert_eq!(left.type_id(), right.type_id());
 
                 let result_type = if op_type.is_comparison() {
                     BUILTIN_TYPE_BOOL
@@ -547,7 +542,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 range,
             } => {
                 let expr = self.check_expression(*expr)?;
-                let expr_type = expr.get_type();
+                let expr_type = expr.type_id();
 
                 match op_type {
                     UnaryOperatorType::Negate => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
@@ -565,7 +560,7 @@ impl<'a, 'b> TypeChecker<'a> {
                     UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
                         op_type: UnaryOperatorType::Deref,
                         expr: Box::new(expr),
-                        type_id: self.project.get_inner_type(expr_type),
+                        type_id: self.project.get_type(expr_type)?.get_deref()?,
                         range,
                     })),
                 }
@@ -595,7 +590,7 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
                     let arg = self.check_expression(arg)?;
-                    let arg_type = arg.get_type();
+                    let arg_type = arg.type_id();
 
                     let new_type =
                         self.widen_assignment(*expected_type, arg_type)
@@ -690,7 +685,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 range,
             } => {
                 let struct_type = self.check_type(&struct_type)?;
-                if !self.project.is_struct_type(struct_type) {
+                if !self.project.get_type(struct_type)?.is_struct() {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         "Trying to use struct constant for non-struct type".to_string(),
@@ -698,55 +693,59 @@ impl<'a, 'b> TypeChecker<'a> {
                     ));
                 }
 
-                let struct_data = self.project.get_struct(struct_type).clone();
+                // TODO: this scope feels somewhat stupid
+                {
+                    let struct_data = self.project.get_struct(struct_type)?;
 
-                for (expected_name, _) in &struct_data.fields {
-                    if !fields.iter().any(|f| f.0 == expected_name) {
+                    for (expected_name, _) in &struct_data.fields {
+                        if !fields.iter().any(|f| f.0 == expected_name) {
+                            return Err(Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!("Missing field '{expected_name}' in struct constructor"),
+                                range,
+                            ));
+                        }
+                    }
+
+                    if struct_data.fields.len() != fields.len() {
                         return Err(Error::new_with_range(
                             ErrorType::TypeCheck,
-                            format!("Missing field '{expected_name}' in struct constructor"),
+                            format!(
+                                "Too many fields in struct constructor for '{}'",
+                                struct_data.name
+                            ),
                             range,
                         ));
                     }
                 }
 
-                if struct_data.fields.len() != fields.len() {
-                    return Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        format!(
-                            "Too many fields in struct constructor for '{}'",
-                            struct_data.name
-                        ),
-                        range,
-                    ));
-                }
-
                 let mut checked_fields = vec![];
 
                 for (field_name, field_value) in fields {
+                    let mut checked_value = self.check_expression(field_value)?;
+
+                    let struct_data = self.project.get_struct(struct_type)?;
                     let struct_field = struct_data
                         .fields
                         .iter()
                         .find(|x| x.0 == field_name)
                         .unwrap();
 
-                    let mut checked_value = self.check_expression(field_value)?;
-
                     let new_type = self
-                        .widen_assignment(struct_field.1, checked_value.get_type())
+                        .widen_assignment(struct_field.1, checked_value.type_id())
                         .ok_or_else(|| {
                             Error::new_with_range(
                                 ErrorType::TypeCheck,
                                 format!(
                                     "Cannot widen from type {:?} to {:?}",
-                                    checked_value.get_type(),
+                                    checked_value.type_id(),
                                     struct_field.1,
                                 ),
                                 range,
                             )
                         })?;
 
-                    if new_type != checked_value.get_type() {
+                    if new_type != checked_value.type_id() {
                         checked_value = Expression::Widen(WidenExpr {
                             expr: Box::new(checked_value),
                             type_id: new_type,
@@ -765,72 +764,49 @@ impl<'a, 'b> TypeChecker<'a> {
             }
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child = self.check_expression(*child)?;
-                let child_type = child.get_type();
+                let child_type_id = child.type_id();
+                let child_type = self.project.get_type(child_type_id)?;
 
-                let is_struct = self.project.is_struct_type(child_type);
-                if is_struct {
-                    let struct_type = self.project.get_struct(child.get_type());
-
-                    let field_type = struct_type
-                        .fields
-                        .iter()
-                        .find(|(n, _)| n == name)
-                        .map(|(_, t)| t);
-
-                    return match field_type {
-                        Some(field_type) => Ok(Expression::FieldAccessor(FieldAccessorExpr {
-                            name,
-                            expr: Box::new(child),
-                            type_id: *field_type,
-                            range,
-                        })),
-                        None => Err(Error::new_with_range(
-                            ErrorType::TypeCheck,
-                            format!("No field '{name}' exists on type {}", child.get_type()),
-                            range,
-                        )),
-                    };
+                if !child_type.is_struct() && !child_type.is_ptr() {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Trying to access field '{name}' of non-struct type"),
+                        range,
+                    ));
                 }
 
-                let is_struct_pointer = self
-                    .project
-                    .is_struct_type(self.project.get_inner_type(child_type));
+                let struct_type = if child_type.is_struct() {
+                    self.project.get_struct(child_type_id)?
+                } else {
+                    self.project.get_struct(child_type.get_deref()?)?
+                };
 
-                if is_struct_pointer {
-                    let struct_type = self
-                        .project
-                        .get_struct(self.project.get_inner_type(child.get_type()));
-                    let field_type = struct_type
-                        .fields
-                        .iter()
-                        .find(|(n, _)| n == name)
-                        .map(|(_, t)| t);
+                let field_type = struct_type
+                    .fields
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, t)| t);
 
-                    return match field_type {
-                        Some(field_type) => Ok(Expression::FieldAccessor(FieldAccessorExpr {
-                            name,
-                            expr: Box::new(child),
-                            type_id: *field_type,
-                            range,
-                        })),
-                        None => Err(Error::new_with_range(
-                            ErrorType::TypeCheck,
-                            format!("No field '{name}' exists on type {}", child.get_type()),
-                            range,
-                        )),
-                    };
+                match field_type {
+                    Some(field_type) => Ok(Expression::FieldAccessor(FieldAccessorExpr {
+                        name,
+                        expr: Box::new(child),
+                        type_id: *field_type,
+                        range,
+                    })),
+                    None => Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("No field '{name}' exists on type {}", child.type_id()),
+                        range,
+                    )),
                 }
-
-                Err(Error::new_with_range(
-                    ErrorType::TypeCheck,
-                    format!("Trying to access field '{name}' of non-struct type"),
-                    range,
-                ))
             }
             ParsedExpression::ArrayAccessor { expr, index, range } => {
                 let expr = self.check_expression(*expr)?;
 
-                if !self.project.is_ptr_type(expr.get_type()) {
+                let expr_type = self.project.get_type(expr.type_id())?;
+
+                if !expr_type.is_ptr() {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         "Cannot user array accessor of non-pointer type".to_string(),
@@ -838,14 +814,14 @@ impl<'a, 'b> TypeChecker<'a> {
                     ));
                 }
 
-                let inner_type = self.project.get_inner_type(expr.get_type());
+                let inner_type = expr_type.get_deref()?;
 
                 let index = Expression::Widen(WidenExpr {
                     expr: Box::new(self.check_expression(*index)?),
                     type_id: BUILTIN_TYPE_U64,
                     range,
                 });
-                let index_type = index.get_type();
+                let index_type = index.type_id();
                 let index_range = *index.range();
 
                 // Convert $expr[$index] into *($expr + $index)
@@ -891,7 +867,7 @@ mod tests {
 
         type_checker.check_statement(ParsedStatement::Declaration {
             name: "test",
-            value_type: ParsedType::Named("u16".to_string()),
+            value_type: ParsedType::Named("u16".to_string(), (0..0).into()),
             range: (0..0).into(),
         })?;
 

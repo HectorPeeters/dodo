@@ -255,7 +255,7 @@ impl<'a, 'b> IrBackend<'a> {
                 type_id,
                 range: _,
             }) => {
-                let inner_type = expr.get_type();
+                let inner_type = expr.type_id();
                 let inner_value = self.gen_constant(*expr, inner_type)?;
 
                 let result_value = match (inner_value, type_id) {

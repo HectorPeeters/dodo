@@ -1,3 +1,4 @@
+use crate::error::{Error, ErrorType, Result};
 use crate::types::{StructType, Type, TypeId};
 
 pub struct Project {
@@ -33,40 +34,40 @@ impl Project {
         self.types.len() - 1
     }
 
-    pub fn lookup_builtin_type(&mut self, name: &str) -> Option<TypeId> {
+    pub fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
         match name {
-            "void" => Some(BUILTIN_TYPE_VOID),
-            "u8" => Some(BUILTIN_TYPE_U8),
-            "u16" => Some(BUILTIN_TYPE_U16),
-            "u32" => Some(BUILTIN_TYPE_U32),
-            "u64" => Some(BUILTIN_TYPE_U64),
-            "bool" => Some(BUILTIN_TYPE_BOOL),
+            "void" => Ok(BUILTIN_TYPE_VOID),
+            "u8" => Ok(BUILTIN_TYPE_U8),
+            "u16" => Ok(BUILTIN_TYPE_U16),
+            "u32" => Ok(BUILTIN_TYPE_U32),
+            "u64" => Ok(BUILTIN_TYPE_U64),
+            "bool" => Ok(BUILTIN_TYPE_BOOL),
             _ => self
                 .types
                 .iter()
-                .position(|x| matches!(x, Type::Struct(s) if s.name == name)),
+                .position(|x| matches!(x, Type::Struct(s) if s.name == name))
+                .ok_or_else(|| {
+                    Error::new(ErrorType::TypeCheck, format!("Could not find type {name}"))
+                }),
         }
     }
 
-    pub fn is_struct_type(&self, id: TypeId) -> bool {
-        matches!(self.types[id], Type::Struct(_))
+    pub fn get_type(&self, id: TypeId) -> Result<&Type> {
+        self.types.get(id).ok_or_else(|| {
+            Error::new(
+                ErrorType::TypeCheck,
+                format!("Could not find type with id {id}"),
+            )
+        })
     }
 
-    pub fn is_ptr_type(&self, id: TypeId) -> bool {
-        matches!(self.types[id], Type::Ptr(_))
-    }
-
-    pub fn get_struct(&self, id: TypeId) -> &StructType {
-        match &self.types[id] {
-            Type::Struct(s) => s,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn get_inner_type(&self, id: TypeId) -> TypeId {
-        match self.types[id] {
-            Type::Ptr(inner) => inner,
-            _ => unreachable!(),
+    pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
+        match self.get_type(id)? {
+            Type::Struct(s) => Ok(s),
+            _ => Err(Error::new(
+                ErrorType::TypeCheck,
+                format!("Type with id {id} is not a struct"),
+            )),
         }
     }
 

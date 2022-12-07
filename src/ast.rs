@@ -336,7 +336,7 @@ pub enum Expression<'a> {
 }
 
 impl<'a> Expression<'a> {
-    pub fn get_type(&self) -> TypeId {
+    pub fn type_id(&self) -> TypeId {
         use Expression::*;
 
         match self {

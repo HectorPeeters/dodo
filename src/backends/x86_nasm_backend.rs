@@ -154,7 +154,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                 for field in &struct_lit.fields {
                     let mut field_instructions = self.get_data_instructions(
                         &field.1,
-                        self.project.get_type_size(field.1.get_type()),
+                        self.project.get_type_size(field.1.type_id()),
                     );
 
                     instructions.append(&mut field_instructions);
@@ -198,7 +198,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
 
             let mut data_instructions = self.get_data_instructions(
                 &global.value,
-                self.project.get_type_size(global.value.get_type()),
+                self.project.get_type_size(global.value.type_id()),
             );
 
             queued_instructions.append(&mut data_instructions);
@@ -220,8 +220,8 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         .unwrap();
     }
 
-    fn get_struct_field_offset(&self, name: &str, struct_type: TypeId) -> usize {
-        let struct_type = self.project.get_struct(struct_type);
+    fn get_struct_field_offset(&self, name: &str, struct_type: TypeId) -> Result<usize> {
+        let struct_type = self.project.get_struct(struct_type)?;
 
         let mut offset = 0;
         for field in &struct_type.fields {
@@ -231,7 +231,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
             offset += self.project.get_type_size(field.1);
         }
 
-        offset
+        Ok(offset)
     }
 
     fn generate_lvalue(
@@ -269,7 +269,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                 type_id: _,
                 range,
             }) => {
-                let offset = self.get_struct_field_offset(name, expr.get_type());
+                let offset = self.get_struct_field_offset(name, expr.type_id())?;
 
                 let (child_location, child_reg) = self.generate_lvalue(*expr, range)?;
 
@@ -459,9 +459,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
             }
             Statement::Assignment(AssignmentStatement { left, right, range }) => {
-                assert!(!self.project.is_struct_type(right.get_type()));
+                assert!(!self.project.get_type(right.type_id())?.is_struct());
 
-                let value_size = self.project.get_type_size(right.get_type());
+                let value_size = self.project.get_type_size(right.type_id());
                 let value_reg = self.visit_expression(right)?;
                 let value_operand = Reg(value_reg, value_size);
 
@@ -492,7 +492,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.instr(LabelDef(start_label));
 
-                let condition_size = self.project.get_type_size(condition.get_type());
+                let condition_size = self.project.get_type_size(condition.type_id());
                 let register = self.visit_expression(condition)?;
 
                 self.instr(Cmp(Reg(register, condition_size), Constant(0)));
@@ -514,7 +514,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let end_label = self.get_new_label();
                 let else_label = self.get_new_label();
 
-                let condition_size = self.project.get_type_size(condition.get_type());
+                let condition_size = self.project.get_type_size(condition.type_id());
                 let condition_register = self.visit_expression(condition)?;
 
                 self.instr(Cmp(Reg(condition_register, condition_size), Constant(0)));
@@ -542,7 +542,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 expr: value,
                 range: _,
             }) => {
-                let expr_size = self.project.get_type_size(value.get_type());
+                let expr_size = self.project.get_type_size(value.type_id());
                 let value_reg = self.visit_expression(value).unwrap();
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
@@ -629,7 +629,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 }
             }
             Expression::UnaryOperator(unop) => {
-                let expr_size = self.project.get_type_size(unop.expr.get_type());
+                let expr_size = self.project.get_type_size(unop.expr.type_id());
 
                 let reg = self.visit_expression(*unop.expr)?;
                 let result_reg = self.get_next_register();
@@ -645,8 +645,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 Ok(result_reg)
             }
             Expression::BinaryOperator(binop) => {
-                let left_size = self.project.get_type_size(binop.left.get_type());
-                let right_size = self.project.get_type_size(binop.right.get_type());
+                let left_size = self.project.get_type_size(binop.left.type_id());
+                let right_size = self.project.get_type_size(binop.right.type_id());
                 let left_reg = self.visit_expression(*binop.left)?;
                 let right_reg = self.visit_expression(*binop.right)?;
 
@@ -738,8 +738,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         RegIndirect(Rbp, offset * 16, true),
                     )),
                     ScopeLocation::Global(index) => {
-                        if self.project.is_ptr_type(type_id) || self.project.is_struct_type(type_id)
-                        {
+                        let value_type = self.project.get_type(type_id)?;
+
+                        if value_type.is_ptr() || value_type.is_struct() {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
                         } else {
                             self.instr(Mov(Reg(register, value_size), LabelIndirect(index)))
@@ -760,7 +761,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let arg_count = args.len();
 
                 for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
-                    let arg_size = self.project.get_type_size(expr.get_type());
+                    let arg_size = self.project.get_type_size(expr.type_id());
                     let arg_register = self.visit_expression(expr)?;
 
                     if dest_reg.is_caller_saved() {
@@ -826,7 +827,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let value_type_size = self.project.get_type_size(type_id);
                 assert!(value_type_size <= 64);
 
-                let offset = self.get_struct_field_offset(name, expr.get_type()) / 8;
+                let offset = self.get_struct_field_offset(name, expr.type_id())? / 8;
                 let child_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
@@ -844,7 +845,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 type_id,
                 range: _,
             }) => {
-                let expr_size = self.project.get_type_size(expr.get_type());
+                let expr_size = self.project.get_type_size(expr.type_id());
                 let widen_size = self.project.get_type_size(type_id);
 
                 assert!(expr_size < widen_size);

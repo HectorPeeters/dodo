@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use crate::error::{Error, ErrorType, Result};
 use crate::project::Project;
 
 pub type TypeId = usize;
@@ -41,13 +42,18 @@ impl Type {
         }
     }
 
-    #[must_use]
-    pub fn get_deref(self) -> TypeId {
+    pub fn get_deref(&self) -> Result<TypeId> {
         match self {
-            Type::Ptr(x) => x,
-            // TODO: change this to return a result
-            _ => panic!("Trying to deref type which is not a ptr"),
+            Type::Ptr(x) => Ok(*x),
+            _ => Err(Error::new(
+                ErrorType::TypeCheck,
+                "Trying to deref type which is not a ptr".to_owned(),
+            )),
         }
+    }
+
+    pub fn is_struct(&self) -> bool {
+        matches!(self, Type::Struct(_))
     }
 
     pub fn is_ptr(&self) -> bool {
