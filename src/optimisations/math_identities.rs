@@ -47,6 +47,7 @@ impl<'a> AstWalker<'a> for MathIdentities {
             (BinaryOperatorType::Multiply, _, box Expression::IntegerLiteral(right))
                 if right.value == 0 =>
             {
+                // TODO: make sure we don't change the behavior of `some_function() * 0`
                 self.performed_optimisations += 1;
                 Expression::IntegerLiteral(IntegerLiteralExpr {
                     value: 0,
