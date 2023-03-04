@@ -21,6 +21,9 @@ pub fn optimise<'a>(
     project: &Project,
     print_optimisations: bool,
 ) -> Vec<UpperStatement<'a>> {
+    let mut total_passes = 0;
+    let mut total_optimisations = 0;
+
     loop {
         let mut performed_optimisation = false;
 
@@ -36,7 +39,8 @@ pub fn optimise<'a>(
                 .map(|x| pass.visit_upper_statement(x))
                 .collect::<Vec<_>>();
 
-            if pass.performed_optimisations() != 0 {
+            let performed_optimisations = pass.performed_optimisations();
+            if performed_optimisations != 0 {
                 if print_optimisations {
                     println!(
                         "Optimisation performed: {} x{}",
@@ -45,12 +49,19 @@ pub fn optimise<'a>(
                     );
                 }
                 performed_optimisation = true;
+
+                total_passes += 1;
+                total_optimisations += performed_optimisations;
             }
         }
 
         if !performed_optimisation {
             break;
         }
+    }
+
+    if print_optimisations {
+        println!("Performed {total_passes} optimisation passes and {total_optimisations} individual optimisations.");
     }
 
     statements
