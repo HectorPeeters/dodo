@@ -54,7 +54,7 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use dodo::optimisations::optimise;
+    use dodo::{backends::llvm_backend::LlvmBackend, optimisations::optimise};
 
     let args = Args::parse();
 
@@ -123,6 +123,7 @@ fn main() -> Result<()> {
         Some(BackendType::C) | None => Box::new(CBackend::new(&mut project)),
         Some(BackendType::X86) => Box::new(X86NasmBackend::new(&mut project)),
         Some(BackendType::Ir) => Box::new(IrBackend::new(&mut project)),
+        Some(BackendType::Llvm) => Box::new(LlvmBackend::new(&mut project)),
     };
 
     unwrap_or_error(
