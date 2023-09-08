@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, VecDeque},
+    fmt::Display,
 };
 
 use crate::{
@@ -26,10 +27,20 @@ pub const BUILTIN_TYPE_U32: TypeId = 3;
 pub const BUILTIN_TYPE_U64: TypeId = 4;
 pub const BUILTIN_TYPE_BOOL: TypeId = 5;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct DeclarationId(usize);
+
+impl Display for DeclarationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "d{}", self.0)
+    }
+}
+
 pub struct Sema<'a> {
     function_declarations: HashMap<&'a str, FunctionType>,
+    declarations: Vec<TypeId>,
     types: Vec<Type>,
-    scope: Scope<TypeId>,
+    scope: Scope<DeclarationId>,
     current_function_return_type: TypeId,
 }
 
@@ -37,6 +48,7 @@ impl<'a, 'b> Sema<'a> {
     pub fn new() -> Self {
         Self {
             function_declarations: HashMap::new(),
+            declarations: Vec::new(),
             types: vec![
                 Type::Void(),
                 Type::UInt8(),
@@ -108,6 +120,15 @@ impl<'a, 'b> Sema<'a> {
                 .iter()
                 .sum(),
         })
+    }
+
+    pub fn add_declaration(&mut self, type_id: TypeId) -> DeclarationId {
+        self.declarations.push(type_id);
+        DeclarationId(self.declarations.len() - 1)
+    }
+
+    pub fn get_declaration_type(&self, declaration_id: DeclarationId) -> TypeId {
+        self.declarations[declaration_id.0]
     }
 
     pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
@@ -248,13 +269,15 @@ impl<'a, 'b> Sema<'a> {
             } => {
                 let type_id = self.check_type(&value_type)?;
 
+                let declaration_id = self.add_declaration(type_id);
+
                 self.scope
-                    .insert(name, type_id)
+                    .insert(name, declaration_id)
                     .map_err(|x| x.with_range(range))?;
 
                 Ok(Statement::Declaration(DeclarationStatement {
                     name,
-                    type_id,
+                    declaration_id,
                     range,
                 }))
             }
@@ -611,11 +634,13 @@ impl<'a, 'b> Sema<'a> {
                 }))
             }
             ParsedExpression::VariableRef { name, range } => {
-                let type_id = self.scope.find(name)?;
+                let declaration_id = self.scope.find(name)?;
+                let type_id = self.declarations[declaration_id.0];
 
                 Ok(Expression::VariableRef(VariableRefExpr {
                     name,
                     type_id,
+                    declaration_id,
                     range,
                 }))
             }
@@ -801,30 +826,31 @@ impl<'a, 'b> Sema<'a> {
             ParsedUpperStatement::Function {
                 name,
                 parameters,
-                return_type,
+                return_type: _,
                 body,
                 annotations,
                 range,
             } => {
-                let function_declaration = self.function_declarations.get(name).unwrap();
-
-                let params = parameters
-                    .iter()
-                    .zip(&function_declaration.parameters)
-                    .map(|((param_name, _), param_type)| (*param_name, *param_type))
-                    .collect();
+                let function_declaration = self.function_declarations.get(name).cloned().unwrap();
 
                 assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 
-                let return_type = self.check_type(&return_type)?;
-                self.current_function_return_type = return_type;
+                self.current_function_return_type = function_declaration.return_type;
 
                 self.scope.push();
 
-                for &(param_name, param_type) in &params {
+                let mut params = vec![];
+                for ((name, _), param_type) in parameters
+                    .iter()
+                    .zip(function_declaration.parameters.iter())
+                {
+                    let declaration_id = self.add_declaration(*param_type);
+
                     self.scope
-                        .insert(param_name, param_type)
+                        .insert(name, declaration_id)
                         .map_err(|x| x.with_range(range))?;
+
+                    params.push(declaration_id)
                 }
 
                 let checked_body = self.check_statement(body)?;
@@ -850,7 +876,7 @@ impl<'a, 'b> Sema<'a> {
                 Ok(UpperStatement::Function(FunctionDeclaration {
                     name,
                     params,
-                    return_type,
+                    return_type: function_declaration.return_type,
                     body: checked_body,
                     annotations: checked_annotations,
                     range,
@@ -876,10 +902,13 @@ impl<'a, 'b> Sema<'a> {
                         .map(|(x, y)| (x.to_string(), *y))
                         .collect::<Vec<_>>(),
                 });
-                self.find_or_add_type(complete_type);
+                let type_id = self.find_or_add_type(complete_type);
+
+                let declaration_id = self.add_declaration(type_id);
 
                 Ok(UpperStatement::StructDeclaration(StructDeclaration {
                     name,
+                    declaration_id,
                     fields: checked_fields,
                     range,
                 }))
@@ -917,7 +946,10 @@ impl<'a, 'b> Sema<'a> {
                     });
                 }
 
-                self.scope.insert(name, type_id)?;
+                self.declarations.push(type_id);
+                let declaration_id = DeclarationId(self.declarations.len() - 1);
+
+                self.scope.insert(name, declaration_id)?;
 
                 let checked_annotations = annotations
                     .into_iter()
@@ -935,7 +967,7 @@ impl<'a, 'b> Sema<'a> {
 
                 Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
                     name,
-                    type_id,
+                    declaration_id,
                     value,
                     annotations: checked_annotations,
                     range,

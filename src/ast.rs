@@ -1,7 +1,9 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::sema::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
+use crate::sema::{
+    DeclarationId, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
+};
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::TypeId;
 
@@ -10,7 +12,7 @@ pub type Annotations<'a> = Vec<(&'a str, Option<Expression<'a>>)>;
 #[derive(Debug, PartialEq)]
 pub struct FunctionDeclaration<'a> {
     pub name: &'a str,
-    pub params: Vec<(&'a str, TypeId)>,
+    pub params: Vec<DeclarationId>,
     pub return_type: TypeId,
     pub body: Statement<'a>,
     pub annotations: Annotations<'a>,
@@ -20,6 +22,7 @@ pub struct FunctionDeclaration<'a> {
 #[derive(Debug, PartialEq)]
 pub struct StructDeclaration<'a> {
     pub name: &'a str,
+    pub declaration_id: DeclarationId,
     pub fields: Vec<(&'a str, TypeId)>,
     pub range: SourceRange,
 }
@@ -27,9 +30,9 @@ pub struct StructDeclaration<'a> {
 #[derive(Debug, PartialEq)]
 pub struct ConstDeclaration<'a> {
     pub name: &'a str,
+    pub declaration_id: DeclarationId,
     pub value: Expression<'a>,
     pub annotations: Annotations<'a>,
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
@@ -57,7 +60,7 @@ pub struct BlockStatement<'a> {
 #[derive(Debug, PartialEq)]
 pub struct DeclarationStatement<'a> {
     pub name: &'a str,
-    pub type_id: TypeId,
+    pub declaration_id: DeclarationId,
     pub range: SourceRange,
 }
 
@@ -273,6 +276,7 @@ pub struct BooleanLiteralExpr {
 #[derive(Debug, PartialEq)]
 pub struct VariableRefExpr<'a> {
     pub name: &'a str,
+    pub declaration_id: DeclarationId,
     pub type_id: TypeId,
     pub range: SourceRange,
 }

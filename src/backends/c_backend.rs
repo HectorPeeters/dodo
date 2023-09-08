@@ -15,14 +15,14 @@ use std::path::Path;
 use std::process::Command;
 
 pub struct CBackend<'a> {
-    project: &'a Sema<'a>,
+    sema: &'a Sema<'a>,
     buffer: String,
 }
 
 impl<'a> CBackend<'a> {
-    pub fn new(project: &'a Sema<'a>) -> Self {
+    pub fn new(sema: &'a Sema<'a>) -> Self {
         Self {
-            project,
+            sema,
             buffer: "#include <stdio.h>\n#include<stdlib.h>\n#include<stdbool.h>\n\n".to_string(),
         }
     }
@@ -73,12 +73,12 @@ impl<'a> CBackend<'a> {
             BUILTIN_TYPE_U64 => Ok("unsigned long".to_string()),
             BUILTIN_TYPE_BOOL => Ok("bool".to_string()),
             BUILTIN_TYPE_VOID => Ok("void".to_string()),
-            _ if self.project.get_type(id)?.is_ptr() => Ok(format!(
+            _ if self.sema.get_type(id)?.is_ptr() => Ok(format!(
                 "{}*",
-                self.to_c_type(self.project.get_type(id)?.get_deref()?)?
+                self.to_c_type(self.sema.get_type(id)?.get_deref()?)?
             )),
-            _ if self.project.get_type(id)?.is_struct() => {
-                Ok(format!("struct {}", self.project.get_struct(id)?.name))
+            _ if self.sema.get_type(id)?.is_struct() => {
+                Ok(format!("struct {}", self.sema.get_struct(id)?.name))
             }
             _ => unreachable!(),
         }
@@ -90,6 +90,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
         match statement {
             UpperStatement::StructDeclaration(StructDeclaration {
                 name,
+                declaration_id,
                 fields,
                 range: _,
             }) => {
@@ -117,7 +118,11 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }) => {
                 let params = params
                     .into_iter()
-                    .map(|(name, type_)| self.to_c_type(type_).map(|t| format!("{t} {name}")))
+                    .map(|declaration_id| {
+                        let type_id = self.sema.get_declaration_type(declaration_id);
+                        self.to_c_type(type_id)
+                            .map(|t| format!("{t} {}", declaration_id))
+                    })
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
 
@@ -154,9 +159,10 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 name,
                 value,
                 annotations,
-                type_id,
+                declaration_id,
                 range: _,
             }) => {
+                let type_id = self.sema.get_declaration_type(declaration_id);
                 let c_type = self.to_c_type(type_id)?;
 
                 let c_value = self.visit_expression(value)?;
@@ -175,7 +181,8 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 };
 
                 self.buffer.push_str(&format!(
-                    "const {c_type} {name} {section_attribute} = {c_value};\n"
+                    "const {c_type} {} {section_attribute} = {c_value};\n",
+                    declaration_id
                 ));
 
                 Ok(())
@@ -206,11 +213,15 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }
             Statement::Declaration(DeclarationStatement {
                 name,
-                type_id,
+                declaration_id,
                 range: _,
             }) => {
-                self.buffer
-                    .push_str(&format!("{} {};\n", self.to_c_type(type_id)?, name));
+                let type_id = self.sema.get_declaration_type(declaration_id);
+                self.buffer.push_str(&format!(
+                    "{} {};\n",
+                    self.to_c_type(type_id)?,
+                    declaration_id
+                ));
                 Ok(())
             }
             Statement::Assignment(AssignmentStatement {
@@ -318,7 +329,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }
             Expression::IntegerLiteral(int_lit) => Ok(format!("{}", int_lit.value)),
             Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
-            Expression::VariableRef(var_ref) => Ok(var_ref.name.to_string()),
+            Expression::VariableRef(var_ref) => Ok(format!("{}", var_ref.declaration_id)),
             Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
             Expression::StructLiteral(StructLiteralExpr {
                 fields,
@@ -347,7 +358,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 let child_type = expr.type_id();
                 let child_source = self.visit_expression(*expr)?;
 
-                if self.project.get_type(child_type)?.is_ptr() {
+                if self.sema.get_type(child_type)?.is_ptr() {
                     Ok(format!("{child_source}->{name}"))
                 } else {
                     Ok(format!("{child_source}.{name}"))
