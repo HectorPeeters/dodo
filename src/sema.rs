@@ -897,14 +897,14 @@ impl<'a, 'b> Sema<'a> {
                             Ok((name, None))
                         }
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<Result<HashMap<_, _>>>()?;
 
                 Ok(UpperStatement::Function(FunctionDeclaration {
                     name,
                     params,
                     return_type: function_declaration.return_type,
                     body: checked_body,
-                    annotations: checked_annotations,
+                    annotations: checked_annotations.into(),
                     range,
                 }))
             }
@@ -989,12 +989,12 @@ impl<'a, 'b> Sema<'a> {
                             Ok((name, None))
                         }
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<Result<HashMap<_, _>>>()?;
 
                 Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
                     declaration_id,
                     value,
-                    annotations: checked_annotations,
+                    annotations: checked_annotations.into(),
                     range,
                 }))
             }

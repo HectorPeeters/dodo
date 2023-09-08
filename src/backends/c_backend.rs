@@ -137,13 +137,7 @@ impl<'a> CBackend<'a> {
             self.to_c_type(return_type)?
         };
 
-        let section_annotation = annotations
-                    .iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
-                    .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
-                        _ => unreachable!()
-                    });
+        let section_annotation = annotations.get_string("section");
 
         let section_attribute = match section_annotation {
             Some(name) => format!("__attribute__((section(\"{name}\")))"),
@@ -208,13 +202,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
 
                 let c_value = self.visit_expression(value)?;
 
-                let section_annotation = annotations
-                    .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
-                    .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
-                        _ => unreachable!()
-                    });
+                let section_annotation = annotations.get_string("section");
 
                 let section_attribute = match section_annotation {
                     Some(name) => format!("__attribute__((section(\"{name}\")))"),

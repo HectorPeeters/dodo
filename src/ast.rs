@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::error::Result;
@@ -7,7 +8,34 @@ use crate::sema::{
 };
 use crate::types::TypeId;
 
-pub type Annotations<'a> = Vec<(&'a str, Option<Expression<'a>>)>;
+#[derive(Debug, PartialEq)]
+pub struct Annotations<'a>(HashMap<&'a str, Option<Expression<'a>>>);
+
+impl<'a> Annotations<'a> {
+    pub fn empty() -> Self {
+        Self(HashMap::new())
+    }
+    pub fn get(&self, name: &str) -> Option<&Option<Expression<'a>>> {
+        self.0.get(name)
+    }
+
+    pub fn get_string(&self, name: &str) -> Option<&'a str> {
+        match self.0.get(name) {
+            Some(Some(Expression::StringLiteral(literal))) => Some(literal.value.inner()),
+            _ => None,
+        }
+    }
+
+    pub fn has_flag(&self, name: &str) -> bool {
+        self.0.get(name).is_some()
+    }
+}
+
+impl<'a> From<HashMap<&'a str, Option<Expression<'a>>>> for Annotations<'a> {
+    fn from(value: HashMap<&'a str, Option<Expression<'a>>>) -> Self {
+        Self(value)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionDeclaration<'a> {

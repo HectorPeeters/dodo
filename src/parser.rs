@@ -12,7 +12,7 @@ pub enum ParsedType {
     Ptr(Box<ParsedType>, SourceRange),
 }
 
-pub type ParsedAnnotations<'a> = Vec<(&'a str, Option<ParsedExpression<'a>>)>;
+pub type ParsedAnnotations<'a> = HashMap<&'a str, Option<ParsedExpression<'a>>>;
 pub type NameTypePairs<'a> = Vec<(&'a str, ParsedType)>;
 
 #[derive(Debug, PartialEq)]
@@ -870,14 +870,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_annotations(&mut self) -> Result<ParsedAnnotations<'a>> {
-        let mut annotations = vec![];
+        let mut annotations = HashMap::new();
 
         while self.peek()?.token_type == TokenType::At {
             self.consume_assert(TokenType::At)?;
             let name = self.consume_assert(TokenType::Identifier)?.value;
 
             if self.peek()?.token_type != TokenType::LeftParen {
-                annotations.push((name, None));
+                annotations.insert(name, None);
                 continue;
             }
 
@@ -885,7 +885,7 @@ impl<'a> Parser<'a> {
             let value = self.parse_expression(0)?;
             self.consume_assert(TokenType::RightParen)?;
 
-            annotations.push((name, Some(value)));
+            annotations.insert(name, Some(value));
         }
 
         Ok(annotations)
@@ -951,7 +951,7 @@ mod tests {
 
     fn parse_function<'a>(tokens: &'a [Token<'a>]) -> Result<ParsedUpperStatement<'a>> {
         let mut parser = Parser::new(tokens);
-        parser.parse_function(vec![])
+        parser.parse_function(HashMap::new())
     }
 
     #[test]
@@ -1167,7 +1167,7 @@ mod tests {
                     scoped: true,
                     range: (10..24).into()
                 },
-                annotations: vec![],
+                annotations: HashMap::new(),
                 range: (0..24).into()
             }
         );
@@ -1195,7 +1195,7 @@ mod tests {
                     scoped: true,
                     range: (13..27).into()
                 },
-                annotations: vec![],
+                annotations: HashMap::new(),
                 range: (0..27).into()
             }
         );

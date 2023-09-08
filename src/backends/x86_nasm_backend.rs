@@ -47,7 +47,7 @@ impl LValueLocation {
 struct GlobalConst<'a> {
     index: usize,
     value: Expression<'a>,
-    annotations: Vec<(&'a str, Option<Expression<'a>>)>,
+    annotations: Annotations<'a>,
 }
 
 pub struct X86NasmBackend<'a, 'b> {
@@ -186,13 +186,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         let mut queued_instructions = vec![];
 
         for global in &self.global_consts {
-            let section_annotation = global.annotations
-                    .iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
-                    .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
-                        _ => unreachable!()
-                    });
+            let section_annotation = global.annotations.get_string("section");
 
             if let Some(section_name) = section_annotation {
                 queued_instructions.push(Section(section_name.to_string()));
@@ -386,15 +380,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 assert_eq!(self.current_function_end_label, 0);
                 self.current_function_end_label = self.get_new_label();
 
-                let no_return = annotations.iter().any(|(name, _)| *name == "noreturn");
-
-                let section_annotation = annotations
-                    .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
-                    .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
-                        _ => unreachable!()
-                    });
+                let no_return = annotations.has_flag("noreturn");
+                let section_annotation = annotations.get_string("section");
 
                 if let Some(section_name) = section_annotation {
                     self.instr(Section(section_name.to_string()));
@@ -831,7 +818,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 Ok(result_register)
             }
             Expression::StringLiteral(str_lit) => {
-                let label = self.store_global_const(Expression::StringLiteral(str_lit), vec![]);
+                let label = self
+                    .store_global_const(Expression::StringLiteral(str_lit), Annotations::empty());
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
