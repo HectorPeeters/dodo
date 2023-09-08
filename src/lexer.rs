@@ -112,9 +112,6 @@ pub enum TokenType {
     LeftSquareParen,
     #[token("]")]
     RightSquareParen,
-
-    #[error]
-    Error,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,15 +185,15 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
 
     while let Some(token_type) = lex.next() {
         match token_type {
-            TokenType::Whitespace | TokenType::Comment => continue,
-            TokenType::Error => {
+            Err(_) => {
                 return Err(Error::new_with_range(
                     ErrorType::Lexer,
                     "Unknown character".to_string(),
                     lex.span().into(),
                 ))
             }
-            _ => tokens.push(Token::new(token_type, lex.slice(), lex.span().into())),
+            Ok(TokenType::Whitespace) | Ok(TokenType::Comment) => continue,
+            Ok(token_type) => tokens.push(Token::new(token_type, lex.slice(), lex.span().into())),
         }
     }
 
