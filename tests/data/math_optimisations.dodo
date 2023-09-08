@@ -1,5 +1,5 @@
-extern "printf";
-extern "exit";
+extern printf;
+extern exit;
 
 fn plus_zero() {
     let x: u32 = 12;

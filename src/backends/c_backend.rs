@@ -6,21 +6,21 @@ use crate::ast::{
     UnaryOperatorType, UpperStatement, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
-use crate::project::{
-    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
-    BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
+use crate::sema::{
+    Sema, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
+    BUILTIN_TYPE_VOID,
 };
 use crate::types::TypeId;
 use std::path::Path;
 use std::process::Command;
 
 pub struct CBackend<'a> {
-    project: &'a mut Project,
+    project: &'a Sema<'a>,
     buffer: String,
 }
 
 impl<'a> CBackend<'a> {
-    pub fn new(project: &'a mut Project) -> Self {
+    pub fn new(project: &'a Sema<'a>) -> Self {
         Self {
             project,
             buffer: "#include <stdio.h>\n#include<stdlib.h>\n#include<stdbool.h>\n\n".to_string(),

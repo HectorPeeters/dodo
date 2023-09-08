@@ -1,5 +1,5 @@
-extern "printf";
-extern "exit";
+extern printf;
+extern exit;
 
 struct TestData {
     age: u32,

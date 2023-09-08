@@ -1,5 +1,5 @@
-extern "printf";
-extern "exit";
+extern printf;
+extern exit;
 
 fn run_if(x: u32) {
     if x < 10 {

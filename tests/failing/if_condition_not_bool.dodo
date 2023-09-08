@@ -1,6 +1,6 @@
 // Expected: Condition of if statement should be a boolean but is 1
 
-extern "printf";
+extern printf;
 
 fn main() {
     if 2 {

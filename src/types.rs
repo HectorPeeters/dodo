@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use crate::error::{Error, ErrorType, Result};
-use crate::project::Project;
 
 pub type TypeId = usize;
 
@@ -9,6 +8,12 @@ pub type TypeId = usize;
 pub struct StructType {
     pub name: String,
     pub fields: Vec<(String, TypeId)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionType {
+    pub parameters: Vec<TypeId>,
+    pub return_type: TypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,24 +29,6 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn size(&self, project: &Project) -> usize {
-        use Type::*;
-        match self {
-            UInt8() => 8,
-            UInt16() => 16,
-            UInt32() => 32,
-            UInt64() => 64,
-            Bool() => 8,
-            Ptr(_) => 64,
-            Void() => unreachable!(),
-            Struct(s) => s
-                .fields
-                .iter()
-                .map(|(_, t)| project.get_type_size(*t))
-                .sum(),
-        }
-    }
-
     pub fn get_deref(&self) -> Result<TypeId> {
         match self {
             Type::Ptr(x) => Ok(*x),

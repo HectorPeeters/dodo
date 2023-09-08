@@ -1,5 +1,5 @@
-extern "printf";
-extern "exit";
+extern printf;
+extern exit;
 
 fn test2() {
     printf("C\n");

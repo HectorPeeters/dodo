@@ -1,116 +1,169 @@
-use crate::ast::{
-    AssignmentStatement, BinaryOperatorExpr, BlockStatement, BooleanLiteralExpr, CastExpr,
-    ConstDeclaration, DeclarationStatement, ExpressionStatement, ExternDeclaration,
-    FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IfStatement, IntegerLiteralExpr,
-    ReturnStatement, StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr,
-    UnaryOperatorExpr, UpperStatement, VariableRefExpr, WhileStatement, WidenExpr,
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, VecDeque},
 };
-use crate::parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement};
-use crate::project::{
-    Project, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
-};
-use crate::types::{StructType, TypeId};
+
 use crate::{
-    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
+    ast::{
+        AssignmentStatement, BinaryOperatorExpr, BinaryOperatorType, BlockStatement,
+        BooleanLiteralExpr, CastExpr, ConstDeclaration, DeclarationStatement, Expression,
+        ExpressionStatement, ExternDeclaration, FieldAccessorExpr, FunctionCallExpr,
+        FunctionDeclaration, IfStatement, IntegerLiteralExpr, ReturnStatement, Statement,
+        StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr, UnaryOperatorExpr,
+        UnaryOperatorType, UpperStatement, VariableRefExpr, WhileStatement, WidenExpr,
+    },
     error::{Error, ErrorType, Result},
+    parser::{ParsedExpression, ParsedStatement, ParsedType, ParsedUpperStatement},
     scope::Scope,
-    tokenizer::SourceRange,
-    types::Type,
+    types::{FunctionType, StructType, Type, TypeId},
 };
-use std::cmp::Ordering;
 
-#[derive(Clone)]
-pub enum TypeScopeEntry {
-    Value(TypeId),
-    Function(Vec<TypeId>, TypeId),
-    Global(TypeId),
-    ExternalFuction(),
-}
+pub const BUILTIN_TYPE_UNKNOWN: TypeId = 999999;
+pub const BUILTIN_TYPE_VOID: TypeId = 0;
+pub const BUILTIN_TYPE_U8: TypeId = 1;
+pub const BUILTIN_TYPE_U16: TypeId = 2;
+pub const BUILTIN_TYPE_U32: TypeId = 3;
+pub const BUILTIN_TYPE_U64: TypeId = 4;
+pub const BUILTIN_TYPE_BOOL: TypeId = 5;
 
-pub struct TypeChecker<'a> {
-    project: &'a mut Project,
-    scope: Scope<TypeScopeEntry>,
+pub struct Sema<'a> {
+    function_declarations: HashMap<&'a str, FunctionType>,
+    types: Vec<Type>,
+    scope: Scope<TypeId>,
     current_function_return_type: TypeId,
 }
 
-impl<'a, 'b> TypeChecker<'a> {
-    pub fn new(project: &'a mut Project) -> Self {
+impl<'a, 'b> Sema<'a> {
+    pub fn new() -> Self {
         Self {
-            project,
+            function_declarations: HashMap::new(),
+            types: vec![
+                Type::Void(),
+                Type::UInt8(),
+                Type::UInt16(),
+                Type::UInt32(),
+                Type::UInt64(),
+                Type::Bool(),
+            ],
             scope: Scope::new(),
             current_function_return_type: BUILTIN_TYPE_UNKNOWN,
         }
     }
 
-    fn get_scope_value_type(&self, name: &str, range: &SourceRange) -> Result<TypeId> {
-        use TypeScopeEntry::*;
-        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
-            Value(t) => Ok(t),
-            Function(_, _) => {
-                unreachable!("Trying to get type of value with the name of a function")
-            }
-            Global(t) => Ok(t),
-            ExternalFuction() => unreachable!(),
+    fn register_type(&mut self, t: Type) -> TypeId {
+        self.types.push(t);
+        self.types.len() - 1
+    }
+
+    fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
+        match name {
+            "void" => Ok(BUILTIN_TYPE_VOID),
+            "u8" => Ok(BUILTIN_TYPE_U8),
+            "u16" => Ok(BUILTIN_TYPE_U16),
+            "u32" => Ok(BUILTIN_TYPE_U32),
+            "u64" => Ok(BUILTIN_TYPE_U64),
+            "bool" => Ok(BUILTIN_TYPE_BOOL),
+            _ => self
+                .types
+                .iter()
+                .position(|x| matches!(x, Type::Struct(s) if s.name == name))
+                .ok_or_else(|| {
+                    Error::new(ErrorType::TypeCheck, format!("Could not find type {name}"))
+                }),
         }
     }
 
-    fn get_scope_function_type(
-        &self,
-        name: &str,
-        range: &SourceRange,
-    ) -> Result<(Vec<TypeId>, TypeId)> {
-        use TypeScopeEntry::*;
-        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
-            Value(_) => unreachable!("Trying to get type of function with the name of a value"),
-            Function(arg_types, return_type) => Ok((arg_types, return_type)),
-            Global(_) => {
-                unreachable!("Trying to get type of value with the name of a global")
-            }
-            ExternalFuction() => unreachable!(),
+    pub fn get_type(&self, id: TypeId) -> Result<&Type> {
+        self.types.get(id).ok_or_else(|| {
+            Error::new(
+                ErrorType::TypeCheck,
+                format!("Could not find type with id {id}"),
+            )
+        })
+    }
+
+    fn find_or_add_type(&mut self, t: Type) -> TypeId {
+        match self.types.iter().position(|x| x == &t) {
+            Some(t) => t,
+            None => self.register_type(t),
         }
     }
 
-    fn is_external_function(&self, name: &str, range: &SourceRange) -> Result<bool> {
-        use TypeScopeEntry::*;
-        match self.scope.find(name).map_err(|x| x.with_range(*range))? {
-            ExternalFuction() => Ok(true),
-            _ => Ok(false),
-        }
+    pub fn get_type_size(&self, id: TypeId) -> Result<usize> {
+        let value_type = self.get_type(id)?;
+
+        Ok(match value_type {
+            Type::UInt8() => 8,
+            Type::UInt16() => 16,
+            Type::UInt32() => 32,
+            Type::UInt64() => 64,
+            Type::Bool() => 8,
+            Type::Ptr(_) => 64,
+            Type::Void() => unreachable!(),
+            Type::Struct(s) => s
+                .fields
+                .iter()
+                .map(|(_, t)| self.get_type_size(*t))
+                .collect::<Result<Vec<_>>>()?
+                .iter()
+                .sum(),
+        })
     }
 
-    fn widen_assignment(&self, left: TypeId, right: TypeId) -> Option<TypeId> {
-        let left_size = self.project.get_type_size(left);
-        let right_size = self.project.get_type_size(right);
-
-        if left_size < right_size {
-            None
-        } else {
-            Some(left)
+    pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
+        match self.get_type(id)? {
+            Type::Struct(s) => Ok(s),
+            _ => Err(Error::new(
+                ErrorType::TypeCheck,
+                format!("Type with id {id} is not a struct"),
+            )),
         }
     }
 
     fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
         match parsed_type {
-            ParsedType::Named(name, range) => self
-                .project
-                .get_type_id(name)
-                .map_err(|e| e.with_range(*range)),
+            ParsedType::Named(name, range) => {
+                self.get_type_id(name).map_err(|e| e.with_range(*range))
+            }
             ParsedType::Ptr(inner, range) => {
                 let inner = self.check_type(inner).map_err(|e| e.with_range(*range))?;
-                Ok(self.project.find_or_add_type(Type::Ptr(inner)))
+                Ok(self.find_or_add_type(Type::Ptr(inner)))
             }
         }
     }
 
-    pub fn check_upper_statement(
+    fn attempt_register_upper_statement(
         &mut self,
-        statement: ParsedUpperStatement<'b>,
-    ) -> Result<UpperStatement<'b>> {
+        statement: &ParsedUpperStatement<'a>,
+    ) -> Result<()> {
         match statement {
+            ParsedUpperStatement::Function {
+                name,
+                parameters,
+                return_type,
+                body: _,
+                annotations: _,
+                range: _,
+            } => {
+                let parameters = parameters
+                    .iter()
+                    .map(|(_, t)| self.check_type(t))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let return_type = self.check_type(&return_type)?;
+
+                self.function_declarations.insert(
+                    name,
+                    FunctionType {
+                        parameters,
+                        return_type,
+                    },
+                );
+            }
             ParsedUpperStatement::StructDeclaration {
                 name,
                 fields,
-                range,
+                range: _,
             } => {
                 let checked_fields = fields
                     .into_iter()
@@ -120,158 +173,45 @@ impl<'a, 'b> TypeChecker<'a> {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                let complete_type = Type::Struct(StructType {
+                self.register_type(Type::Struct(StructType {
                     name: name.to_string(),
                     fields: checked_fields
                         .iter()
                         .map(|(x, y)| (x.to_string(), *y))
                         .collect::<Vec<_>>(),
-                });
-                self.project.find_or_add_type(complete_type);
-
-                Ok(UpperStatement::StructDeclaration(StructDeclaration {
-                    name,
-                    fields: checked_fields,
-                    range,
-                }))
+                }));
             }
-            ParsedUpperStatement::ExternDeclaration { name, range } => {
-                self.scope.insert(name, TypeScopeEntry::ExternalFuction())?;
-                Ok(UpperStatement::ExternDeclaration(ExternDeclaration {
-                    name,
-                    range,
-                }))
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn register_upper_statements(&mut self, statements: &[ParsedUpperStatement<'a>]) -> Result<()> {
+        let mut pending_statements = VecDeque::new();
+
+        for statement in statements {
+            pending_statements.push_back(statement);
+        }
+
+        // TODO: on error, this loop will be infinite
+        while let Some(statement) = pending_statements.pop_front() {
+            if self.attempt_register_upper_statement(statement).is_err() {
+                pending_statements.push_back(statement);
             }
-            ParsedUpperStatement::Function {
-                name,
-                parameters,
-                return_type,
-                body,
-                annotations,
-                range,
-            } => {
-                let checked_parameters = parameters
-                    .iter()
-                    .map(|(_, t)| self.check_type(t))
-                    .collect::<Result<Vec<_>>>()?;
+        }
 
-                let checked_return_type = self.check_type(&return_type)?;
+        Ok(())
+    }
 
-                self.scope
-                    .insert(
-                        name,
-                        TypeScopeEntry::Function(checked_parameters, checked_return_type),
-                    )
-                    .map_err(|x| x.with_range(range))?;
+    fn widen_assignment(&self, left: TypeId, right: TypeId) -> Result<Option<TypeId>> {
+        let left_size = self.get_type_size(left)?;
+        let right_size = self.get_type_size(right)?;
 
-                self.scope.push();
-
-                let params = parameters
-                    .into_iter()
-                    .map(
-                        |(param_name, param_type)| match self.check_type(&param_type) {
-                            Ok(param_type) => Ok((param_name, param_type)),
-                            Err(e) => Err(e),
-                        },
-                    )
-                    .collect::<Result<Vec<_>>>()?;
-
-                for (param_name, param_type) in &params {
-                    self.scope
-                        .insert(param_name, TypeScopeEntry::Value(*param_type))
-                        .map_err(|x| x.with_range(range))?;
-                }
-
-                assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
-                let return_type = self.check_type(&return_type)?;
-                self.current_function_return_type = return_type;
-
-                let checked_body = self.check_statement(body)?;
-
-                self.current_function_return_type = BUILTIN_TYPE_UNKNOWN;
-
-                self.scope.pop();
-
-                let checked_annotations = annotations
-                    .into_iter()
-                    .map(|(name, value)| {
-                        if let Some(value) = value {
-                            match self.check_expression(value) {
-                                Ok(value) => Ok((name, Some(value))),
-                                Err(error) => Err(error),
-                            }
-                        } else {
-                            Ok((name, None))
-                        }
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-
-                Ok(UpperStatement::Function(FunctionDeclaration {
-                    name,
-                    params,
-                    return_type,
-                    body: checked_body,
-                    annotations: checked_annotations,
-                    range,
-                }))
-            }
-            ParsedUpperStatement::ConstDeclaration {
-                name,
-                value_type,
-                value,
-                annotations,
-                range,
-            } => {
-                let mut value = self.check_expression(value)?;
-
-                let type_id = self.check_type(&value_type)?;
-
-                let new_type =
-                    self.widen_assignment(type_id, value.type_id())
-                        .ok_or_else(|| {
-                            Error::new_with_range(
-                                ErrorType::TypeCheck,
-                                format!(
-                                    "Cannot widen const type {:?} to {:?}",
-                                    value.type_id(),
-                                    type_id
-                                ),
-                                range,
-                            )
-                        })?;
-
-                if new_type != value.type_id() {
-                    value = Expression::Widen(WidenExpr {
-                        expr: Box::new(value),
-                        type_id: new_type,
-                        range,
-                    });
-                }
-
-                self.scope.insert(name, TypeScopeEntry::Global(type_id))?;
-
-                let checked_annotations = annotations
-                    .into_iter()
-                    .map(|(name, value)| {
-                        if let Some(value) = value {
-                            match self.check_expression(value) {
-                                Ok(value) => Ok((name, Some(value))),
-                                Err(error) => Err(error),
-                            }
-                        } else {
-                            Ok((name, None))
-                        }
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-
-                Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
-                    name,
-                    type_id,
-                    value,
-                    annotations: checked_annotations,
-                    range,
-                }))
-            }
+        if left_size < right_size {
+            Ok(None)
+        } else {
+            Ok(Some(left))
         }
     }
 
@@ -309,7 +249,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 let type_id = self.check_type(&value_type)?;
 
                 self.scope
-                    .insert(name, TypeScopeEntry::Value(type_id))
+                    .insert(name, type_id)
                     .map_err(|x| x.with_range(range))?;
 
                 Ok(Statement::Declaration(DeclarationStatement {
@@ -331,7 +271,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 let new_type = self
-                    .widen_assignment(left.type_id(), right.type_id())
+                    .widen_assignment(left.type_id(), right.type_id())?
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
@@ -428,7 +368,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 assert_ne!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 
                 let actual_type =
-                    self.widen_assignment(self.current_function_return_type, value_type);
+                    self.widen_assignment(self.current_function_return_type, value_type)?;
 
                 match actual_type {
                     None => Err(Error::new_with_range(
@@ -466,11 +406,11 @@ impl<'a, 'b> TypeChecker<'a> {
                 // TODO: add support for logic operators
                 let mut left = self.check_expression(*left)?;
                 let left_type = left.type_id();
-                let left_size = self.project.get_type_size(left_type);
+                let left_size = self.get_type_size(left_type)?;
 
                 let mut right = self.check_expression(*right)?;
                 let right_type = right.type_id();
-                let right_size = self.project.get_type_size(right_type);
+                let right_size = self.get_type_size(right_type)?;
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
                 // the remainder gets stored in the ah register instead of dl. When we can output
@@ -485,7 +425,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if self.project.get_type(left_type)?.is_ptr() && !op_type.is_comparison() {
+                if self.get_type(left_type)?.is_ptr() && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
                     return Ok(Expression::BinaryOperator(BinaryOperatorExpr {
                         op_type,
@@ -554,13 +494,13 @@ impl<'a, 'b> TypeChecker<'a> {
                     UnaryOperatorType::Ref => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
                         op_type: UnaryOperatorType::Ref,
                         expr: Box::new(expr),
-                        type_id: self.project.find_or_add_type(Type::Ptr(expr_type)),
+                        type_id: self.find_or_add_type(Type::Ptr(expr_type)),
                         range,
                     })),
                     UnaryOperatorType::Deref => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
                         op_type: UnaryOperatorType::Deref,
                         expr: Box::new(expr),
-                        type_id: self.project.get_type(expr_type)?.get_deref()?,
+                        type_id: self.get_type(expr_type)?.get_deref()?,
                         range,
                     })),
                 }
@@ -570,7 +510,11 @@ impl<'a, 'b> TypeChecker<'a> {
                 arguments: args,
                 range,
             } => {
-                if self.is_external_function(name, &range)? {
+                let function_type = self.function_declarations.get(name).cloned().unwrap();
+                let return_type = function_type.return_type;
+
+                // NOTE: BUILTIN_TYPE_UNKNOWN is only used for extern functions
+                if return_type == BUILTIN_TYPE_UNKNOWN {
                     return Ok(Expression::FunctionCall(FunctionCallExpr {
                         name,
                         args: args
@@ -582,27 +526,23 @@ impl<'a, 'b> TypeChecker<'a> {
                     }));
                 }
 
-                let (arg_types, return_type) = self.get_scope_function_type(name, &range)?;
-
-                assert_eq!(args.len(), arg_types.len());
+                assert_eq!(args.len(), function_type.parameters.len());
 
                 let mut new_args = vec![];
 
-                for (arg, expected_type) in args.into_iter().zip(arg_types.iter()) {
+                for (arg, expected_type) in args.into_iter().zip(function_type.parameters.iter()) {
                     let arg = self.check_expression(arg)?;
                     let arg_type = arg.type_id();
 
-                    let new_type =
-                        self.widen_assignment(*expected_type, arg_type)
-                            .ok_or_else(|| {
-                                Error::new_with_range(
-                                    ErrorType::TypeCheck,
-                                    format!(
-                                        "Cannot widen from type {arg_type:?} to {expected_type:?}"
-                                    ),
-                                    range,
-                                )
-                            })?;
+                    let new_type = self
+                        .widen_assignment(*expected_type, arg_type)?
+                        .ok_or_else(|| {
+                            Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!("Cannot widen from type {arg_type:?} to {expected_type:?}"),
+                                range,
+                            )
+                        })?;
 
                     if new_type != arg_type {
                         new_args.push(Expression::Widen(WidenExpr {
@@ -671,7 +611,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 }))
             }
             ParsedExpression::VariableRef { name, range } => {
-                let type_id = self.get_scope_value_type(name, &range)?;
+                let type_id = self.scope.find(name)?;
 
                 Ok(Expression::VariableRef(VariableRefExpr {
                     name,
@@ -685,7 +625,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 range,
             } => {
                 let struct_type = self.check_type(&struct_type)?;
-                if !self.project.get_type(struct_type)?.is_struct() {
+                if !self.get_type(struct_type)?.is_struct() {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         "Trying to use struct constant for non-struct type".to_string(),
@@ -695,7 +635,7 @@ impl<'a, 'b> TypeChecker<'a> {
 
                 // TODO: this scope feels somewhat stupid
                 {
-                    let struct_data = self.project.get_struct(struct_type)?;
+                    let struct_data = self.get_struct(struct_type)?;
 
                     for (expected_name, _) in &struct_data.fields {
                         if !fields.iter().any(|f| f.0 == expected_name) {
@@ -724,7 +664,7 @@ impl<'a, 'b> TypeChecker<'a> {
                 for (field_name, field_value) in fields {
                     let mut checked_value = self.check_expression(field_value)?;
 
-                    let struct_data = self.project.get_struct(struct_type)?;
+                    let struct_data = self.get_struct(struct_type)?;
                     let struct_field = struct_data
                         .fields
                         .iter()
@@ -732,7 +672,7 @@ impl<'a, 'b> TypeChecker<'a> {
                         .unwrap();
 
                     let new_type = self
-                        .widen_assignment(struct_field.1, checked_value.type_id())
+                        .widen_assignment(struct_field.1, checked_value.type_id())?
                         .ok_or_else(|| {
                             Error::new_with_range(
                                 ErrorType::TypeCheck,
@@ -765,7 +705,7 @@ impl<'a, 'b> TypeChecker<'a> {
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child = self.check_expression(*child)?;
                 let child_type_id = child.type_id();
-                let child_type = self.project.get_type(child_type_id)?;
+                let child_type = self.get_type(child_type_id)?;
 
                 if !child_type.is_struct() && !child_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -776,9 +716,9 @@ impl<'a, 'b> TypeChecker<'a> {
                 }
 
                 let struct_type = if child_type.is_struct() {
-                    self.project.get_struct(child_type_id)?
+                    self.get_struct(child_type_id)?
                 } else {
-                    self.project.get_struct(child_type.get_deref()?)?
+                    self.get_struct(child_type.get_deref()?)?
                 };
 
                 let field_type = struct_type
@@ -804,7 +744,7 @@ impl<'a, 'b> TypeChecker<'a> {
             ParsedExpression::ArrayAccessor { expr, index, range } => {
                 let expr = self.check_expression(*expr)?;
 
-                let expr_type = self.project.get_type(expr.type_id())?;
+                let expr_type = self.get_type(expr.type_id())?;
 
                 if !expr_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -841,7 +781,7 @@ impl<'a, 'b> TypeChecker<'a> {
             ParsedExpression::StringLiteral { value, range } => {
                 Ok(Expression::StringLiteral(StringLiteralExpr {
                     value,
-                    type_id: self.project.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
+                    type_id: self.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
                     range,
                 }))
             }
@@ -852,58 +792,181 @@ impl<'a, 'b> TypeChecker<'a> {
             }
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::Result;
-    use crate::project::BUILTIN_TYPE_U16;
+    fn typecheck_upper_statement(
+        &mut self,
+        statement: ParsedUpperStatement<'a>,
+    ) -> Result<UpperStatement<'a>> {
+        match statement {
+            ParsedUpperStatement::Function {
+                name,
+                parameters,
+                return_type,
+                body,
+                annotations,
+                range,
+            } => {
+                let function_declaration = self.function_declarations.get(name).unwrap();
 
-    #[test]
-    fn widen_assignment() -> Result<()> {
-        let mut project = Project::new("test::widen_assignment");
-        let mut type_checker = TypeChecker::new(&mut project);
+                let params = parameters
+                    .iter()
+                    .zip(&function_declaration.parameters)
+                    .map(|((param_name, _), param_type)| (*param_name, *param_type))
+                    .collect();
 
-        type_checker.check_statement(ParsedStatement::Declaration {
-            name: "test",
-            value_type: ParsedType::Named("u16".to_string(), (0..0).into()),
-            range: (0..0).into(),
-        })?;
+                assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 
-        let ast = ParsedStatement::Assignment {
-            left: ParsedExpression::VariableRef {
-                name: "test",
-                range: (0..0).into(),
-            },
-            right: ParsedExpression::IntegerLiteral {
-                value: 12,
-                range: (0..0).into(),
-            },
-            range: (0..0).into(),
-        };
+                let return_type = self.check_type(&return_type)?;
+                self.current_function_return_type = return_type;
 
-        assert_eq!(
-            type_checker.check_statement(ast)?,
-            Statement::Assignment(AssignmentStatement {
-                left: Expression::VariableRef(VariableRefExpr {
-                    name: "test",
-                    type_id: BUILTIN_TYPE_U16,
-                    range: (0..0).into()
-                }),
-                right: Expression::Widen(WidenExpr {
-                    expr: Box::new(Expression::IntegerLiteral(IntegerLiteralExpr {
-                        value: 12,
-                        type_id: BUILTIN_TYPE_U8,
-                        range: (0..0).into()
-                    })),
-                    type_id: BUILTIN_TYPE_U16,
-                    range: (0..0).into(),
-                }),
-                range: (0..0).into(),
-            })
-        );
+                self.scope.push();
 
-        Ok(())
+                for &(param_name, param_type) in &params {
+                    self.scope
+                        .insert(param_name, param_type)
+                        .map_err(|x| x.with_range(range))?;
+                }
+
+                let checked_body = self.check_statement(body)?;
+
+                self.current_function_return_type = BUILTIN_TYPE_UNKNOWN;
+
+                self.scope.pop();
+
+                let checked_annotations = annotations
+                    .into_iter()
+                    .map(|(name, value)| {
+                        if let Some(value) = value {
+                            match self.check_expression(value) {
+                                Ok(value) => Ok((name, Some(value))),
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            Ok((name, None))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(UpperStatement::Function(FunctionDeclaration {
+                    name,
+                    params,
+                    return_type,
+                    body: checked_body,
+                    annotations: checked_annotations,
+                    range,
+                }))
+            }
+            ParsedUpperStatement::StructDeclaration {
+                name,
+                fields,
+                range,
+            } => {
+                let checked_fields = fields
+                    .into_iter()
+                    .map(|(name, parsed_type)| match self.check_type(&parsed_type) {
+                        Ok(checked_type) => Ok((name, checked_type)),
+                        Err(e) => Err(e),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                let complete_type = Type::Struct(StructType {
+                    name: name.to_string(),
+                    fields: checked_fields
+                        .iter()
+                        .map(|(x, y)| (x.to_string(), *y))
+                        .collect::<Vec<_>>(),
+                });
+                self.find_or_add_type(complete_type);
+
+                Ok(UpperStatement::StructDeclaration(StructDeclaration {
+                    name,
+                    fields: checked_fields,
+                    range,
+                }))
+            }
+            ParsedUpperStatement::ConstDeclaration {
+                name,
+                value_type,
+                value,
+                annotations,
+                range,
+            } => {
+                let mut value = self.check_expression(value)?;
+
+                let type_id = self.check_type(&value_type)?;
+
+                let new_type = self
+                    .widen_assignment(type_id, value.type_id())?
+                    .ok_or_else(|| {
+                        Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!(
+                                "Cannot widen const type {:?} to {:?}",
+                                value.type_id(),
+                                type_id
+                            ),
+                            range,
+                        )
+                    })?;
+
+                if new_type != value.type_id() {
+                    value = Expression::Widen(WidenExpr {
+                        expr: Box::new(value),
+                        type_id: new_type,
+                        range,
+                    });
+                }
+
+                self.scope.insert(name, type_id)?;
+
+                let checked_annotations = annotations
+                    .into_iter()
+                    .map(|(name, value)| {
+                        if let Some(value) = value {
+                            match self.check_expression(value) {
+                                Ok(value) => Ok((name, Some(value))),
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            Ok((name, None))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
+                    name,
+                    type_id,
+                    value,
+                    annotations: checked_annotations,
+                    range,
+                }))
+            }
+            ParsedUpperStatement::ExternDeclaration { name, range } => {
+                self.function_declarations.insert(
+                    name,
+                    FunctionType {
+                        parameters: vec![],
+                        return_type: BUILTIN_TYPE_UNKNOWN,
+                    },
+                );
+
+                Ok(UpperStatement::ExternDeclaration(ExternDeclaration {
+                    name,
+                    range,
+                }))
+            }
+        }
+    }
+
+    pub fn analyse(
+        &mut self,
+        statements: Vec<ParsedUpperStatement<'a>>,
+    ) -> Result<Vec<UpperStatement<'a>>> {
+        self.register_upper_statements(&statements)?;
+
+        statements
+            .into_iter()
+            .map(|stmt| self.typecheck_upper_statement(stmt))
+            .collect()
     }
 }

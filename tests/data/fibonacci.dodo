@@ -1,5 +1,5 @@
-extern "printf";
-extern "exit";
+extern printf;
+extern exit;
 
 fn fib(n: u64) {
     let prevprev: u64;

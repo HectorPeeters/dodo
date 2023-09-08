@@ -1,6 +1,6 @@
 // Expected: Modulo of two 8 bit integers is currently not supported
 
-extern "printf";
+extern printf;
 
 fn main() {
     let a: u8 = 12;

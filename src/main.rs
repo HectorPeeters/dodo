@@ -1,14 +1,8 @@
 use clap::StructOpt;
-use dodo::backends::BackendType;
-use dodo::backends::{
-    c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend,
-};
 use dodo::error::Result;
 use dodo::parser::Parser;
+use dodo::sema::Sema;
 use dodo::tokenizer::tokenize;
-use dodo::type_checker::TypeChecker;
-use dodo::{backends::*, project::Project};
-use std::path::PathBuf;
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -16,9 +10,6 @@ struct Args {
     source_path: std::path::PathBuf,
     #[clap(short, long)]
     output: Option<std::path::PathBuf>,
-
-    #[clap(short, long, arg_enum)]
-    backend: Option<BackendType>,
 
     #[clap(long)]
     print_tokens: bool,
@@ -54,7 +45,9 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use dodo::optimisations::optimise;
+    use std::path::PathBuf;
+
+    use dodo::backends::{c_backend::CBackend, Backend};
 
     let args = Args::parse();
 
@@ -88,42 +81,19 @@ fn main() -> Result<()> {
         println!("{statements:#?}");
     }
 
-    // Type checking
+    // Semantic analysis
 
-    let mut project = Project::new(source_file);
-
-    let mut type_checker = TypeChecker::new(&mut project);
-    let mut statements = unwrap_or_error(
-        statements
-            .into_iter()
-            .map(|x| type_checker.check_upper_statement(x))
-            .collect::<Result<Vec<_>>>(),
-        source_file,
-    );
+    let mut sema = Sema::new();
+    let statements = unwrap_or_error(sema.analyse(statements), source_file);
 
     if args.print_typed_ast {
         println!("Typed ast:");
         println!("{statements:#?}");
     }
 
-    // Optimisation
-
-    if args.optimise {
-        statements = optimise(statements, &project, args.print_optimisations);
-    }
-
-    if args.print_optimised_ast {
-        println!("Optimised ast:");
-        println!("{statements:#?}");
-    }
-
     // Backend
 
-    let mut backend: Box<dyn Backend> = match args.backend {
-        Some(BackendType::C) | None => Box::new(CBackend::new(&mut project)),
-        Some(BackendType::X86) => Box::new(X86NasmBackend::new(&mut project)),
-        Some(BackendType::Ir) => Box::new(IrBackend::new(&mut project)),
-    };
+    let mut backend = CBackend::new(&sema);
 
     unwrap_or_error(
         statements

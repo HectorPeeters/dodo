@@ -829,11 +829,11 @@ impl<'a> Parser<'a> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Extern)?;
-        let symbol = self.consume_assert(TokenType::StringLiteral)?.value;
+        let symbol = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::SemiColon)?;
 
         Ok(ParsedUpperStatement::ExternDeclaration {
-            name: &symbol[1..symbol.len() - 1],
+            name: symbol,
             range: (start_index..self.current_index(true)).into(),
         })
     }

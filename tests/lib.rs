@@ -1,14 +1,15 @@
 use dodo::{
     backends::{
-        c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend, Backend,
+        c_backend::CBackend,
+        // ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend,
+        Backend,
         BackendType,
     },
     error::Result,
-    optimisations::optimise,
+    //    optimisations::optimise,
     parser::Parser,
-    project::Project,
+    sema::Sema,
     tokenizer::tokenize,
-    type_checker::TypeChecker,
 };
 use std::{
     collections::hash_map::DefaultHasher,
@@ -27,25 +28,25 @@ fn test_c_optimised(path: &str) {
     run_passing_test(path, BackendType::C, true);
 }
 
-#[test_resources("tests/data/*.dodo")]
-fn test_x86(path: &str) {
-    run_passing_test(path, BackendType::X86, false);
-}
-
-#[test_resources("tests/data/*.dodo")]
-fn test_x86_optimised(path: &str) {
-    run_passing_test(path, BackendType::X86, true);
-}
+// #[test_resources("tests/data/*.dodo")]
+// fn test_x86(path: &str) {
+//     run_passing_test(path, BackendType::X86, false);
+// }
+//
+// #[test_resources("tests/data/*.dodo")]
+// fn test_x86_optimised(path: &str) {
+//     run_passing_test(path, BackendType::X86, true);
+// }
 
 #[test_resources("tests/failing/*.dodo")]
 fn test_c_failing(path: &str) {
     run_failing_test(path, BackendType::C);
 }
 
-#[test_resources("tests/failing/*.dodo")]
-fn test_x86_failing(path: &str) {
-    run_failing_test(path, BackendType::X86);
-}
+// #[test_resources("tests/failing/*.dodo")]
+// fn test_x86_failing(path: &str) {
+//     run_failing_test(path, BackendType::X86);
+// }
 
 pub fn run_passing_test(file: &str, backend_type: BackendType, enable_optimization: bool) {
     let source = std::fs::read_to_string(file).unwrap();
@@ -89,22 +90,18 @@ fn run_test(
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
 
-    let mut project = Project::new(file);
+    let mut sema = Sema::new();
 
-    let mut type_checker = TypeChecker::new(&mut project);
-    let mut statements = statements
-        .into_iter()
-        .map(|x| type_checker.check_upper_statement(x))
-        .collect::<Result<Vec<_>>>()?;
+    let statements = sema.analyse(statements)?;
 
-    if enable_optimization {
-        statements = optimise(statements, &project, true);
-    }
+    //    if enable_optimization {
+    //        statements = optimise(statements, &project, true);
+    //    }
 
     let mut backend: Box<dyn Backend> = match backend_type {
-        BackendType::C => Box::new(CBackend::new(&mut project)),
-        BackendType::X86 => Box::new(X86NasmBackend::new(&mut project)),
-        BackendType::Ir => Box::new(IrBackend::new(&mut project)),
+        BackendType::C => Box::new(CBackend::new(&sema)),
+        // BackendType::X86 => Box::new(X86NasmBackend::new(&mut project)),
+        // BackendType::Ir => Box::new(IrBackend::new(&mut project)),
     };
 
     statements

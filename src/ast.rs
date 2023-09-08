@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::project::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
+use crate::sema::{BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8};
 use crate::tokenizer::{SourceRange, TokenType};
 use crate::types::TypeId;
 

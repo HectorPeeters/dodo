@@ -3,15 +3,12 @@ use clap::ArgEnum;
 use std::{path::Path, process::Command};
 
 pub mod c_backend;
-pub mod ir_backend;
-pub mod x86_instruction;
-pub mod x86_nasm_backend;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ArgEnum)]
 pub enum BackendType {
-    X86,
+    // X86,
     C,
-    Ir,
+    // Ir,
 }
 
 pub trait Backend<'a> {

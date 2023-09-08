@@ -1,5 +1,5 @@
-extern "exit";
-extern "printf";
+extern exit;
+extern printf;
 
 fn main() {
     let x8: u8 = 12;
