@@ -1,0 +1,25 @@
+extern printf;
+extern exit;
+
+fn sub_one(x: u32) u32 {
+    if x == 0 {
+        return 0;
+    }
+
+    printf("one\n");
+    return sub_two(x - 1);
+}
+
+fn sub_two(x: u32) u32 {
+    if x == 0 {
+        return 0;
+    }
+
+    printf("two\n");
+    return sub_one(x - 2);
+}
+
+fn main() {
+    sub_one(10);
+    exit(0);
+}

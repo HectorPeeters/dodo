@@ -359,6 +359,10 @@ impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
     fn name(&self) -> &'static str {
         "nasm-x86_64"
     }
+
+    fn prepare(&mut self, _: &[UpperStatement<'b>]) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {

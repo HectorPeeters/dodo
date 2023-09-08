@@ -101,6 +101,8 @@ fn main() -> Result<()> {
         Some(BackendType::X86) => Box::new(X86NasmBackend::new(&sema)),
     };
 
+    backend.prepare(&statements)?;
+
     unwrap_or_error(
         statements
             .into_iter()

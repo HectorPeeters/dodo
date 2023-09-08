@@ -1,14 +1,14 @@
 use super::Backend;
 use crate::ast::{
-    AssignmentStatement, AstTransformer, BinaryOperatorType, BlockStatement, CastExpr,
+    Annotations, AssignmentStatement, AstTransformer, BinaryOperatorType, BlockStatement, CastExpr,
     ConstDeclaration, DeclarationStatement, Expression, FieldAccessorExpr, FunctionCallExpr,
     FunctionDeclaration, IfStatement, Statement, StructDeclaration, StructLiteralExpr,
     UnaryOperatorType, UpperStatement, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::sema::{
-    Sema, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
-    BUILTIN_TYPE_VOID,
+    DeclarationId, Sema, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
+    BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
 };
 use crate::types::TypeId;
 use std::path::Path;
@@ -29,6 +29,36 @@ impl<'a> CBackend<'a> {
 }
 
 impl<'a> Backend<'a> for CBackend<'a> {
+    fn prepare(&mut self, statements: &[UpperStatement<'a>]) -> Result<()> {
+        for statement in statements {
+            if let UpperStatement::StructDeclaration(struct_decl) = statement {
+                self.buffer
+                    .push_str(&format!("struct {};\n", struct_decl.name));
+            }
+        }
+
+        self.buffer.push('\n');
+
+        for statement in statements {
+            if let UpperStatement::Function(FunctionDeclaration {
+                name,
+                params,
+                return_type,
+                body: _,
+                annotations,
+                range: _,
+            }) = statement
+            {
+                self.write_fuction_declaration(name, params, *return_type, annotations)?;
+                self.buffer.push_str(";\n");
+            }
+        }
+
+        self.buffer.push('\n');
+
+        Ok(())
+    }
+
     fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
         self.visit_upper_statement(statement)
     }
@@ -83,6 +113,49 @@ impl<'a> CBackend<'a> {
             _ => unreachable!(),
         }
     }
+
+    fn write_fuction_declaration(
+        &mut self,
+        name: &str,
+        params: &[DeclarationId],
+        return_type: TypeId,
+        annotations: &Annotations<'a>,
+    ) -> Result<()> {
+        let params = params
+            .iter()
+            .map(|declaration_id| {
+                let type_id = self.sema.get_declaration_type(*declaration_id);
+                self.to_c_type(type_id)
+                    .map(|t| format!("{t} {}", declaration_id))
+            })
+            .collect::<Result<Vec<_>>>()?
+            .join(", ");
+
+        let return_type = if name == "main" {
+            "int".to_string()
+        } else {
+            self.to_c_type(return_type)?
+        };
+
+        let section_annotation = annotations
+                    .iter()
+                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
+                    .map(|(_, value)| match value {
+                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
+                        _ => unreachable!()
+                    });
+
+        let section_attribute = match section_annotation {
+            Some(name) => format!("__attribute__((section(\"{name}\")))"),
+            None => String::new(),
+        };
+
+        self.buffer.push_str(&format!(
+            "{return_type} {name}({params}) {section_attribute}"
+        ));
+
+        Ok(())
+    }
 }
 
 impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
@@ -116,39 +189,8 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 annotations,
                 range: _,
             }) => {
-                let params = params
-                    .into_iter()
-                    .map(|declaration_id| {
-                        let type_id = self.sema.get_declaration_type(declaration_id);
-                        self.to_c_type(type_id)
-                            .map(|t| format!("{t} {}", declaration_id))
-                    })
-                    .collect::<Result<Vec<_>>>()?
-                    .join(", ");
-
-                let return_type = if name == "main" {
-                    "int".to_string()
-                } else {
-                    self.to_c_type(return_type)?
-                };
-
-                let section_annotation = annotations
-                    .into_iter()
-                    .find(|(name, value)|  matches!(value, Some(Expression::StringLiteral(..)) if *name == "section" ))
-                    .map(|(_, value)| match value {
-                        Some(Expression::StringLiteral(str_lit)) => str_lit.value,
-                        _ => unreachable!()
-                    });
-
-                let section_attribute = match section_annotation {
-                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
-                    None => String::new(),
-                };
-
-                self.buffer.push_str(&format!(
-                    "{return_type} {name}({params}) {section_attribute}\n"
-                ));
-
+                self.write_fuction_declaration(name, &params, return_type, &annotations)?;
+                self.buffer.push('\n');
                 self.visit_statement(body)?;
 
                 self.buffer.push('\n');

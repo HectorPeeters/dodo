@@ -539,7 +539,18 @@ impl<'a, 'b> Sema<'a> {
                 arguments: args,
                 range,
             } => {
-                let function_type = self.function_declarations.get(name).cloned().unwrap();
+                let function_type =
+                    self.function_declarations
+                        .get(name)
+                        .cloned()
+                        .ok_or_else(|| {
+                            Error::new_with_range(
+                                ErrorType::TypeCheck,
+                                format!("Fucntion {name} not found"),
+                                range,
+                            )
+                        })?;
+
                 let return_type = function_type.return_type;
 
                 // NOTE: BUILTIN_TYPE_UNKNOWN is only used for extern functions
@@ -837,7 +848,17 @@ impl<'a, 'b> Sema<'a> {
                 annotations,
                 range,
             } => {
-                let function_declaration = self.function_declarations.get(name).cloned().unwrap();
+                let function_declaration = self
+                    .function_declarations
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        Error::new_with_range(
+                            ErrorType::TypeCheck,
+                            format!("Fucntion {name} not found"),
+                            range,
+                        )
+                    })?;
 
                 assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 

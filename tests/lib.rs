@@ -105,6 +105,8 @@ fn run_test(
         // BackendType::Ir => Box::new(IrBackend::new(&mut project)),
     };
 
+    backend.prepare(&statements)?;
+
     statements
         .into_iter()
         .map(|x| backend.process_upper_statement(x))
