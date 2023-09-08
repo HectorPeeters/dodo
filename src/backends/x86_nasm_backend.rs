@@ -250,8 +250,6 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
             Expression::VariableRef(var_ref) => {
                 let location = self.data_locations.get(&var_ref.declaration_id).unwrap();
 
-                println!("<- {:?} {:?}", var_ref.declaration_id, location);
-
                 match location {
                     DataLocation::Stack(offset) => {
                         Ok((LValueLocation::Stack(offset * STACK_OFFSET), None))
@@ -414,7 +412,6 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 for (declaration_id, arg_reg) in params.iter().zip(ARGUMENT_REGISTERS) {
                     let offset = self.data_stack_offset.iter().sum();
 
-                    println!("-> {:?} {:?}", declaration_id, DataLocation::Stack(offset));
                     self.data_locations
                         .insert(*declaration_id, DataLocation::Stack(offset));
                     self.data_stack_offset.last_mut().unwrap().add_assign(1);
@@ -451,11 +448,6 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 range: _,
             }) => {
                 let position = self.store_global_const(value, annotations);
-                println!(
-                    "-> {:?} {:?}",
-                    declaration_id,
-                    DataLocation::Global(position)
-                );
                 self.data_locations
                     .insert(declaration_id, DataLocation::Global(position));
                 self.data_stack_offset.last_mut().unwrap().add_assign(1);
@@ -472,7 +464,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 range: _,
             }) => {
                 let offset = self.data_stack_offset.iter().sum();
-                println!("-> {:?} {:?}", declaration_id, DataLocation::Stack(offset));
+
                 self.data_locations
                     .insert(declaration_id, DataLocation::Stack(offset));
                 self.data_stack_offset.last_mut().unwrap().add_assign(1);
@@ -637,7 +629,6 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         range: _,
                     }) => {
                         let location = self.data_locations[declaration_id];
-                        println!("<- {:?} {:?}", declaration_id, location);
 
                         let value_size = self.sema.get_type_size(type_id)?;
 
