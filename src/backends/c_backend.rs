@@ -90,7 +90,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
         match statement {
             UpperStatement::StructDeclaration(StructDeclaration {
                 name,
-                declaration_id,
+                declaration_id: _,
                 fields,
                 range: _,
             }) => {
@@ -156,7 +156,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             UpperStatement::ConstDeclaration(ConstDeclaration {
-                name,
+                name: _,
                 value,
                 annotations,
                 declaration_id,
@@ -212,7 +212,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             Statement::Declaration(DeclarationStatement {
-                name,
+                name: _,
                 declaration_id,
                 range: _,
             }) => {

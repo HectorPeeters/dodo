@@ -1,4 +1,8 @@
 use clap::StructOpt;
+use std::path::PathBuf;
+
+use dodo::backends::BackendType;
+use dodo::backends::{c_backend::CBackend, x86_nasm_backend::X86NasmBackend, Backend};
 use dodo::error::Result;
 use dodo::parser::Parser;
 use dodo::sema::Sema;
@@ -10,6 +14,9 @@ struct Args {
     source_path: std::path::PathBuf,
     #[clap(short, long)]
     output: Option<std::path::PathBuf>,
+
+    #[clap(short, long, arg_enum)]
+    backend: Option<BackendType>,
 
     #[clap(long)]
     print_tokens: bool,
@@ -45,10 +52,6 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    use std::path::PathBuf;
-
-    use dodo::backends::{c_backend::CBackend, Backend};
-
     let args = Args::parse();
 
     // Reading source
@@ -93,7 +96,10 @@ fn main() -> Result<()> {
 
     // Backend
 
-    let mut backend = CBackend::new(&sema);
+    let mut backend: Box<dyn Backend> = match args.backend {
+        Some(BackendType::C) | None => Box::new(CBackend::new(&sema)),
+        Some(BackendType::X86) => Box::new(X86NasmBackend::new(&sema)),
+    };
 
     unwrap_or_error(
         statements

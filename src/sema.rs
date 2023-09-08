@@ -44,6 +44,12 @@ pub struct Sema<'a> {
     current_function_return_type: TypeId,
 }
 
+impl<'a> Default for Sema<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a, 'b> Sema<'a> {
     pub fn new() -> Self {
         Self {
@@ -171,7 +177,7 @@ impl<'a, 'b> Sema<'a> {
                     .map(|(_, t)| self.check_type(t))
                     .collect::<Result<Vec<_>>>()?;
 
-                let return_type = self.check_type(&return_type)?;
+                let return_type = self.check_type(return_type)?;
 
                 self.function_declarations.insert(
                     name,
@@ -187,8 +193,8 @@ impl<'a, 'b> Sema<'a> {
                 range: _,
             } => {
                 let checked_fields = fields
-                    .into_iter()
-                    .map(|(name, parsed_type)| match self.check_type(&parsed_type) {
+                    .iter()
+                    .map(|(name, parsed_type)| match self.check_type(parsed_type) {
                         Ok(checked_type) => Ok((name, checked_type)),
                         Err(e) => Err(e),
                     })
