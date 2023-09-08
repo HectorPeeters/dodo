@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use dodo::backends::BackendType;
 use dodo::backends::{c_backend::CBackend, x86_nasm_backend::X86NasmBackend, Backend};
 use dodo::error::Result;
+use dodo::lexer::lex;
 use dodo::parser::Parser;
 use dodo::sema::Sema;
-use dodo::tokenizer::tokenize;
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -67,7 +67,7 @@ fn main() -> Result<()> {
 
     // Tokenizing
 
-    let tokens = unwrap_or_error(tokenize(&source), source_file);
+    let tokens = unwrap_or_error(lex(&source), source_file);
 
     if args.print_tokens {
         println!("Tokens:");

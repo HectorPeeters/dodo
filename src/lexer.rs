@@ -181,7 +181,7 @@ impl<'a> PartialEq<TokenType> for &Token<'a> {
     }
 }
 
-pub fn tokenize(input: &str) -> Result<Vec<Token>> {
+pub fn lex(input: &str) -> Result<Vec<Token>> {
     let mut lex = TokenType::lexer(input);
 
     let mut tokens = vec![];
@@ -209,7 +209,7 @@ mod tests {
     use super::*;
 
     fn get_tokens(input: &str) -> Vec<Token> {
-        let tokens = tokenize(input);
+        let tokens = lex(input);
         assert!(tokens.is_ok());
         tokens.unwrap()
     }
@@ -286,14 +286,14 @@ mod tests {
 
     #[test]
     fn tokenizer_identifier_error() {
-        let tokens = tokenize("_identifier");
+        let tokens = lex("_identifier");
 
         assert!(tokens.is_err());
     }
 
     #[test]
     fn tokenizer_test_error() {
-        let tokens = tokenize("return #;");
+        let tokens = lex("return #;");
 
         assert!(tokens.is_err());
     }

@@ -1,6 +1,6 @@
 use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
 
-use crate::tokenizer::SourceRange;
+use crate::lexer::SourceRange;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{BinaryOperatorType, EscapedString, UnaryOperatorType},
     error::{Error, ErrorType, Result},
-    tokenizer::{SourceRange, Token, TokenType},
+    lexer::{SourceRange, Token, TokenType},
 };
 
 #[derive(Debug, PartialEq)]
@@ -542,12 +542,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self, precedence: usize) -> Result<ParsedExpression<'a>> {
-        let exit_tokens = [TokenType::SemiColon,
+        let exit_tokens = [
+            TokenType::SemiColon,
             TokenType::RightParen,
             TokenType::LeftBrace,
             TokenType::Comma,
             TokenType::Equals,
-            TokenType::RightSquareParen];
+            TokenType::RightSquareParen,
+        ];
 
         let token_type = self.peek()?.token_type;
         let start_index = self.current_index(false);
@@ -925,7 +927,7 @@ impl<'a> Iterator for Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ast::BinaryOperatorType, tokenizer::tokenize};
+    use crate::{ast::BinaryOperatorType, lexer::lex};
 
     fn parse_statements<'a>(tokens: &'a [Token<'a>]) -> Result<Vec<ParsedStatement<'a>>> {
         let mut parser = Parser::new(tokens);
@@ -954,7 +956,7 @@ mod tests {
 
     #[test]
     fn parse_constant() -> Result<()> {
-        let tokens = tokenize("123")?;
+        let tokens = lex("123")?;
         let exprs = parse_expressions(&tokens)?;
 
         assert_eq!(
@@ -970,7 +972,7 @@ mod tests {
 
     #[test]
     fn parse_unary_op() -> Result<()> {
-        let tokens = tokenize("-123")?;
+        let tokens = lex("-123")?;
         let exprs = parse_expressions(&tokens)?;
 
         assert_eq!(
@@ -990,7 +992,7 @@ mod tests {
 
     #[test]
     fn parse_binary_op() -> Result<()> {
-        let tokens = tokenize("456 - 123")?;
+        let tokens = lex("456 - 123")?;
         let exprs = parse_expressions(&tokens)?;
 
         assert_eq!(
@@ -1014,7 +1016,7 @@ mod tests {
 
     #[test]
     fn parse_binop_precedence_1() -> Result<()> {
-        let tokens = tokenize("456 - 123 * 789")?;
+        let tokens = lex("456 - 123 * 789")?;
         let exprs = parse_expressions(&tokens)?;
 
         assert_eq!(
@@ -1046,7 +1048,7 @@ mod tests {
 
     #[test]
     fn parse_binop_precedence_2() -> Result<()> {
-        let tokens = tokenize("456 * 123 - 789")?;
+        let tokens = lex("456 * 123 - 789")?;
         let exprs = parse_expressions(&tokens)?;
 
         assert_eq!(
@@ -1078,7 +1080,7 @@ mod tests {
 
     #[test]
     fn parse_return_statement() -> Result<()> {
-        let tokens = tokenize("return 456 - 123;")?;
+        let tokens = lex("return 456 - 123;")?;
         let stmts = parse_statements(&tokens)?;
 
         assert_eq!(
@@ -1105,7 +1107,7 @@ mod tests {
 
     #[test]
     fn parse_empty_block() -> Result<()> {
-        let tokens = tokenize("{}")?;
+        let tokens = lex("{}")?;
         let stmts = parse_statements(&tokens)?;
         assert_eq!(stmts.len(), 1);
         assert_eq!(
@@ -1122,7 +1124,7 @@ mod tests {
 
     #[test]
     fn parse_nested_block() -> Result<()> {
-        let tokens = tokenize("{{{}}}")?;
+        let tokens = lex("{{{}}}")?;
         let stmts = parse_statements(&tokens)?;
         assert_eq!(stmts.len(), 1);
         assert_eq!(
@@ -1146,7 +1148,7 @@ mod tests {
 
     #[test]
     fn parse_simple_function() -> Result<()> {
-        let tokens = tokenize("fn test() { return 12; }")?;
+        let tokens = lex("fn test() { return 12; }")?;
         let func = parse_function(&tokens)?;
         assert_eq!(
             func,
@@ -1174,7 +1176,7 @@ mod tests {
 
     #[test]
     fn parse_function_return_type() -> Result<()> {
-        let tokens = tokenize("fn test() u8 { return 12; }")?;
+        let tokens = lex("fn test() u8 { return 12; }")?;
         let func = parse_function(&tokens)?;
         assert_eq!(
             func,
@@ -1202,7 +1204,7 @@ mod tests {
 
     #[test]
     fn parse_function_call_expr() -> Result<()> {
-        let tokens = tokenize("test()")?;
+        let tokens = lex("test()")?;
         let call = parse_expressions(&tokens)?;
         assert_eq!(
             call[0],
@@ -1217,7 +1219,7 @@ mod tests {
 
     #[test]
     fn parse_string_constant_expr() -> Result<()> {
-        let tokens = tokenize("\"test\"")?;
+        let tokens = lex("\"test\"")?;
         let string = parse_expressions(&tokens)?;
         assert_eq!(
             string[0],
@@ -1231,7 +1233,7 @@ mod tests {
 
     #[test]
     fn parse_string_constant_escaped_expr() -> Result<()> {
-        let tokens = tokenize("\"test\\t\\'test\\'\\n\"")?;
+        let tokens = lex("\"test\\t\\'test\\'\\n\"")?;
         let string = parse_expressions(&tokens)?;
         assert_eq!(
             string[0],
@@ -1245,7 +1247,7 @@ mod tests {
 
     #[test]
     fn parse_function_call_stmt() -> Result<()> {
-        let tokens = tokenize("test();")?;
+        let tokens = lex("test();")?;
         let call = parse_statements(&tokens)?;
         assert_eq!(
             call[0],
@@ -1263,7 +1265,7 @@ mod tests {
 
     #[test]
     fn parse_function_call_stmt_with_arg() -> Result<()> {
-        let tokens = tokenize("test(x);")?;
+        let tokens = lex("test(x);")?;
         let call = parse_statements(&tokens)?;
         assert_eq!(
             call[0],

@@ -7,10 +7,10 @@ use dodo::{
         BackendType,
     },
     error::Result,
+    lexer::lex,
     //    optimisations::optimise,
     parser::Parser,
     sema::Sema,
-    tokenizer::tokenize,
 };
 use std::{
     collections::hash_map::DefaultHasher,
@@ -86,7 +86,7 @@ fn run_test(
     enable_optimization.hash(&mut hasher);
     let test_code = hasher.finish();
 
-    let tokens = tokenize(source)?;
+    let tokens = lex(source)?;
 
     let parser = Parser::new(&tokens);
     let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
