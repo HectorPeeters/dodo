@@ -198,7 +198,6 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             UpperStatement::ConstDeclaration(ConstDeclaration {
-                name: _,
                 value,
                 annotations,
                 declaration_id,
@@ -254,7 +253,6 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             Statement::Declaration(DeclarationStatement {
-                name: _,
                 declaration_id,
                 range: _,
             }) => {

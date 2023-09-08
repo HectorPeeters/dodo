@@ -282,7 +282,6 @@ impl<'a, 'b> Sema<'a> {
                     .map_err(|x| x.with_range(range))?;
 
                 Ok(Statement::Declaration(DeclarationStatement {
-                    name,
                     declaration_id,
                     range,
                 }))
@@ -993,7 +992,6 @@ impl<'a, 'b> Sema<'a> {
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok(UpperStatement::ConstDeclaration(ConstDeclaration {
-                    name,
                     declaration_id,
                     value,
                     annotations: checked_annotations,

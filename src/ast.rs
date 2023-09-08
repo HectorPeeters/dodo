@@ -29,7 +29,6 @@ pub struct StructDeclaration<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct ConstDeclaration<'a> {
-    pub name: &'a str,
     pub declaration_id: DeclarationId,
     pub value: Expression<'a>,
     pub annotations: Annotations<'a>,
@@ -58,8 +57,7 @@ pub struct BlockStatement<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct DeclarationStatement<'a> {
-    pub name: &'a str,
+pub struct DeclarationStatement {
     pub declaration_id: DeclarationId,
     pub range: SourceRange,
 }
@@ -101,7 +99,7 @@ pub struct ReturnStatement<'a> {
 #[derive(Debug, PartialEq)]
 pub enum Statement<'a> {
     Block(BlockStatement<'a>),
-    Declaration(DeclarationStatement<'a>),
+    Declaration(DeclarationStatement),
     Assignment(AssignmentStatement<'a>),
     Expression(ExpressionStatement<'a>),
     While(WhileStatement<'a>),

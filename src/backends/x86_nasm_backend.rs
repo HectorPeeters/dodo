@@ -445,7 +445,6 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 assert_eq!(self.allocated_registers.iter().filter(|x| **x).count(), 0);
             }
             UpperStatement::ConstDeclaration(ConstDeclaration {
-                name: _,
                 value,
                 annotations,
                 declaration_id,
@@ -469,7 +468,6 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
     fn visit_statement(&mut self, statement: Statement<'b>) -> Result<()> {
         match statement {
             Statement::Declaration(DeclarationStatement {
-                name: _,
                 declaration_id,
                 range: _,
             }) => {
