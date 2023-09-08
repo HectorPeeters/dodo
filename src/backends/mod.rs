@@ -1,12 +1,12 @@
 use crate::{ast::UpperStatement, error::Result};
-use clap::ArgEnum;
+use clap::ValueEnum;
 use std::{path::Path, process::Command};
 
 pub mod c_backend;
 pub mod x86_instruction;
 pub mod x86_nasm_backend;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ArgEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum BackendType {
     X86,
     C,

@@ -1,4 +1,3 @@
-use clap::StructOpt;
 use std::path::PathBuf;
 
 use dodo::backends::BackendType;
@@ -15,7 +14,7 @@ struct Args {
     #[clap(short, long)]
     output: Option<std::path::PathBuf>,
 
-    #[clap(short, long, arg_enum)]
+    #[clap(short, long)]
     backend: Option<BackendType>,
 
     #[clap(long)]
@@ -51,10 +50,15 @@ fn unwrap_or_error<T>(result: Result<T>, source_file: &str) -> T {
 }
 
 #[cfg(not(tarpaulin_include))]
-fn main() -> Result<()> {
-    let args = Args::parse();
+fn get_args() -> Args {
+    use clap::Parser;
+    Args::parse()
+}
 
+#[cfg(not(tarpaulin_include))]
+fn main() -> Result<()> {
     // Reading source
+    let args = get_args();
 
     let source = std::fs::read_to_string(&args.source_path);
     if source.is_err() {
