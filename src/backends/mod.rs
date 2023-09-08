@@ -3,6 +3,7 @@ use clap::ArgEnum;
 use std::{path::Path, process::Command};
 
 pub mod c_backend;
+pub mod cranelift_backend;
 pub mod ir_backend;
 pub mod x86_instruction;
 pub mod x86_nasm_backend;
@@ -12,6 +13,7 @@ pub enum BackendType {
     X86,
     C,
     Ir,
+    Cranelift,
 }
 
 pub trait Backend<'a> {
