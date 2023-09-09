@@ -1,14 +1,8 @@
 use dodo::{
-    backends::{
-        c_backend::CBackend,
-        // ir_backend::IrBackend
-        x86_nasm_backend::X86NasmBackend,
-        Backend,
-        BackendType,
-    },
+    backends::{c_backend::CBackend, x86_nasm_backend::X86NasmBackend, Backend, BackendType},
     error::Result,
     lexer::lex,
-    //    optimisations::optimise,
+    optimizations::optimise,
     parser::Parser,
     sema::Sema,
 };
@@ -93,11 +87,11 @@ fn run_test(
 
     let mut sema = Sema::new();
 
-    let statements = sema.analyse(statements)?;
+    let mut statements = sema.analyse(statements)?;
 
-    //    if enable_optimization {
-    //        statements = optimise(statements, &project, true);
-    //    }
+    if enable_optimization {
+        statements = optimise(statements, &sema, true)?;
+    }
 
     let mut backend: Box<dyn Backend> = match backend_type {
         BackendType::C => Box::new(CBackend::new(&sema)),

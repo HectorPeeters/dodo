@@ -58,6 +58,8 @@ fn get_args() -> Args {
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     // Reading source
+
+    use dodo::optimizations::optimise;
     let args = get_args();
 
     let source = std::fs::read_to_string(&args.source_path);
@@ -91,10 +93,24 @@ fn main() -> Result<()> {
     // Semantic analysis
 
     let mut sema = Sema::new();
-    let statements = unwrap_or_error(sema.analyse(statements), source_file);
+    let mut statements = unwrap_or_error(sema.analyse(statements), source_file);
 
     if args.print_typed_ast {
         println!("Typed ast:");
+        println!("{statements:#?}");
+    }
+
+    // Optimisation
+
+    if args.optimise {
+        statements = unwrap_or_error(
+            optimise(statements, &sema, args.print_optimisations),
+            source_file,
+        );
+    }
+
+    if args.print_optimised_ast {
+        println!("Optimised ast:");
         println!("{statements:#?}");
     }
 

@@ -8,6 +8,7 @@ pub mod error;
 pub mod interpreter;
 pub mod ir;
 pub mod lexer;
+pub mod optimizations;
 pub mod parser;
 pub mod scope;
 pub mod sema;
