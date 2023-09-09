@@ -58,13 +58,24 @@ impl Error {
         let source_code = std::fs::read_to_string(source_file)?;
         let mut color_generator = ColorGenerator::new();
 
-        Report::build(ReportKind::Error, &source_file, 10)
-            .with_message(format!("{:?} error encountered", self.error_type))
-            .with_label(
-                Label::new((&source_file, self.range.unwrap().into()))
-                    .with_message(&self.message)
-                    .with_color(color_generator.next()),
-            )
+        let mut builder = Report::build(ReportKind::Error, &source_file, 10);
+
+        if let Some(range) = self.range {
+            builder = builder
+                .with_message(format!("{:?} error encountered", self.error_type))
+                .with_label(
+                    Label::new((&source_file, range.into()))
+                        .with_message(&self.message)
+                        .with_color(color_generator.next()),
+                );
+        } else {
+            builder = builder.with_message(format!(
+                "{:?} error encountered: {}",
+                self.error_type, self.message
+            ));
+        }
+
+        builder
             .finish()
             .print((&source_file, Source::from(source_code)))
             .unwrap();

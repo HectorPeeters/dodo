@@ -190,7 +190,7 @@ impl<'a, 'b> Sema<'a> {
             ParsedUpperStatement::StructDeclaration {
                 name,
                 fields,
-                range: _,
+                range,
             } => {
                 let checked_fields = fields
                     .iter()
@@ -198,7 +198,8 @@ impl<'a, 'b> Sema<'a> {
                         Ok(checked_type) => Ok((name, checked_type)),
                         Err(e) => Err(e),
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<Result<Vec<_>>>()
+                    .map_err(|x| x.with_range(*range))?;
 
                 self.register_type(Type::Struct(StructType {
                     name: name.to_string(),
@@ -650,7 +651,7 @@ impl<'a, 'b> Sema<'a> {
                 }))
             }
             ParsedExpression::VariableRef { name, range } => {
-                let declaration_id = self.scope.find(name)?;
+                let declaration_id = self.scope.find(name).map_err(|e| e.with_range(range))?;
                 let type_id = self.declarations[declaration_id.0];
 
                 Ok(Expression::VariableRef(VariableRefExpr {
@@ -665,39 +666,31 @@ impl<'a, 'b> Sema<'a> {
                 fields,
                 range,
             } => {
-                let struct_type = self.check_type(&struct_type)?;
-                if !self.get_type(struct_type)?.is_struct() {
-                    return Err(Error::new_with_range(
-                        ErrorType::TypeCheck,
-                        "Trying to use struct constant for non-struct type".to_string(),
-                        range,
-                    ));
-                }
+                let struct_type_id = self.check_type(&struct_type)?;
 
-                // TODO: this scope feels somewhat stupid
-                {
-                    let struct_data = self.get_struct(struct_type)?;
+                let struct_type = self
+                    .get_struct(struct_type_id)
+                    .map_err(|e| e.with_range(range))?;
 
-                    for (expected_name, _) in &struct_data.fields {
-                        if !fields.iter().any(|f| f.0 == expected_name) {
-                            return Err(Error::new_with_range(
-                                ErrorType::TypeCheck,
-                                format!("Missing field '{expected_name}' in struct constructor"),
-                                range,
-                            ));
-                        }
-                    }
-
-                    if struct_data.fields.len() != fields.len() {
+                for (expected_name, _) in &struct_type.fields {
+                    if !fields.iter().any(|f| f.0 == expected_name) {
                         return Err(Error::new_with_range(
                             ErrorType::TypeCheck,
-                            format!(
-                                "Too many fields in struct constructor for '{}'",
-                                struct_data.name
-                            ),
+                            format!("Missing field '{expected_name}' in struct constructor"),
                             range,
                         ));
                     }
+                }
+
+                if struct_type.fields.len() != fields.len() {
+                    return Err(Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!(
+                            "Too many fields in struct constructor for '{}'",
+                            struct_type.name
+                        ),
+                        range,
+                    ));
                 }
 
                 let mut checked_fields = vec![];
@@ -705,8 +698,12 @@ impl<'a, 'b> Sema<'a> {
                 for (field_name, field_value) in fields {
                     let mut checked_value = self.check_expression(field_value)?;
 
-                    let struct_data = self.get_struct(struct_type)?;
-                    let struct_field = struct_data
+                    // TODO: refetching the type here is kinda stupid
+                    let struct_type = self
+                        .get_struct(struct_type_id)
+                        .map_err(|e| e.with_range(range))?;
+
+                    let struct_field = struct_type
                         .fields
                         .iter()
                         .find(|x| x.0 == field_name)
@@ -739,7 +736,7 @@ impl<'a, 'b> Sema<'a> {
 
                 Ok(Expression::StructLiteral(StructLiteralExpr {
                     fields: checked_fields,
-                    type_id: struct_type,
+                    type_id: struct_type_id,
                     range,
                 }))
             }
@@ -919,7 +916,8 @@ impl<'a, 'b> Sema<'a> {
                         Ok(checked_type) => Ok((name, checked_type)),
                         Err(e) => Err(e),
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<Result<Vec<_>>>()
+                    .map_err(|x| x.with_range(range))?;
 
                 let complete_type = Type::Struct(StructType {
                     name: name.to_string(),
