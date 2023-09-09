@@ -1,6 +1,9 @@
 #![allow(clippy::redundant_closure_call)]
 
-use crate::ast::{BinaryOperatorExpr, BinaryOperatorType, Expression, IntegerLiteralExpr};
+use crate::ast::{
+    BinaryOperatorExpr, BinaryOperatorType, Expression, IntegerLiteralExpr, UnaryOperatorExpr,
+    UnaryOperatorType,
+};
 use crate::error::Result;
 use crate::sema::Sema;
 
@@ -56,7 +59,27 @@ macro_rules! impl_binop {
     }};
 }
 
+// TODO: all operations here are performed on u64's. This might cause problems with wrapping
+// behaviour
 impl<'a, 'b> AstWalker<'a> for ConstantFold<'b> {
+    fn visit_unop(&mut self, unop: UnaryOperatorExpr<'a>) -> Result<Expression<'a>> {
+        match (unop.op_type, unop.expr) {
+            (UnaryOperatorType::Negate, box Expression::IntegerLiteral(expr)) => {
+                Ok(Expression::IntegerLiteral(IntegerLiteralExpr {
+                    value: expr.value.wrapping_neg(),
+                    type_id: expr.type_id,
+                    range: expr.range,
+                }))
+            }
+            (op_type, expr) => Ok(Expression::UnaryOperator(UnaryOperatorExpr {
+                op_type,
+                expr,
+                type_id: unop.type_id,
+                range: unop.range,
+            })),
+        }
+    }
+
     fn visit_binop(&mut self, binop: BinaryOperatorExpr<'a>) -> Result<Expression<'a>> {
         match (binop.op_type, binop.left, binop.right) {
             (
