@@ -1,10 +1,12 @@
 mod ast_walker;
 mod constant_fold;
+mod constant_propagation;
 mod math_identities;
 mod unnecessary_widen;
 
 use self::ast_walker::AstWalker;
 use self::constant_fold::ConstantFold;
+use self::constant_propagation::ConstantPropagation;
 use self::math_identities::MathIdentities;
 use self::unnecessary_widen::UnnecessaryWiden;
 use crate::ast::UpperStatement;
@@ -19,7 +21,7 @@ pub trait OptimisationStep<'a>: AstWalker<'a> {
 
 pub fn optimise<'a>(
     mut statements: Vec<UpperStatement<'a>>,
-    sema: &Sema,
+    sema: &'a Sema<'a>,
     print_optimisations: bool,
 ) -> Result<Vec<UpperStatement<'a>>> {
     let mut total_passes = 0;
@@ -28,10 +30,11 @@ pub fn optimise<'a>(
     loop {
         let mut performed_optimisation = false;
 
-        let passes: [Box<dyn OptimisationStep>; 3] = [
+        let passes: [Box<dyn OptimisationStep>; 4] = [
             Box::<UnnecessaryWiden>::default(),
             Box::<MathIdentities>::default(),
             Box::new(ConstantFold::new(sema)),
+            Box::new(ConstantPropagation::new(sema)),
         ];
 
         for mut pass in passes {

@@ -8,7 +8,7 @@ use crate::sema::{
 };
 use crate::types::TypeId;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Annotations<'a>(HashMap<&'a str, Option<Expression<'a>>>);
 
 impl<'a> Annotations<'a> {
@@ -37,7 +37,7 @@ impl<'a> From<HashMap<&'a str, Option<Expression<'a>>>> for Annotations<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration<'a> {
     pub name: &'a str,
     pub params: Vec<DeclarationId>,
@@ -47,7 +47,7 @@ pub struct FunctionDeclaration<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructDeclaration<'a> {
     pub name: &'a str,
     pub declaration_id: DeclarationId,
@@ -55,7 +55,7 @@ pub struct StructDeclaration<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConstDeclaration<'a> {
     pub declaration_id: DeclarationId,
     pub value: Expression<'a>,
@@ -63,13 +63,13 @@ pub struct ConstDeclaration<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExternDeclaration<'a> {
     pub name: &'a str,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UpperStatement<'a> {
     Function(FunctionDeclaration<'a>),
     StructDeclaration(StructDeclaration<'a>),
@@ -77,40 +77,40 @@ pub enum UpperStatement<'a> {
     ExternDeclaration(ExternDeclaration<'a>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement<'a> {
     pub children: Vec<Statement<'a>>,
     pub scoped: bool,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeclarationStatement {
     pub declaration_id: DeclarationId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AssignmentStatement<'a> {
     pub left: Expression<'a>,
     pub right: Expression<'a>,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStatement<'a> {
     pub expr: Expression<'a>,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WhileStatement<'a> {
     pub condition: Expression<'a>,
     pub body: Box<Statement<'a>>,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IfStatement<'a> {
     pub condition: Expression<'a>,
     pub if_body: Box<Statement<'a>>,
@@ -118,13 +118,13 @@ pub struct IfStatement<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReturnStatement<'a> {
     pub expr: Expression<'a>,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'a> {
     Block(BlockStatement<'a>),
     Declaration(DeclarationStatement),
@@ -240,7 +240,7 @@ impl<'a> fmt::Display for EscapedString<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BinaryOperatorExpr<'a> {
     pub op_type: BinaryOperatorType,
     pub left: Box<Expression<'a>>,
@@ -249,7 +249,7 @@ pub struct BinaryOperatorExpr<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnaryOperatorExpr<'a> {
     pub op_type: UnaryOperatorType,
     pub expr: Box<Expression<'a>>,
@@ -257,7 +257,7 @@ pub struct UnaryOperatorExpr<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCallExpr<'a> {
     pub name: &'a str,
     pub args: Vec<Expression<'a>>,
@@ -265,7 +265,7 @@ pub struct FunctionCallExpr<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IntegerLiteralExpr {
     pub value: u64,
     pub type_id: TypeId,
@@ -292,14 +292,14 @@ impl IntegerLiteralExpr {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BooleanLiteralExpr {
     pub value: bool,
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariableRefExpr<'a> {
     pub name: &'a str,
     pub declaration_id: DeclarationId,
@@ -307,21 +307,21 @@ pub struct VariableRefExpr<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StringLiteralExpr<'a> {
     pub value: EscapedString<'a>,
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteralExpr<'a> {
     pub fields: Vec<(&'a str, Expression<'a>)>,
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccessorExpr<'a> {
     pub name: &'a str,
     pub expr: Box<Expression<'a>>,
@@ -329,27 +329,27 @@ pub struct FieldAccessorExpr<'a> {
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WidenExpr<'a> {
     pub expr: Box<Expression<'a>>,
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CastExpr<'a> {
     pub expr: Box<Expression<'a>>,
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeExpr {
     pub type_id: TypeId,
     pub range: SourceRange,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
     BinaryOperator(BinaryOperatorExpr<'a>),
     UnaryOperator(UnaryOperatorExpr<'a>),

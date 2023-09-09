@@ -36,9 +36,16 @@ impl Display for DeclarationId {
     }
 }
 
+pub struct Declaration<'a> {
+    pub type_id: TypeId,
+    pub is_constant: bool,
+    // TODO: storing a copy here probably isn't a good idea
+    pub value: Option<Expression<'a>>,
+}
+
 pub struct Sema<'a> {
     function_declarations: HashMap<&'a str, FunctionType>,
-    declarations: Vec<TypeId>,
+    declarations: Vec<Declaration<'a>>,
     types: Vec<Type>,
     scope: Scope<DeclarationId>,
     current_function_return_type: TypeId,
@@ -128,13 +135,21 @@ impl<'a, 'b> Sema<'a> {
         })
     }
 
-    pub fn add_declaration(&mut self, type_id: TypeId) -> DeclarationId {
-        self.declarations.push(type_id);
+    pub fn add_declaration(&mut self, type_id: TypeId, is_constant: bool) -> DeclarationId {
+        self.declarations.push(Declaration {
+            type_id,
+            is_constant,
+            value: None,
+        });
         DeclarationId(self.declarations.len() - 1)
     }
 
-    pub fn get_declaration_type(&self, declaration_id: DeclarationId) -> TypeId {
-        self.declarations[declaration_id.0]
+    pub fn get_declaration(&self, declaration_id: DeclarationId) -> &Declaration {
+        &self.declarations[declaration_id.0]
+    }
+
+    pub fn add_declaration_value(&mut self, declaration_id: DeclarationId, value: Expression<'a>) {
+        self.declarations[declaration_id.0].value = Some(value);
     }
 
     pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
@@ -276,7 +291,7 @@ impl<'a, 'b> Sema<'a> {
             } => {
                 let type_id = self.check_type(&value_type)?;
 
-                let declaration_id = self.add_declaration(type_id);
+                let declaration_id = self.add_declaration(type_id, false);
 
                 self.scope
                     .insert(name, declaration_id)
@@ -652,11 +667,11 @@ impl<'a, 'b> Sema<'a> {
             }
             ParsedExpression::VariableRef { name, range } => {
                 let declaration_id = self.scope.find(name).map_err(|e| e.with_range(range))?;
-                let type_id = self.declarations[declaration_id.0];
+                let declaration = self.get_declaration(declaration_id);
 
                 Ok(Expression::VariableRef(VariableRefExpr {
                     name,
-                    type_id,
+                    type_id: declaration.type_id,
                     declaration_id,
                     range,
                 }))
@@ -867,7 +882,7 @@ impl<'a, 'b> Sema<'a> {
                     .iter()
                     .zip(function_declaration.parameters.iter())
                 {
-                    let declaration_id = self.add_declaration(*param_type);
+                    let declaration_id = self.add_declaration(*param_type, false);
 
                     self.scope
                         .insert(name, declaration_id)
@@ -928,7 +943,7 @@ impl<'a, 'b> Sema<'a> {
                 });
                 let type_id = self.find_or_add_type(complete_type);
 
-                let declaration_id = self.add_declaration(type_id);
+                let declaration_id = self.add_declaration(type_id, false);
 
                 Ok(UpperStatement::StructDeclaration(StructDeclaration {
                     name,
@@ -970,8 +985,8 @@ impl<'a, 'b> Sema<'a> {
                     });
                 }
 
-                self.declarations.push(type_id);
-                let declaration_id = DeclarationId(self.declarations.len() - 1);
+                let declaration_id = self.add_declaration(type_id, true);
+                self.add_declaration_value(declaration_id, value.clone());
 
                 self.scope.insert(name, declaration_id)?;
 

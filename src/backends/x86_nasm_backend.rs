@@ -403,7 +403,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         .insert(*declaration_id, DataLocation::Stack(offset));
                     self.data_stack_offset.last_mut().unwrap().add_assign(1);
 
-                    let arg_type = self.sema.get_declaration_type(*declaration_id);
+                    let arg_type = self.sema.get_declaration(*declaration_id).type_id;
 
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET, true),

@@ -124,7 +124,7 @@ impl<'a> CBackend<'a> {
         let params = params
             .iter()
             .map(|declaration_id| {
-                let type_id = self.sema.get_declaration_type(*declaration_id);
+                let type_id = self.sema.get_declaration(*declaration_id).type_id;
                 self.to_c_type(type_id)
                     .map(|t| format!("{t} {}", declaration_id))
             })
@@ -197,7 +197,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 declaration_id,
                 range: _,
             }) => {
-                let type_id = self.sema.get_declaration_type(declaration_id);
+                let type_id = self.sema.get_declaration(declaration_id).type_id;
                 let c_type = self.to_c_type(type_id)?;
 
                 let c_value = self.visit_expression(value)?;
@@ -244,7 +244,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 declaration_id,
                 range: _,
             }) => {
-                let type_id = self.sema.get_declaration_type(declaration_id);
+                let type_id = self.sema.get_declaration(declaration_id).type_id;
                 self.buffer.push_str(&format!(
                     "{} {};\n",
                     self.to_c_type(type_id)?,
