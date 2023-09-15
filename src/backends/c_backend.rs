@@ -1,9 +1,10 @@
 use super::Backend;
 use crate::ast::{
     Annotations, AssignmentStatement, Ast, AstVisitor, BinaryOperatorType, BlockStatement,
-    CastExpr, ConstDeclaration, DeclarationStatement, Expression, ExpressionId, FieldAccessorExpr,
-    FunctionCallExpr, FunctionDeclaration, IfStatement, Statement, StatementId, StructDeclaration,
-    StructLiteralExpr, UnaryOperatorType, UpperStatement, UpperStatementId, WhileStatement,
+    CastExpr, ConstDeclaration, DeclarationStatement, Expression, ExpressionId,
+    ExpressionStatement, FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IfStatement,
+    ReturnStatement, Statement, StatementId, StructDeclaration, StructLiteralExpr,
+    UnaryOperatorType, UpperStatement, UpperStatementId, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::sema::{
@@ -105,11 +106,11 @@ impl<'a> CBackend<'a> {
             BUILTIN_TYPE_U64 => Ok("unsigned long".to_string()),
             BUILTIN_TYPE_BOOL => Ok("bool".to_string()),
             BUILTIN_TYPE_VOID => Ok("void".to_string()),
-            _ if self.sema.get_type(id)?.is_ptr() => Ok(format!(
+            _ if self.sema.get_type_info(id)?.is_ptr() => Ok(format!(
                 "{}*",
-                self.to_c_type(self.sema.get_type(id)?.get_deref()?)?
+                self.to_c_type(self.sema.get_type_info(id)?.get_deref()?)?
             )),
-            _ if self.sema.get_type(id)?.is_struct() => {
+            _ if self.sema.get_type_info(id)?.is_struct() => {
                 Ok(format!("struct {}", self.sema.get_struct(id)?.name))
             }
             _ => unreachable!(),
@@ -227,7 +228,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
 
         match statement {
             Statement::Block(BlockStatement {
-                children,
+                children_ids,
                 scoped,
                 range: _,
             }) => {
@@ -235,7 +236,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                     self.buffer.push_str("{\n");
                 }
 
-                for statement in children {
+                for statement in children_ids {
                     self.visit_statement(*statement)?;
                 }
 
@@ -258,54 +259,54 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                 Ok(())
             }
             Statement::Assignment(AssignmentStatement {
-                left,
-                right,
+                left_id,
+                right_id,
                 range: _,
             }) => {
-                let left = self.visit_expression(*left)?;
-                let right = self.visit_expression(*right)?;
+                let left = self.visit_expression(*left_id)?;
+                let right = self.visit_expression(*right_id)?;
                 self.buffer.push_str(&format!("{left} = {right};\n"));
                 Ok(())
             }
-            Statement::Expression(expr_stmt) => {
-                let expr = self.visit_expression(expr_stmt.expr)?;
+            Statement::Expression(ExpressionStatement { expr_id, range: _ }) => {
+                let expr = self.visit_expression(*expr_id)?;
                 self.buffer.push_str(&expr);
                 self.buffer.push_str(";\n");
                 Ok(())
             }
             Statement::While(WhileStatement {
-                condition,
-                body,
+                condition_id,
+                body_id,
                 range: _,
             }) => {
-                let condition = self.visit_expression(*condition)?;
+                let condition = self.visit_expression(*condition_id)?;
 
                 self.buffer.push_str(&format!("while ({condition}) {{"));
-                self.visit_statement(*body)?;
+                self.visit_statement(*body_id)?;
                 self.buffer.push('}');
 
                 Ok(())
             }
             Statement::If(IfStatement {
-                condition,
-                if_body,
-                else_body,
+                condition_id,
+                if_body_id,
+                else_body_id,
                 range: _,
             }) => {
-                let condition = self.visit_expression(*condition)?;
+                let condition = self.visit_expression(*condition_id)?;
 
                 self.buffer.push_str(&format!("if ({condition}) "));
-                self.visit_statement(*if_body)?;
+                self.visit_statement(*if_body_id)?;
 
-                if let Some(else_body) = else_body {
+                if let Some(else_body) = else_body_id {
                     self.buffer.push_str(" else ");
                     self.visit_statement(*else_body)?;
                 }
 
                 Ok(())
             }
-            Statement::Return(return_expr) => {
-                let value = self.visit_expression(return_expr.expr)?;
+            Statement::Return(ReturnStatement { expr_id, range: _ }) => {
+                let value = self.visit_expression(*expr_id)?;
                 self.buffer.push_str(&format!("return {value};"));
 
                 Ok(())
@@ -317,8 +318,8 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
         let expression = self.ast.get_expression(expression_id);
         match expression {
             Expression::BinaryOperator(binop) => {
-                let left = self.visit_expression(binop.left)?;
-                let right = self.visit_expression(binop.right)?;
+                let left = self.visit_expression(binop.left_id)?;
+                let right = self.visit_expression(binop.right_id)?;
 
                 Ok(match binop.op_type {
                     BinaryOperatorType::Add => format!("({left} + {right})"),
@@ -339,7 +340,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                 })
             }
             Expression::UnaryOperator(unop) => {
-                let expr = self.visit_expression(unop.expr)?;
+                let expr = self.visit_expression(unop.expr_id)?;
 
                 Ok(match unop.op_type {
                     UnaryOperatorType::Negate => format!("(-{expr})"),
@@ -349,11 +350,10 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             }
             Expression::FunctionCall(FunctionCallExpr {
                 name,
-                args,
-                type_id: _,
+                arg_ids,
                 range: _,
             }) => {
-                let args = args
+                let args = arg_ids
                     .iter()
                     .map(|x| self.visit_expression(*x))
                     .collect::<Result<Vec<_>>>()?
@@ -365,12 +365,9 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
             Expression::VariableRef(var_ref) => Ok(format!("{}", var_ref.declaration_id)),
             Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
-            Expression::StructLiteral(StructLiteralExpr {
-                fields,
-                type_id,
-                range: _,
-            }) => {
-                let c_type = self.to_c_type(*type_id)?;
+            Expression::StructLiteral(StructLiteralExpr { fields, range: _ }) => {
+                let type_id = self.sema.get_type(expression_id);
+                let c_type = self.to_c_type(type_id)?;
 
                 let formatted_fields = fields
                     .iter()
@@ -385,30 +382,27 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             }
             Expression::FieldAccessor(FieldAccessorExpr {
                 name,
-                expr,
-                type_id: _,
+                expr_id,
                 range: _,
             }) => {
-                let expression = self.ast.get_expression(*expr);
-                let child_type = expression.type_id();
-                let child_source = self.visit_expression(*expr)?;
+                let child_source = self.visit_expression(*expr_id)?;
+                let expression_type = self.sema.get_type(*expr_id);
 
-                if self.sema.get_type(child_type)?.is_ptr() {
+                if self.sema.get_type_info(expression_type)?.is_ptr() {
                     Ok(format!("{child_source}->{name}"))
                 } else {
                     Ok(format!("{child_source}.{name}"))
                 }
             }
-            Expression::Widen(widen) => self.visit_expression(widen.expr),
-            Expression::Cast(CastExpr {
-                expr,
-                type_id,
-                range: _,
-            }) => Ok(format!(
-                "({})({})",
-                self.to_c_type(*type_id)?,
-                self.visit_expression(*expr)?
-            )),
+            Expression::Widen(widen) => self.visit_expression(widen.expr_id),
+            Expression::Cast(CastExpr { expr_id, range: _ }) => {
+                let type_id = self.sema.get_type(expression_id);
+                Ok(format!(
+                    "({})({})",
+                    self.to_c_type(type_id)?,
+                    self.visit_expression(*expr_id)?
+                ))
+            }
             Expression::Type(_) => unreachable!(),
         }
     }

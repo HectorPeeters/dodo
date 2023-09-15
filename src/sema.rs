@@ -49,10 +49,14 @@ pub struct Declaration {
 pub struct Sema<'a> {
     parsed_ast: &'a ParsedAst<'a>,
     ast: Ast<'a>,
+    expression_types: Vec<TypeId>,
+
     function_declarations: HashMap<&'a str, FunctionType>,
     declarations: Vec<Declaration>,
+
     types: Vec<Type>,
     scope: Scope<DeclarationId>,
+
     current_function_return_type: TypeId,
 }
 
@@ -61,6 +65,7 @@ impl<'a> Sema<'a> {
         Self {
             parsed_ast,
             ast: Ast::new(),
+            expression_types: Vec::new(),
             function_declarations: HashMap::new(),
             declarations: Vec::new(),
             types: vec![
@@ -78,6 +83,21 @@ impl<'a> Sema<'a> {
 
     pub fn get_ast(&self) -> &Ast<'a> {
         &self.ast
+    }
+
+    pub fn get_type(&self, expression_id: ExpressionId) -> TypeId {
+        self.expression_types[*expression_id as usize]
+    }
+
+    pub fn add_expression(
+        &mut self,
+        expression: Expression<'a>,
+        type_id: TypeId,
+    ) -> Result<ExpressionId> {
+        let expression_id = self.ast.add_expression(expression);
+        // NOTE: when ast.add_expression changes, this probably won't work
+        self.expression_types.push(type_id);
+        Ok(expression_id)
     }
 
     fn register_type(&mut self, t: Type) -> TypeId {
@@ -103,7 +123,7 @@ impl<'a> Sema<'a> {
         }
     }
 
-    pub fn get_type(&self, id: TypeId) -> Result<&Type> {
+    pub fn get_type_info(&self, id: TypeId) -> Result<&Type> {
         self.types.get(id).ok_or_else(|| {
             Error::new(
                 ErrorType::TypeCheck,
@@ -120,7 +140,7 @@ impl<'a> Sema<'a> {
     }
 
     pub fn get_type_size(&self, id: TypeId) -> Result<usize> {
-        let value_type = self.get_type(id)?;
+        let value_type = self.get_type_info(id)?;
 
         Ok(match value_type {
             Type::UInt8() => 8,
@@ -158,7 +178,7 @@ impl<'a> Sema<'a> {
     }
 
     pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
-        match self.get_type(id)? {
+        match self.get_type_info(id)? {
             Type::Struct(s) => Ok(s),
             _ => Err(Error::new(
                 ErrorType::TypeCheck,
@@ -275,7 +295,7 @@ impl<'a> Sema<'a> {
                     self.scope.push();
                 }
 
-                let children = children
+                let children_ids = children
                     .iter()
                     .map(|x| self.check_statement(*x))
                     .collect::<Result<Vec<_>>>()?;
@@ -285,7 +305,7 @@ impl<'a> Sema<'a> {
                 }
 
                 let statement = Statement::Block(BlockStatement {
-                    children,
+                    children_ids,
                     scoped: *scoped,
                     range: *range,
                 });
@@ -313,13 +333,11 @@ impl<'a> Sema<'a> {
             ParsedStatement::Assignment { left, right, range } => {
                 let left_id = self.check_expression(*left)?;
                 let mut right_id = self.check_expression(*right)?;
-                let left = self.ast.get_expression(left_id);
-                let right = self.ast.get_expression(right_id);
 
-                if left.type_id() == right.type_id() {
+                if self.get_type(left_id) == self.get_type(right_id) {
                     let statement = Statement::Assignment(AssignmentStatement {
-                        left: left_id,
-                        right: right_id,
+                        left_id,
+                        right_id,
                         range: *range,
                     });
 
@@ -327,39 +345,41 @@ impl<'a> Sema<'a> {
                 }
 
                 let new_type = self
-                    .widen_assignment(left.type_id(), right.type_id())?
+                    .widen_assignment(self.get_type(left_id), self.get_type(right_id))?
                     .ok_or_else(|| {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
                                 "Cannot widen from type {:?} to {:?}",
-                                right.type_id(),
-                                left.type_id(),
+                                self.get_type(right_id),
+                                self.get_type(left_id)
                             ),
                             *range,
                         )
                     })?;
 
-                if new_type != right.type_id() {
-                    right_id = self.ast.add_expression(Expression::Widen(WidenExpr {
-                        expr: right_id,
-                        type_id: new_type,
-                        range: *range,
-                    }));
+                if new_type != self.get_type(right_id) {
+                    right_id = self.add_expression(
+                        Expression::Widen(WidenExpr {
+                            expr_id: right_id,
+                            range: *range,
+                        }),
+                        new_type,
+                    )?;
                 }
 
                 let statement = Statement::Assignment(AssignmentStatement {
-                    left: left_id,
-                    right: right_id,
+                    left_id,
+                    right_id,
                     range: *range,
                 });
                 Ok(self.ast.add_statement(statement))
             }
             ParsedStatement::Expression { expr, range } => {
-                let expr = self.check_expression(*expr)?;
+                let expr_id = self.check_expression(*expr)?;
 
                 let statement = Statement::Expression(ExpressionStatement {
-                    expr,
+                    expr_id,
                     range: *range,
                 });
 
@@ -372,30 +392,29 @@ impl<'a> Sema<'a> {
                 range,
             } => {
                 let condition_id = self.check_expression(*condition)?;
-                let condition = self.ast.get_expression(condition_id);
 
-                if condition.type_id() != BUILTIN_TYPE_BOOL {
+                if self.get_type(condition_id) != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {:?}",
-                            condition.type_id()
+                            self.get_type(condition_id)
                         ),
                         *range,
                     ));
                 }
 
-                let if_body = self.check_statement(*body)?;
+                let if_body_id = self.check_statement(*body)?;
 
-                let else_body = match else_body {
+                let else_body_id = match else_body {
                     Some(b) => Some(self.check_statement(*b)?),
                     None => None,
                 };
 
                 let statement = Statement::If(IfStatement {
-                    condition: condition_id,
-                    if_body,
-                    else_body,
+                    condition_id,
+                    if_body_id,
+                    else_body_id,
                     range: *range,
                 });
                 Ok(self.ast.add_statement(statement))
@@ -406,60 +425,59 @@ impl<'a> Sema<'a> {
                 range,
             } => {
                 let condition_id = self.check_expression(*condition)?;
-                let condition = self.ast.get_expression(condition_id);
 
-                if condition.type_id() != BUILTIN_TYPE_BOOL {
+                if self.get_type(condition_id) != BUILTIN_TYPE_BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {:?}",
-                            condition.type_id()
+                            self.get_type(condition_id)
                         ),
                         *range,
                     ));
                 }
 
-                let body = self.check_statement(*body)?;
+                let body_id = self.check_statement(*body)?;
 
                 let statement = Statement::While(WhileStatement {
-                    condition: condition_id,
-                    body,
+                    condition_id,
+                    body_id,
                     range: *range,
                 });
                 Ok(self.ast.add_statement(statement))
             }
             ParsedStatement::Return { value, range } => {
-                let mut value_id = self.check_expression(*value)?;
-                let value_type = self.ast.get_expression(value_id).type_id();
+                let mut expr_id = self.check_expression(*value)?;
+                let expr_type = self.get_type(expr_id);
 
                 assert_ne!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
 
                 let actual_type =
-                    self.widen_assignment(self.current_function_return_type, value_type)?;
+                    self.widen_assignment(self.current_function_return_type, expr_type)?;
 
                 match actual_type {
                     None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
-                            self.current_function_return_type, value_type,
+                            self.current_function_return_type, expr_type,
                         ),
                         *range,
                     )),
                     Some(type_id) => {
-                        if type_id != value_type {
+                        if type_id != expr_type {
                             let widen_expression = Expression::Widen(WidenExpr {
-                                expr: value_id,
-                                type_id,
+                                expr_id,
                                 range: *range,
                             });
-                            value_id = self.ast.add_expression(widen_expression);
+                            expr_id = self.add_expression(widen_expression, type_id)?;
                         }
 
                         let statement = Statement::Return(ReturnStatement {
-                            expr: value_id,
+                            expr_id,
                             range: *range,
                         });
+
                         Ok(self.ast.add_statement(statement))
                     }
                 }
@@ -478,11 +496,11 @@ impl<'a> Sema<'a> {
             } => {
                 // TODO: add support for logic operators
                 let mut left_id = self.check_expression(*left)?;
-                let left_type = self.ast.get_expression(left_id).type_id();
+                let left_type = self.get_type(left_id);
                 let left_size = self.get_type_size(left_type)?;
 
                 let mut right_id = self.check_expression(*right)?;
-                let right_type = self.ast.get_expression(right_id).type_id();
+                let right_type = self.get_type(right_id);
                 let right_size = self.get_type_size(right_type)?;
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
@@ -498,47 +516,50 @@ impl<'a> Sema<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if self.get_type(left_type)?.is_ptr() && !op_type.is_comparison() {
+                if self.get_type_info(left_type)?.is_ptr() && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
-                    let right = self.ast.add_expression(Expression::Widen(WidenExpr {
-                        expr: right_id,
-                        type_id: left_type,
-                        range: *range,
-                    }));
+                    let right_id = self.add_expression(
+                        Expression::Widen(WidenExpr {
+                            expr_id: right_id,
+                            range: *range,
+                        }),
+                        left_type,
+                    )?;
+
                     let expression = Expression::BinaryOperator(BinaryOperatorExpr {
                         op_type: *op_type,
-                        left: left_id,
-                        right,
-                        type_id: left_type,
+                        left_id,
+                        right_id,
                         range: *range,
                     });
-                    return Ok(self.ast.add_expression(expression));
+                    return self.add_expression(expression, left_type);
                 }
 
                 let result_type = match left_size.cmp(&right_size) {
                     Ordering::Greater => {
-                        right_id = self.ast.add_expression(Expression::Widen(WidenExpr {
-                            expr: right_id,
-                            type_id: left_type,
-                            range: *range,
-                        }));
+                        right_id = self.add_expression(
+                            Expression::Widen(WidenExpr {
+                                expr_id: right_id,
+                                range: *range,
+                            }),
+                            left_type,
+                        )?;
                         left_type
                     }
                     Ordering::Less => {
-                        left_id = self.ast.add_expression(Expression::Widen(WidenExpr {
-                            expr: left_id,
-                            type_id: right_type,
-                            range: *range,
-                        }));
+                        left_id = self.add_expression(
+                            Expression::Widen(WidenExpr {
+                                expr_id: left_id,
+                                range: *range,
+                            }),
+                            right_type,
+                        )?;
                         right_type
                     }
                     _ => left_type,
                 };
 
-                assert_eq!(
-                    self.ast.get_expression(left_id).type_id(),
-                    self.ast.get_expression(right_id).type_id()
-                );
+                assert_eq!(self.get_type(left_id), self.get_type(right_id));
 
                 let result_type = if op_type.is_comparison() {
                     BUILTIN_TYPE_BOOL
@@ -548,45 +569,49 @@ impl<'a> Sema<'a> {
 
                 let expression = Expression::BinaryOperator(BinaryOperatorExpr {
                     op_type: *op_type,
-                    left: left_id,
-                    right: right_id,
-                    type_id: result_type,
+                    left_id,
+                    right_id,
                     range: *range,
                 });
 
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, result_type)
             }
             ParsedExpression::UnaryOperator {
                 op_type,
                 expr,
                 range,
             } => {
-                let expr = self.check_expression(*expr)?;
-                let expression = self.ast.get_expression(expr);
-                let expr_type = expression.type_id();
+                let expr_id = self.check_expression(*expr)?;
+                let expr_type = self.get_type(expr_id);
 
-                let expression = match op_type {
-                    UnaryOperatorType::Negate => Expression::UnaryOperator(UnaryOperatorExpr {
-                        op_type: UnaryOperatorType::Negate,
-                        expr,
-                        type_id: expr_type,
-                        range: *range,
-                    }),
-                    UnaryOperatorType::Ref => Expression::UnaryOperator(UnaryOperatorExpr {
-                        op_type: UnaryOperatorType::Ref,
-                        expr,
-                        type_id: self.find_or_add_type(Type::Ptr(expr_type)),
-                        range: *range,
-                    }),
-                    UnaryOperatorType::Deref => Expression::UnaryOperator(UnaryOperatorExpr {
-                        op_type: UnaryOperatorType::Deref,
-                        expr,
-                        type_id: self.get_type(expr_type)?.get_deref()?,
-                        range: *range,
-                    }),
+                let (expression, type_id) = match op_type {
+                    UnaryOperatorType::Negate => (
+                        Expression::UnaryOperator(UnaryOperatorExpr {
+                            op_type: UnaryOperatorType::Negate,
+                            expr_id,
+                            range: *range,
+                        }),
+                        expr_type,
+                    ),
+                    UnaryOperatorType::Ref => (
+                        Expression::UnaryOperator(UnaryOperatorExpr {
+                            op_type: UnaryOperatorType::Ref,
+                            expr_id,
+                            range: *range,
+                        }),
+                        self.find_or_add_type(Type::Ptr(expr_type)),
+                    ),
+                    UnaryOperatorType::Deref => (
+                        Expression::UnaryOperator(UnaryOperatorExpr {
+                            op_type: UnaryOperatorType::Deref,
+                            expr_id,
+                            range: *range,
+                        }),
+                        self.get_type_info(expr_type)?.get_deref()?,
+                    ),
                 };
 
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, type_id)
             }
             ParsedExpression::FunctionCall {
                 name,
@@ -611,14 +636,13 @@ impl<'a> Sema<'a> {
                 if return_type == BUILTIN_TYPE_UNKNOWN {
                     let expression = Expression::FunctionCall(FunctionCallExpr {
                         name,
-                        args: args
+                        arg_ids: args
                             .iter()
                             .map(|arg| self.check_expression(*arg))
                             .collect::<Result<Vec<_>>>()?,
-                        type_id: BUILTIN_TYPE_U64,
                         range: *range,
                     });
-                    return Ok(self.ast.add_expression(expression));
+                    return self.add_expression(expression, BUILTIN_TYPE_U64);
                 }
 
                 assert_eq!(args.len(), function_type.parameters.len());
@@ -627,7 +651,7 @@ impl<'a> Sema<'a> {
 
                 for (arg, expected_type) in args.iter().zip(function_type.parameters.iter()) {
                     let arg_id = self.check_expression(*arg)?;
-                    let arg_type = self.ast.get_expression(arg_id).type_id();
+                    let arg_type = self.get_type(arg_id);
 
                     let new_type = self
                         .widen_assignment(*expected_type, arg_type)?
@@ -641,11 +665,10 @@ impl<'a> Sema<'a> {
 
                     if new_type != arg_type {
                         let expression = Expression::Widen(WidenExpr {
-                            expr: arg_id,
-                            type_id: new_type,
+                            expr_id: arg_id,
                             range: *range,
                         });
-                        new_args.push(self.ast.add_expression(expression));
+                        new_args.push(self.add_expression(expression, new_type)?);
                     } else {
                         new_args.push(arg_id);
                     }
@@ -653,11 +676,10 @@ impl<'a> Sema<'a> {
 
                 let expression = Expression::FunctionCall(FunctionCallExpr {
                     name,
-                    args: new_args,
-                    type_id: return_type,
+                    arg_ids: new_args,
                     range: *range,
                 });
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, return_type)
             }
             ParsedExpression::IntrinsicCall {
                 name,
@@ -678,13 +700,12 @@ impl<'a> Sema<'a> {
                     let target_type_id = self.check_expression(arguments[1])?;
                     let target_type = self.ast.get_expression(target_type_id);
 
-                    if let Expression::Type(expr_type) = target_type {
+                    if let Expression::Type(_) = target_type {
                         let expression = Expression::Cast(CastExpr {
-                            expr: checked_argument,
-                            type_id: expr_type.type_id,
+                            expr_id: checked_argument,
                             range: *range,
                         });
-                        Ok(self.ast.add_expression(expression))
+                        self.add_expression(expression, self.get_type(target_type_id))
                     } else {
                         Err(Error::new_with_range(
                             ErrorType::TypeCheck,
@@ -700,17 +721,26 @@ impl<'a> Sema<'a> {
                 )),
             },
             ParsedExpression::IntegerLiteral { value, range } => {
-                let expression =
-                    Expression::IntegerLiteral(IntegerLiteralExpr::new(*value, *range));
-                Ok(self.ast.add_expression(expression))
+                let expression = Expression::IntegerLiteral(IntegerLiteralExpr {
+                    value: *value,
+                    range: *range,
+                });
+
+                let type_id = match *value {
+                    x if x < 2_u64.pow(8) => BUILTIN_TYPE_U8,
+                    x if x < 2_u64.pow(16) => BUILTIN_TYPE_U16,
+                    x if x < 2_u64.pow(32) => BUILTIN_TYPE_U32,
+                    _ => BUILTIN_TYPE_U64,
+                };
+
+                self.add_expression(expression, type_id)
             }
             ParsedExpression::BooleanLiteral { value, range } => {
                 let expression = Expression::BooleanLiteral(BooleanLiteralExpr {
                     value: *value,
-                    type_id: BUILTIN_TYPE_BOOL,
                     range: *range,
                 });
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, BUILTIN_TYPE_BOOL)
             }
             ParsedExpression::VariableRef { name, range } => {
                 let declaration_id = self.scope.find(name).map_err(|e| e.with_range(*range))?;
@@ -718,11 +748,10 @@ impl<'a> Sema<'a> {
 
                 let expression = Expression::VariableRef(VariableRefExpr {
                     name,
-                    type_id: declaration.type_id,
                     declaration_id,
                     range: *range,
                 });
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, declaration.type_id)
             }
             ParsedExpression::StructLiteral {
                 struct_type,
@@ -760,9 +789,9 @@ impl<'a> Sema<'a> {
 
                 for (field_name, field_value) in fields {
                     let mut checked_value_id = self.check_expression(*field_value)?;
-                    let checked_value = self.ast.get_expression(checked_value_id);
+                    let checked_value_type = self.get_type(checked_value_id);
 
-                    // TODO: refetching the type here is kinda stupid
+                    // TODO: this refetch is stupid
                     let struct_type = self
                         .get_struct(struct_type_id)
                         .map_err(|e| e.with_range(*range))?;
@@ -774,25 +803,26 @@ impl<'a> Sema<'a> {
                         .unwrap();
 
                     let new_type = self
-                        .widen_assignment(struct_field.1, checked_value.type_id())?
+                        .widen_assignment(struct_field.1, checked_value_type)?
                         .ok_or_else(|| {
                             Error::new_with_range(
                                 ErrorType::TypeCheck,
                                 format!(
                                     "Cannot widen from type {:?} to {:?}",
-                                    checked_value.type_id(),
-                                    struct_field.1,
+                                    checked_value_type, struct_field.1,
                                 ),
                                 *range,
                             )
                         })?;
 
-                    if new_type != checked_value.type_id() {
-                        checked_value_id = self.ast.add_expression(Expression::Widen(WidenExpr {
-                            expr: checked_value_id,
-                            type_id: new_type,
-                            range: *range,
-                        }));
+                    if new_type != checked_value_type {
+                        checked_value_id = self.add_expression(
+                            Expression::Widen(WidenExpr {
+                                expr_id: checked_value_id,
+                                range: *range,
+                            }),
+                            new_type,
+                        )?;
                     }
 
                     checked_fields.push((*field_name, checked_value_id));
@@ -800,16 +830,14 @@ impl<'a> Sema<'a> {
 
                 let expression = Expression::StructLiteral(StructLiteralExpr {
                     fields: checked_fields,
-                    type_id: struct_type_id,
                     range: *range,
                 });
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, struct_type_id)
             }
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child_id = self.check_expression(*child)?;
-                let child = self.ast.get_expression(child_id);
-                let child_type_id = child.type_id();
-                let child_type = self.get_type(child_type_id)?;
+                let child_type_id = self.get_type(child_id);
+                let child_type = self.get_type_info(child_type_id)?;
 
                 if !child_type.is_struct() && !child_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -835,24 +863,23 @@ impl<'a> Sema<'a> {
                     Some(field_type) => {
                         let expression = Expression::FieldAccessor(FieldAccessorExpr {
                             name,
-                            expr: child_id,
-                            type_id: *field_type,
+                            expr_id: child_id,
                             range: *range,
                         });
-                        Ok(self.ast.add_expression(expression))
+                        self.add_expression(expression, *field_type)
                     }
                     None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
-                        format!("No field '{name}' exists on type {}", child.type_id()),
+                        format!("No field '{name}' exists on type {}", child_type_id),
                         *range,
                     )),
                 }
             }
             ParsedExpression::ArrayAccessor { expr, index, range } => {
                 let expr_id = self.check_expression(*expr)?;
-                let expr = self.ast.get_expression(expr_id);
+                let expr_type_id = self.get_type(expr_id);
 
-                let expr_type = self.get_type(expr.type_id())?;
+                let expr_type = self.get_type_info(expr_type_id)?;
 
                 if !expr_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -866,49 +893,45 @@ impl<'a> Sema<'a> {
 
                 // Convert $expr[$index] into *($expr + $index)
                 let index = Expression::Widen(WidenExpr {
-                    expr: self.check_expression(*index)?,
-                    type_id: BUILTIN_TYPE_U64,
+                    expr_id: self.check_expression(*index)?,
                     range: *range,
                 });
-                let index_type = index.type_id();
-                let index_range = *index.range();
-                let index_expression = self.ast.add_expression(index);
 
-                let add_expression =
-                    self.ast
-                        .add_expression(Expression::BinaryOperator(BinaryOperatorExpr {
-                            op_type: BinaryOperatorType::Add,
-                            left: expr_id,
-                            right: index_expression,
-                            type_id: index_type,
-                            range: index_range,
-                        }));
+                let index_range = *index.range();
+                // TODO: on non-64-bit platforms this should be U32
+                let index_expression = self.add_expression(index, BUILTIN_TYPE_U64)?;
+
+                let add_expression = self.add_expression(
+                    Expression::BinaryOperator(BinaryOperatorExpr {
+                        op_type: BinaryOperatorType::Add,
+                        left_id: expr_id,
+                        right_id: index_expression,
+                        range: index_range,
+                    }),
+                    BUILTIN_TYPE_U64,
+                )?;
 
                 let expression = Expression::UnaryOperator(UnaryOperatorExpr {
                     op_type: UnaryOperatorType::Deref,
-                    expr: add_expression,
-                    type_id: inner_type,
+                    expr_id: add_expression,
                     range: *range,
                 });
 
-                Ok(self.ast.add_expression(expression))
+                self.add_expression(expression, inner_type)
             }
             ParsedExpression::StringLiteral { value, range } => {
                 let expression = Expression::StringLiteral(StringLiteralExpr {
                     value: *value,
-                    type_id: self.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8)),
                     range: *range,
                 });
-                Ok(self.ast.add_expression(expression))
+                let u8_ptr_type = self.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8));
+                self.add_expression(expression, u8_ptr_type)
             }
             ParsedExpression::Type { value, range } => {
                 let type_id = self.check_type(value)?;
 
-                let expression = Expression::Type(TypeExpr {
-                    type_id,
-                    range: *range,
-                });
-                Ok(self.ast.add_expression(expression))
+                let expression = Expression::Type(TypeExpr { range: *range });
+                self.add_expression(expression, type_id)
             }
         }
     }
@@ -1033,29 +1056,22 @@ impl<'a> Sema<'a> {
                 let type_id = self.check_type(value_type)?;
 
                 let mut value_id = self.check_expression(*value)?;
-                let value = self.ast.get_expression(value_id);
+                let value_type = self.get_type(value_id);
 
-                let new_type = self
-                    .widen_assignment(type_id, value.type_id())?
-                    .ok_or_else(|| {
-                        Error::new_with_range(
-                            ErrorType::TypeCheck,
-                            format!(
-                                "Cannot widen const type {:?} to {:?}",
-                                value.type_id(),
-                                type_id
-                            ),
-                            *range,
-                        )
-                    })?;
+                let new_type = self.widen_assignment(type_id, value_type)?.ok_or_else(|| {
+                    Error::new_with_range(
+                        ErrorType::TypeCheck,
+                        format!("Cannot widen const type {:?} to {:?}", value_type, type_id),
+                        *range,
+                    )
+                })?;
 
-                if new_type != value.type_id() {
+                if new_type != value_type {
                     let expression = Expression::Widen(WidenExpr {
-                        expr: value_id,
-                        type_id: new_type,
+                        expr_id: value_id,
                         range: *range,
                     });
-                    value_id = self.ast.add_expression(expression);
+                    value_id = self.add_expression(expression, new_type)?;
                 }
 
                 let declaration_id = self.add_declaration(type_id, true);

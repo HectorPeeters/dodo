@@ -4,9 +4,7 @@ use std::fmt;
 use crate::error::Result;
 use crate::id_impl;
 use crate::lexer::{SourceRange, TokenType};
-use crate::sema::{
-    DeclarationId, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
-};
+use crate::sema::DeclarationId;
 use crate::types::TypeId;
 
 pub struct Ast<'a> {
@@ -149,7 +147,7 @@ pub enum UpperStatement<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
-    pub children: Vec<StatementId>,
+    pub children_ids: Vec<StatementId>,
     pub scoped: bool,
     pub range: SourceRange,
 }
@@ -162,35 +160,35 @@ pub struct DeclarationStatement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssignmentStatement {
-    pub left: ExpressionId,
-    pub right: ExpressionId,
+    pub left_id: ExpressionId,
+    pub right_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStatement {
-    pub expr: ExpressionId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WhileStatement {
-    pub condition: ExpressionId,
-    pub body: StatementId,
+    pub condition_id: ExpressionId,
+    pub body_id: StatementId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfStatement {
-    pub condition: ExpressionId,
-    pub if_body: StatementId,
-    pub else_body: Option<StatementId>,
+    pub condition_id: ExpressionId,
+    pub if_body_id: StatementId,
+    pub else_body_id: Option<StatementId>,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnStatement {
-    pub expr: ExpressionId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
@@ -313,59 +311,34 @@ impl<'a> fmt::Display for EscapedString<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryOperatorExpr {
     pub op_type: BinaryOperatorType,
-    pub left: ExpressionId,
-    pub right: ExpressionId,
-    pub type_id: TypeId,
+    pub left_id: ExpressionId,
+    pub right_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryOperatorExpr {
     pub op_type: UnaryOperatorType,
-    pub expr: ExpressionId,
-    pub type_id: TypeId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCallExpr<'a> {
     pub name: &'a str,
-    pub args: Vec<ExpressionId>,
-    pub type_id: TypeId,
+    pub arg_ids: Vec<ExpressionId>,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntegerLiteralExpr {
     pub value: u64,
-    pub type_id: TypeId,
     pub range: SourceRange,
-}
-
-impl IntegerLiteralExpr {
-    pub fn new(value: u64, range: SourceRange) -> Self {
-        let type_id = if value <= 255 {
-            BUILTIN_TYPE_U8
-        } else if value <= 65535 {
-            BUILTIN_TYPE_U16
-        } else if value <= 4294967295 {
-            BUILTIN_TYPE_U32
-        } else {
-            BUILTIN_TYPE_U64
-        };
-
-        Self {
-            value,
-            type_id,
-            range,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BooleanLiteralExpr {
     pub value: bool,
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
@@ -373,49 +346,42 @@ pub struct BooleanLiteralExpr {
 pub struct VariableRefExpr<'a> {
     pub name: &'a str,
     pub declaration_id: DeclarationId,
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringLiteralExpr<'a> {
     pub value: EscapedString<'a>,
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteralExpr<'a> {
     pub fields: Vec<(&'a str, ExpressionId)>,
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccessorExpr<'a> {
     pub name: &'a str,
-    pub expr: ExpressionId,
-    pub type_id: TypeId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WidenExpr {
-    pub expr: ExpressionId,
-    pub type_id: TypeId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastExpr {
-    pub expr: ExpressionId,
-    pub type_id: TypeId,
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeExpr {
-    pub type_id: TypeId,
     pub range: SourceRange,
 }
 
@@ -436,25 +402,6 @@ pub enum Expression<'a> {
 }
 
 impl<'a> Expression<'a> {
-    pub fn type_id(&self) -> TypeId {
-        use Expression::*;
-
-        match self {
-            BinaryOperator(x) => x.type_id,
-            UnaryOperator(x) => x.type_id,
-            FunctionCall(x) => x.type_id,
-            IntegerLiteral(x) => x.type_id,
-            BooleanLiteral(x) => x.type_id,
-            VariableRef(x) => x.type_id,
-            StringLiteral(x) => x.type_id,
-            StructLiteral(x) => x.type_id,
-            FieldAccessor(x) => x.type_id,
-            Widen(x) => x.type_id,
-            Cast(x) => x.type_id,
-            Type(x) => x.type_id,
-        }
-    }
-
     pub fn range(&self) -> &SourceRange {
         use Expression::*;
 
