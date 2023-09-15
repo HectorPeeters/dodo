@@ -483,8 +483,6 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 right,
                 range: _,
             }) => {
-                // TODO: investigate this
-                // let left_expr = self.ast.get_expression(*left);
                 let right_expr = self.ast.get_expression(*right);
 
                 assert!(!self.sema.get_type(right_expr.type_id())?.is_struct());

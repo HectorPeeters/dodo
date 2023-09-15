@@ -43,7 +43,6 @@ impl Display for DeclarationId {
 pub struct Declaration {
     pub type_id: TypeId,
     pub is_constant: bool,
-    // TODO: storing a copy here probably isn't a good idea
     pub value: Option<ExpressionId>,
 }
 
@@ -1056,7 +1055,6 @@ impl<'a> Sema<'a> {
                         type_id: new_type,
                         range: *range,
                     });
-                    // TODO: this is quite a common pattern and could be combined into one call
                     value_id = self.ast.add_expression(expression);
                 }
 
