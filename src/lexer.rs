@@ -125,6 +125,10 @@ impl SourceRange {
         Self { start, end }
     }
 
+    pub fn empty() -> Self {
+        Self { start: 0, end: 0 }
+    }
+
     pub fn expand(&self, other: &Self) -> Self {
         SourceRange {
             start: self.start.min(other.start),

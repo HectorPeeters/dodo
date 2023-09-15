@@ -800,6 +800,7 @@ impl<'a> Sema<'a> {
                         .fields
                         .iter()
                         .find(|x| x.0 == *field_name)
+                        // NOTE: unwrap here is safe as struct fields are checked earlier
                         .unwrap();
 
                     let new_type = self
