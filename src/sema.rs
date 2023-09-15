@@ -676,7 +676,7 @@ impl<'a, 'b> Sema<'a> {
 
                     let checked_argument = self.check_expression(arguments[0])?;
 
-                    let target_type_id = self.check_expression(arguments[0])?;
+                    let target_type_id = self.check_expression(arguments[1])?;
                     let target_type = self.ast.get_expression(target_type_id);
 
                     if let Expression::Type(expr_type) = target_type {
