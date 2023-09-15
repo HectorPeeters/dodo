@@ -59,7 +59,6 @@ fn get_args() -> Args {
 fn main() -> Result<()> {
     // Reading source
 
-    use dodo::optimizations::optimise;
     let args = get_args();
 
     let source = std::fs::read_to_string(&args.source_path);
@@ -83,53 +82,34 @@ fn main() -> Result<()> {
     // Parsing
 
     let parser = Parser::new(&tokens);
-    let statements = unwrap_or_error(parser.into_iter().collect::<Result<Vec<_>>>(), source_file);
+    let ast = unwrap_or_error(parser.parse(), source_file);
 
+    // TODO: printing ast needs a better implementation
     if args.print_ast {
         println!("Ast:");
-        println!("{statements:#?}");
+        // println!("{ast:#?}");
     }
 
     // Semantic analysis
 
-    let mut sema = Sema::new();
-    let mut statements = unwrap_or_error(sema.analyse(statements), source_file);
+    let mut sema = Sema::new(&ast);
 
     if args.print_typed_ast {
         println!("Typed ast:");
-        println!("{statements:#?}");
+        // println!("{statements:#?}");
     }
 
-    // Optimisation
-
-    if args.optimise {
-        statements = unwrap_or_error(
-            optimise(statements, &sema, args.print_optimisations),
-            source_file,
-        );
-    }
-
-    if args.print_optimised_ast {
-        println!("Optimised ast:");
-        println!("{statements:#?}");
-    }
+    unwrap_or_error(sema.analyse(), source_file);
+    let ast = sema.get_ast();
 
     // Backend
 
     let mut backend: Box<dyn Backend> = match args.backend {
-        Some(BackendType::C) | None => Box::new(CBackend::new(&sema)),
-        Some(BackendType::X86) => Box::new(X86NasmBackend::new(&sema)),
+        Some(BackendType::C) | None => Box::new(CBackend::new(ast, &sema)),
+        Some(BackendType::X86) => Box::new(X86NasmBackend::new(ast, &sema)),
     };
 
-    backend.prepare(&statements)?;
-
-    unwrap_or_error(
-        statements
-            .into_iter()
-            .map(|x| backend.process_upper_statement(x))
-            .collect::<Result<Vec<_>>>(),
-        source_file,
-    );
+    unwrap_or_error(backend.process(), source_file);
 
     let output_executable = args.output.unwrap_or_else(|| PathBuf::from("a.out"));
     backend.finalize(&output_executable, args.dont_compile)?;

@@ -1,4 +1,4 @@
-use crate::{ast::UpperStatement, error::Result};
+use crate::error::Result;
 use clap::ValueEnum;
 use std::{path::Path, process::Command};
 
@@ -14,9 +14,7 @@ pub enum BackendType {
 }
 
 pub trait Backend<'a> {
-    fn prepare(&mut self, statements: &[UpperStatement<'a>]) -> Result<()>;
-
-    fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()>;
+    fn process(&mut self) -> Result<()>;
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()>;
 

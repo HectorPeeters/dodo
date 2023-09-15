@@ -1,9 +1,9 @@
 use super::Backend;
 use crate::ast::{
-    Annotations, AssignmentStatement, AstTransformer, BinaryOperatorType, BlockStatement, CastExpr,
-    ConstDeclaration, DeclarationStatement, Expression, FieldAccessorExpr, FunctionCallExpr,
-    FunctionDeclaration, IfStatement, Statement, StructDeclaration, StructLiteralExpr,
-    UnaryOperatorType, UpperStatement, WhileStatement,
+    Annotations, AssignmentStatement, Ast, AstVisitor, BinaryOperatorType, BlockStatement,
+    CastExpr, ConstDeclaration, DeclarationStatement, Expression, ExpressionId, FieldAccessorExpr,
+    FunctionCallExpr, FunctionDeclaration, IfStatement, Statement, StatementId, StructDeclaration,
+    StructLiteralExpr, UnaryOperatorType, UpperStatement, UpperStatementId, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::sema::{
@@ -15,13 +15,15 @@ use std::path::Path;
 use std::process::Command;
 
 pub struct CBackend<'a> {
+    ast: &'a Ast<'a>,
     sema: &'a Sema<'a>,
     buffer: String,
 }
 
 impl<'a> CBackend<'a> {
-    pub fn new(sema: &'a Sema<'a>) -> Self {
+    pub fn new(ast: &'a Ast<'a>, sema: &'a Sema<'a>) -> Self {
         Self {
+            ast,
             sema,
             buffer: "#include <stdio.h>\n#include<stdlib.h>\n#include<stdbool.h>\n\n".to_string(),
         }
@@ -29,8 +31,8 @@ impl<'a> CBackend<'a> {
 }
 
 impl<'a> Backend<'a> for CBackend<'a> {
-    fn prepare(&mut self, statements: &[UpperStatement<'a>]) -> Result<()> {
-        for statement in statements {
+    fn process(&mut self) -> Result<()> {
+        for statement in &self.ast.upper_statements {
             if let UpperStatement::StructDeclaration(struct_decl) = statement {
                 self.buffer
                     .push_str(&format!("struct {};\n", struct_decl.name));
@@ -39,7 +41,7 @@ impl<'a> Backend<'a> for CBackend<'a> {
 
         self.buffer.push('\n');
 
-        for statement in statements {
+        for statement in &self.ast.upper_statements {
             if let UpperStatement::Function(FunctionDeclaration {
                 name,
                 params,
@@ -56,11 +58,11 @@ impl<'a> Backend<'a> for CBackend<'a> {
 
         self.buffer.push('\n');
 
-        Ok(())
-    }
+        for upper_statement_id in 0..self.ast.upper_statements.len() {
+            self.visit_upper_statement((upper_statement_id as u32).into())?;
+        }
 
-    fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
-        self.visit_upper_statement(statement)
+        Ok(())
     }
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
@@ -119,7 +121,7 @@ impl<'a> CBackend<'a> {
         name: &str,
         params: &[DeclarationId],
         return_type: TypeId,
-        annotations: &Annotations<'a>,
+        _annotations: &Annotations<'a>,
     ) -> Result<()> {
         let params = params
             .iter()
@@ -137,12 +139,13 @@ impl<'a> CBackend<'a> {
             self.to_c_type(return_type)?
         };
 
-        let section_annotation = annotations.get_string("section");
+        // let section_annotation = annotations.get_string("section");
 
-        let section_attribute = match section_annotation {
-            Some(name) => format!("__attribute__((section(\"{name}\")))"),
-            None => String::new(),
-        };
+        // let section_attribute = match section_annotation {
+        //     Some(name) => format!("__attribute__((section(\"{name}\")))"),
+        //     None => String::new(),
+        // };
+        let section_attribute = String::new();
 
         self.buffer.push_str(&format!(
             "{return_type} {name}({params}) {section_attribute}"
@@ -152,9 +155,9 @@ impl<'a> CBackend<'a> {
     }
 }
 
-impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
-        match statement {
+impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
+    fn visit_upper_statement(&mut self, statement_id: UpperStatementId) -> Result<()> {
+        match self.ast.get_upper_statement(statement_id) {
             UpperStatement::StructDeclaration(StructDeclaration {
                 name,
                 declaration_id: _,
@@ -162,9 +165,10 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 range: _,
             }) => {
                 let formatted_fields = fields
-                    .into_iter()
+                    .iter()
                     .map(|(name, field_type)| {
-                        self.to_c_type(field_type).map(|t| format!("\t{t} {name};"))
+                        self.to_c_type(*field_type)
+                            .map(|t| format!("\t{t} {name};"))
                     })
                     .collect::<Result<Vec<_>>>()?
                     .join("\n");
@@ -183,9 +187,9 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 annotations,
                 range: _,
             }) => {
-                self.write_fuction_declaration(name, &params, return_type, &annotations)?;
+                self.write_fuction_declaration(name, params, *return_type, annotations)?;
                 self.buffer.push('\n');
-                self.visit_statement(body)?;
+                self.visit_statement(*body)?;
 
                 self.buffer.push('\n');
 
@@ -193,21 +197,23 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
             }
             UpperStatement::ConstDeclaration(ConstDeclaration {
                 value,
-                annotations,
+                annotations: _,
                 declaration_id,
                 range: _,
             }) => {
-                let type_id = self.sema.get_declaration(declaration_id).type_id;
+                let type_id = self.sema.get_declaration(*declaration_id).type_id;
                 let c_type = self.to_c_type(type_id)?;
 
-                let c_value = self.visit_expression(value)?;
+                let c_value = self.visit_expression(*value)?;
 
-                let section_annotation = annotations.get_string("section");
+                // let section_annotation = annotations.get_string("section");
 
-                let section_attribute = match section_annotation {
-                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
-                    None => String::new(),
-                };
+                // let section_attribute = match section_annotation {
+                //     Some(name) => format!("__attribute__((section(\"{name}\")))"),
+                //     None => String::new(),
+                // };
+
+                let section_attribute = String::new();
 
                 self.buffer.push_str(&format!(
                     "const {c_type} {} {section_attribute} = {c_value};\n",
@@ -219,22 +225,24 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
         }
     }
 
-    fn visit_statement(&mut self, statement: Statement<'a>) -> Result<()> {
+    fn visit_statement(&mut self, statement_id: StatementId) -> Result<()> {
+        let statement = self.ast.get_statement(statement_id);
+
         match statement {
             Statement::Block(BlockStatement {
                 children,
                 scoped,
                 range: _,
             }) => {
-                if scoped {
+                if *scoped {
                     self.buffer.push_str("{\n");
                 }
 
                 for statement in children {
-                    self.visit_statement(statement)?;
+                    self.visit_statement(*statement)?;
                 }
 
-                if scoped {
+                if *scoped {
                     self.buffer.push_str("\n}\n");
                 }
 
@@ -244,7 +252,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 declaration_id,
                 range: _,
             }) => {
-                let type_id = self.sema.get_declaration(declaration_id).type_id;
+                let type_id = self.sema.get_declaration(*declaration_id).type_id;
                 self.buffer.push_str(&format!(
                     "{} {};\n",
                     self.to_c_type(type_id)?,
@@ -257,8 +265,8 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 right,
                 range: _,
             }) => {
-                let left = self.visit_expression(left)?;
-                let right = self.visit_expression(right)?;
+                let left = self.visit_expression(*left)?;
+                let right = self.visit_expression(*right)?;
                 self.buffer.push_str(&format!("{left} = {right};\n"));
                 Ok(())
             }
@@ -273,7 +281,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 body,
                 range: _,
             }) => {
-                let condition = self.visit_expression(condition)?;
+                let condition = self.visit_expression(*condition)?;
 
                 self.buffer.push_str(&format!("while ({condition}) {{"));
                 self.visit_statement(*body)?;
@@ -287,7 +295,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 else_body,
                 range: _,
             }) => {
-                let condition = self.visit_expression(condition)?;
+                let condition = self.visit_expression(*condition)?;
 
                 self.buffer.push_str(&format!("if ({condition}) "));
                 self.visit_statement(*if_body)?;
@@ -308,11 +316,12 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
         }
     }
 
-    fn visit_expression(&mut self, expression: Expression<'a>) -> Result<String> {
+    fn visit_expression(&mut self, expression_id: ExpressionId) -> Result<String> {
+        let expression = self.ast.get_expression(expression_id);
         match expression {
             Expression::BinaryOperator(binop) => {
-                let left = self.visit_expression(*binop.left)?;
-                let right = self.visit_expression(*binop.right)?;
+                let left = self.visit_expression(binop.left)?;
+                let right = self.visit_expression(binop.right)?;
 
                 Ok(match binop.op_type {
                     BinaryOperatorType::Add => format!("({left} + {right})"),
@@ -333,7 +342,7 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 })
             }
             Expression::UnaryOperator(unop) => {
-                let expr = self.visit_expression(*unop.expr)?;
+                let expr = self.visit_expression(unop.expr)?;
 
                 Ok(match unop.op_type {
                     UnaryOperatorType::Negate => format!("(-{expr})"),
@@ -348,8 +357,8 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 range: _,
             }) => {
                 let args = args
-                    .into_iter()
-                    .map(|x| self.visit_expression(x))
+                    .iter()
+                    .map(|x| self.visit_expression(*x))
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
 
@@ -364,11 +373,11 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 type_id,
                 range: _,
             }) => {
-                let c_type = self.to_c_type(type_id)?;
+                let c_type = self.to_c_type(*type_id)?;
 
                 let formatted_fields = fields
-                    .into_iter()
-                    .map(|(name, value)| match self.visit_expression(value) {
+                    .iter()
+                    .map(|(name, value)| match self.visit_expression(*value) {
                         Ok(value) => Ok(format!(".{name} = {value}")),
                         Err(e) => Err(e),
                     })
@@ -383,7 +392,8 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                 type_id: _,
                 range: _,
             }) => {
-                let child_type = expr.type_id();
+                let expression = self.ast.get_expression(*expr);
+                let child_type = expression.type_id();
                 let child_source = self.visit_expression(*expr)?;
 
                 if self.sema.get_type(child_type)?.is_ptr() {
@@ -392,14 +402,14 @@ impl<'a> AstTransformer<'a, (), (), String> for CBackend<'a> {
                     Ok(format!("{child_source}.{name}"))
                 }
             }
-            Expression::Widen(widen) => self.visit_expression(*widen.expr),
+            Expression::Widen(widen) => self.visit_expression(widen.expr),
             Expression::Cast(CastExpr {
                 expr,
                 type_id,
                 range: _,
             }) => Ok(format!(
                 "({})({})",
-                self.to_c_type(type_id)?,
+                self.to_c_type(*type_id)?,
                 self.visit_expression(*expr)?
             )),
             Expression::Type(_) => unreachable!(),

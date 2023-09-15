@@ -8,8 +8,26 @@ pub mod error;
 pub mod interpreter;
 pub mod ir;
 pub mod lexer;
-pub mod optimizations;
 pub mod parser;
 pub mod scope;
 pub mod sema;
 pub mod types;
+
+#[macro_export]
+macro_rules! id_impl {
+    ($name:ident) => {
+        impl std::ops::Deref for $name {
+            type Target = u32;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl Into<$name> for u32 {
+            fn into(self) -> $name {
+                $name(self)
+            }
+        }
+    };
+}

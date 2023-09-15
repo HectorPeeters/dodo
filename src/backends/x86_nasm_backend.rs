@@ -4,14 +4,15 @@ use super::x86_instruction::{
 use super::x86_instruction::{RAX, RBP, RDX, RSP};
 use super::Backend;
 use crate::ast::{
-    Annotations, AssignmentStatement, BlockStatement, ConstDeclaration, DeclarationStatement,
-    ExpressionStatement, FieldAccessorExpr, FunctionCallExpr, FunctionDeclaration, IfStatement,
-    IntegerLiteralExpr, ReturnStatement, UnaryOperatorExpr, UpperStatement, VariableRefExpr,
-    WhileStatement, WidenExpr,
+    Annotations, AssignmentStatement, Ast, AstVisitor, BlockStatement, ConstDeclaration,
+    DeclarationStatement, ExpressionId, ExpressionStatement, FieldAccessorExpr, FunctionCallExpr,
+    FunctionDeclaration, IfStatement, IntegerLiteralExpr, ReturnStatement, StatementId,
+    UnaryOperatorExpr, UpperStatement, UpperStatementId, VariableRefExpr, WhileStatement,
+    WidenExpr,
 };
 use crate::sema::{DeclarationId, Sema, BUILTIN_TYPE_VOID};
 use crate::{
-    ast::{AstTransformer, BinaryOperatorType, Expression, Statement, UnaryOperatorType},
+    ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
     types::TypeId,
 };
@@ -46,11 +47,12 @@ impl LValueLocation {
 
 struct GlobalConst<'a> {
     index: usize,
-    value: Expression<'a>,
+    expression: ExpressionId,
     annotations: Annotations<'a>,
 }
 
-pub struct X86NasmBackend<'a, 'b> {
+pub struct X86NasmBackend<'a> {
+    ast: &'a Ast<'a>,
     sema: &'a Sema<'a>,
     data_locations: HashMap<DeclarationId, DataLocation>,
     data_stack_offset: Vec<usize>,
@@ -58,12 +60,13 @@ pub struct X86NasmBackend<'a, 'b> {
     label_index: usize,
     allocated_registers: [bool; GENERAL_PURPOSE_REGISTER_COUNT],
     current_function_end_label: usize,
-    global_consts: Vec<GlobalConst<'b>>,
+    global_consts: Vec<GlobalConst<'a>>,
 }
 
-impl<'a, 'b> X86NasmBackend<'a, 'b> {
-    pub fn new(sema: &'a Sema) -> Self {
+impl<'a> X86NasmBackend<'a> {
+    pub fn new(ast: &'a Ast, sema: &'a Sema) -> Self {
         let mut result = Self {
+            ast,
             sema,
             data_locations: HashMap::new(),
             data_stack_offset: vec![0],
@@ -101,11 +104,15 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         result
     }
 
-    fn store_global_const(&mut self, value: Expression<'b>, annotations: Annotations<'b>) -> usize {
+    fn store_global_const(
+        &mut self,
+        expression: ExpressionId,
+        annotations: Annotations<'a>,
+    ) -> usize {
         let index = self.get_new_label();
         self.global_consts.push(GlobalConst {
             index,
-            value,
+            expression,
             annotations,
         });
         index
@@ -129,10 +136,12 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
 
     fn get_data_instructions(
         &self,
-        expression: &Expression,
+        expression_id: ExpressionId,
         size: usize,
     ) -> Result<Vec<X86Instruction>> {
         let mut instructions = vec![];
+
+        let expression = self.ast.get_expression(expression_id);
 
         match expression {
             Expression::IntegerLiteral(int_lit) => {
@@ -158,9 +167,11 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
             }
             Expression::StructLiteral(struct_lit) => {
                 for field in &struct_lit.fields {
+                    let field_expression = self.ast.get_expression(field.1);
+
                     let mut field_instructions = self.get_data_instructions(
-                        &field.1,
-                        self.sema.get_type_size(field.1.type_id())?,
+                        field.1,
+                        self.sema.get_type_size(field_expression.type_id())?,
                     )?;
 
                     instructions.append(&mut field_instructions);
@@ -172,7 +183,7 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                 range: _,
             }) => {
                 let mut child_instructions =
-                    self.get_data_instructions(expr, self.sema.get_type_size(*type_id)?)?;
+                    self.get_data_instructions(*expr, self.sema.get_type_size(*type_id)?)?;
 
                 instructions.append(&mut child_instructions);
             }
@@ -186,7 +197,8 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
         let mut queued_instructions = vec![];
 
         for global in &self.global_consts {
-            let section_annotation = global.annotations.get_string("section");
+            // let section_annotation = global.annotations.get_string("section");
+            let section_annotation: Option<String> = None;
 
             if let Some(section_name) = section_annotation {
                 queued_instructions.push(Section(section_name.to_string()));
@@ -196,9 +208,11 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
 
             queued_instructions.push(LabelDef(global.index));
 
+            let global_expression = self.ast.get_expression(global.expression);
+
             let mut data_instructions = self.get_data_instructions(
-                &global.value,
-                self.sema.get_type_size(global.value.type_id())?,
+                global.expression,
+                self.sema.get_type_size(global_expression.type_id())?,
             )?;
 
             queued_instructions.append(&mut data_instructions);
@@ -238,8 +252,10 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
 
     fn generate_lvalue(
         &mut self,
-        expression: Expression<'b>,
+        expression_id: ExpressionId,
     ) -> Result<(LValueLocation, Option<X86Register>)> {
+        let expression = self.ast.get_expression(expression_id);
+
         match expression {
             Expression::VariableRef(var_ref) => {
                 let location = self.data_locations.get(&var_ref.declaration_id).unwrap();
@@ -267,7 +283,9 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
                 type_id: _,
                 range: _,
             }) => {
-                let offset = self.get_struct_field_offset(name, expr.type_id())?;
+                let expression = self.ast.get_expression(*expr);
+
+                let offset = self.get_struct_field_offset(name, expression.type_id())?;
 
                 let (child_location, child_reg) = self.generate_lvalue(*expr)?;
 
@@ -278,9 +296,12 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
-        self.visit_upper_statement(statement)
+impl<'a> Backend<'a> for X86NasmBackend<'a> {
+    fn process(&mut self) -> Result<()> {
+        for upper_statement_id in 0..self.ast.upper_statements.len() {
+            self.visit_upper_statement((upper_statement_id as u32).into())?;
+        }
+        Ok(())
     }
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
@@ -351,14 +372,12 @@ impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
     fn name(&self) -> &'static str {
         "nasm-x86_64"
     }
-
-    fn prepare(&mut self, _: &[UpperStatement<'b>]) -> Result<()> {
-        Ok(())
-    }
 }
 
-impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
+impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
+    fn visit_upper_statement(&mut self, statement_id: UpperStatementId) -> Result<()> {
+        let statement = self.ast.get_upper_statement(statement_id);
+
         match statement {
             UpperStatement::StructDeclaration(_) => {}
             UpperStatement::ExternDeclaration(extern_decl) => {
@@ -381,13 +400,14 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 self.current_function_end_label = self.get_new_label();
 
                 let no_return = annotations.has_flag("noreturn");
-                let section_annotation = annotations.get_string("section");
+                // let section_annotation = annotations.get_string("section");
+                let section_annotation: Option<String> = None;
 
                 if let Some(section_name) = section_annotation {
                     self.instr(Section(section_name.to_string()));
                 }
 
-                let function_name = if name == "main" { "_start" } else { name };
+                let function_name = if *name == "main" { "_start" } else { name };
                 self.instr(Function(function_name.to_string()));
 
                 self.write_prologue();
@@ -411,7 +431,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     ));
                 }
 
-                self.visit_statement(body)?;
+                self.visit_statement(*body)?;
 
                 if no_return {
                     return Ok(());
@@ -434,9 +454,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 declaration_id,
                 range: _,
             }) => {
-                let position = self.store_global_const(value, annotations);
+                let position = self.store_global_const(*value, annotations.clone());
                 self.data_locations
-                    .insert(declaration_id, DataLocation::Global(position));
+                    .insert(*declaration_id, DataLocation::Global(position));
                 self.data_stack_offset.last_mut().unwrap().add_assign(1);
             }
         }
@@ -444,7 +464,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
         Ok(())
     }
 
-    fn visit_statement(&mut self, statement: Statement<'b>) -> Result<()> {
+    fn visit_statement(&mut self, statement_id: StatementId) -> Result<()> {
+        let statement = self.ast.get_statement(statement_id);
+
         match statement {
             Statement::Declaration(DeclarationStatement {
                 declaration_id,
@@ -453,7 +475,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let offset = self.data_stack_offset.iter().sum();
 
                 self.data_locations
-                    .insert(declaration_id, DataLocation::Stack(offset));
+                    .insert(*declaration_id, DataLocation::Stack(offset));
                 self.data_stack_offset.last_mut().unwrap().add_assign(1);
 
                 self.instr(Sub(RSP, Constant(STACK_OFFSET as u64)));
@@ -463,13 +485,17 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 right,
                 range: _,
             }) => {
-                assert!(!self.sema.get_type(right.type_id())?.is_struct());
+                // TODO: investigate this
+                // let left_expr = self.ast.get_expression(*left);
+                let right_expr = self.ast.get_expression(*right);
 
-                let value_size = self.sema.get_type_size(right.type_id())?;
-                let value_reg = self.visit_expression(right)?;
+                assert!(!self.sema.get_type(right_expr.type_id())?.is_struct());
+
+                let value_size = self.sema.get_type_size(right_expr.type_id())?;
+                let value_reg = self.visit_expression(*right)?;
                 let value_operand = Reg(value_reg, value_size);
 
-                let (lvalue_operand, reg_to_free) = self.generate_lvalue(left)?;
+                let (lvalue_operand, reg_to_free) = self.generate_lvalue(*left)?;
 
                 match lvalue_operand {
                     LValueLocation::Stack(offset) => {
@@ -496,8 +522,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.instr(LabelDef(start_label));
 
-                let condition_size = self.sema.get_type_size(condition.type_id())?;
-                let register = self.visit_expression(condition)?;
+                let condition_expr = self.ast.get_expression(*condition);
+                let condition_size = self.sema.get_type_size(condition_expr.type_id())?;
+                let register = self.visit_expression(*condition)?;
 
                 self.instr(Cmp(Reg(register, condition_size), Constant(0)));
                 self.instr(Jz(Label(end_label)));
@@ -518,8 +545,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let end_label = self.get_new_label();
                 let else_label = self.get_new_label();
 
-                let condition_size = self.sema.get_type_size(condition.type_id())?;
-                let condition_register = self.visit_expression(condition)?;
+                let condition_expr = self.ast.get_expression(*condition);
+                let condition_size = self.sema.get_type_size(condition_expr.type_id())?;
+                let condition_register = self.visit_expression(*condition)?;
 
                 self.instr(Cmp(Reg(condition_register, condition_size), Constant(0)));
                 self.free_register(condition_register);
@@ -542,12 +570,10 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 self.instr(LabelDef(end_label));
             }
-            Statement::Return(ReturnStatement {
-                expr: value,
-                range: _,
-            }) => {
+            Statement::Return(ReturnStatement { expr, range: _ }) => {
+                let value = self.ast.get_expression(*expr);
                 let expr_size = self.sema.get_type_size(value.type_id())?;
-                let value_reg = self.visit_expression(value).unwrap();
+                let value_reg = self.visit_expression(*expr)?;
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
                 self.instr(Jmp(Label(self.current_function_end_label)));
@@ -559,27 +585,29 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 scoped,
                 range: _,
             }) => {
-                if scoped {
+                if *scoped {
                     self.data_stack_offset.push(0);
                 }
 
                 for stmt in children {
-                    self.visit_statement(stmt)?;
+                    self.visit_statement(*stmt)?;
                 }
 
-                if scoped {
+                if *scoped {
                     self.data_stack_offset.pop();
                 }
             }
             Statement::Expression(ExpressionStatement { expr, range: _ }) => {
-                let register = self.visit_expression(expr)?;
+                let register = self.visit_expression(*expr)?;
                 self.free_register(register);
             }
         }
         Ok(())
     }
 
-    fn visit_expression(&mut self, expression: Expression<'b>) -> Result<X86Register> {
+    fn visit_expression(&mut self, expression_id: ExpressionId) -> Result<X86Register> {
+        let expression = self.ast.get_expression(expression_id);
+
         match expression {
             Expression::IntegerLiteral(IntegerLiteralExpr {
                 value,
@@ -588,8 +616,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
             }) => {
                 let register = self.get_next_register();
 
-                let value_size = self.sema.get_type_size(type_id)?;
-                self.instr(Mov(Reg(register, value_size), Constant(value)));
+                let value_size = self.sema.get_type_size(*type_id)?;
+                self.instr(Mov(Reg(register, value_size), Constant(*value)));
 
                 Ok(register)
             }
@@ -608,7 +636,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
             }) => {
                 let result_reg = self.get_next_register();
 
-                match &*expr {
+                let expression = self.ast.get_expression(*expr);
+
+                match expression {
                     Expression::VariableRef(VariableRefExpr {
                         name: _,
                         declaration_id,
@@ -617,7 +647,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                     }) => {
                         let location = self.data_locations[declaration_id];
 
-                        let value_size = self.sema.get_type_size(type_id)?;
+                        let value_size = self.sema.get_type_size(*type_id)?;
 
                         match location {
                             DataLocation::Stack(offset) => self.instr(Lea(
@@ -634,9 +664,10 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 }
             }
             Expression::UnaryOperator(unop) => {
-                let expr_size = self.sema.get_type_size(unop.expr.type_id())?;
+                let expr = self.ast.get_expression(unop.expr);
+                let expr_size = self.sema.get_type_size(expr.type_id())?;
 
-                let reg = self.visit_expression(*unop.expr)?;
+                let reg = self.visit_expression(unop.expr)?;
                 let result_reg = self.get_next_register();
 
                 match unop.op_type {
@@ -650,10 +681,14 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 Ok(result_reg)
             }
             Expression::BinaryOperator(binop) => {
-                let left_size = self.sema.get_type_size(binop.left.type_id())?;
-                let right_size = self.sema.get_type_size(binop.right.type_id())?;
-                let left_reg = self.visit_expression(*binop.left)?;
-                let right_reg = self.visit_expression(*binop.right)?;
+                let left = self.ast.get_expression(binop.left);
+                let right = self.ast.get_expression(binop.right);
+
+                let left_size = self.sema.get_type_size(left.type_id())?;
+                let right_size = self.sema.get_type_size(right.type_id())?;
+
+                let left_reg = self.visit_expression(binop.left)?;
+                let right_reg = self.visit_expression(binop.right)?;
 
                 assert_eq!(left_size, right_size);
 
@@ -736,7 +771,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 let location = self.data_locations[&declaration_id];
                 let register = self.get_next_register();
 
-                let value_size = self.sema.get_type_size(type_id)?;
+                let value_size = self.sema.get_type_size(*type_id)?;
 
                 match location {
                     DataLocation::Stack(offset) => self.instr(Mov(
@@ -744,7 +779,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                         RegIndirect(Rbp, offset * 16, true),
                     )),
                     DataLocation::Global(index) => {
-                        let value_type = self.sema.get_type(type_id)?;
+                        let value_type = self.sema.get_type(*type_id)?;
 
                         if value_type.is_ptr() || value_type.is_struct() {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
@@ -766,9 +801,10 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 let arg_count = args.len();
 
-                for (expr, dest_reg) in args.into_iter().zip(&ARGUMENT_REGISTERS) {
-                    let arg_size = self.sema.get_type_size(expr.type_id())?;
-                    let arg_register = self.visit_expression(expr)?;
+                for (expr, dest_reg) in args.iter().zip(&ARGUMENT_REGISTERS) {
+                    let expression = self.ast.get_expression(*expr);
+                    let arg_size = self.sema.get_type_size(expression.type_id())?;
+                    let arg_register = self.visit_expression(*expr)?;
 
                     if dest_reg.is_caller_saved() {
                         self.instr(Push(Reg(*dest_reg, 64)));
@@ -785,7 +821,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 }
 
                 // TODO: get rid of this disgusting hack
-                if name == "printf" {
+                if *name == "printf" {
                     self.instr(Mov(RAX, Constant(0)));
                 }
 
@@ -800,8 +836,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 let result_register = self.get_next_register();
 
-                if type_id != BUILTIN_TYPE_VOID {
-                    let return_type_size = self.sema.get_type_size(type_id)?;
+                if *type_id != BUILTIN_TYPE_VOID {
+                    let return_type_size = self.sema.get_type_size(*type_id)?;
 
                     self.instr(Mov(
                         Reg(result_register, return_type_size),
@@ -817,9 +853,8 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(result_register)
             }
-            Expression::StringLiteral(str_lit) => {
-                let label = self
-                    .store_global_const(Expression::StringLiteral(str_lit), Annotations::empty());
+            Expression::StringLiteral(_) => {
+                let label = self.store_global_const(expression_id, Annotations::empty());
                 let result_reg = self.get_next_register();
                 self.instr(Mov(Reg(result_reg, 64), Label(label)));
                 Ok(result_reg)
@@ -831,10 +866,11 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 type_id,
                 range: _,
             }) => {
-                let value_type_size = self.sema.get_type_size(type_id)?;
+                let value_type_size = self.sema.get_type_size(*type_id)?;
                 assert!(value_type_size <= 64);
 
-                let offset = self.get_struct_field_offset(name, expr.type_id())? / 8;
+                let expression = self.ast.get_expression(*expr);
+                let offset = self.get_struct_field_offset(name, expression.type_id())? / 8;
                 let child_reg = self.visit_expression(*expr)?;
 
                 let result_reg = self.get_next_register();
@@ -852,8 +888,9 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
                 type_id,
                 range: _,
             }) => {
-                let expr_size = self.sema.get_type_size(expr.type_id())?;
-                let widen_size = self.sema.get_type_size(type_id)?;
+                let expression = self.ast.get_expression(*expr);
+                let expr_size = self.sema.get_type_size(expression.type_id())?;
+                let widen_size = self.sema.get_type_size(*type_id)?;
 
                 assert!(expr_size < widen_size);
                 let expr_reg = self.visit_expression(*expr)?;
@@ -872,7 +909,7 @@ impl<'a, 'b> AstTransformer<'b, (), (), X86Register> for X86NasmBackend<'a, 'b> 
 
                 Ok(result_reg)
             }
-            Expression::Cast(cast) => self.visit_expression(*cast.expr),
+            Expression::Cast(cast) => self.visit_expression(cast.expr),
             Expression::Type(_) => unreachable!(),
         }
     }
