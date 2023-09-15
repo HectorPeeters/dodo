@@ -169,19 +169,6 @@ impl<'a> Token<'a> {
     }
 }
 
-impl<'a> PartialEq for Token<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        // NOTE: comparing the actual value might also be necessary
-        self.token_type == other.token_type && self.range == other.range
-    }
-}
-
-impl<'a> PartialEq<TokenType> for &Token<'a> {
-    fn eq(&self, other: &TokenType) -> bool {
-        self.token_type == *other
-    }
-}
-
 pub fn lex(input: &str) -> Result<Vec<Token>> {
     let mut lex = TokenType::lexer(input);
 
@@ -208,6 +195,14 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
 mod tests {
     use super::TokenType::*;
     use super::*;
+
+    impl<'a> PartialEq for Token<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            self.token_type == other.token_type
+                && self.range == other.range
+                && self.value == other.value
+        }
+    }
 
     fn get_tokens(input: &str) -> Vec<Token> {
         let tokens = lex(input);

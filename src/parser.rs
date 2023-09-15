@@ -1022,7 +1022,7 @@ impl<'a> Parser<'a> {
         Ok(annotations)
     }
 
-    pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatementId> {
+    fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatementId> {
         let annotations = self.parse_annotations()?;
 
         let token = self.peek()?;
