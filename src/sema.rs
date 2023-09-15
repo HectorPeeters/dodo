@@ -57,7 +57,7 @@ pub struct Sema<'a> {
     current_function_return_type: TypeId,
 }
 
-impl<'a, 'b> Sema<'a> {
+impl<'a> Sema<'a> {
     pub fn new(parsed_ast: &'a ParsedAst<'a>) -> Self {
         Self {
             parsed_ast,
@@ -1035,7 +1035,7 @@ impl<'a, 'b> Sema<'a> {
                 let type_id = self.check_type(value_type)?;
 
                 let mut value_id = self.check_expression(*value)?;
-                let mut value = self.ast.get_expression(value_id);
+                let value = self.ast.get_expression(value_id);
 
                 let new_type = self
                     .widen_assignment(type_id, value.type_id())?
@@ -1059,7 +1059,6 @@ impl<'a, 'b> Sema<'a> {
                     });
                     // TODO: this is quite a common pattern and could be combined into one call
                     value_id = self.ast.add_expression(expression);
-                    value = self.ast.get_expression(value_id);
                 }
 
                 let declaration_id = self.add_declaration(type_id, true);

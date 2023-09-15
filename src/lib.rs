@@ -24,9 +24,9 @@ macro_rules! id_impl {
             }
         }
 
-        impl Into<$name> for u32 {
-            fn into(self) -> $name {
-                $name(self)
+        impl From<u32> for $name {
+            fn from(x: u32) -> $name {
+                $name(x)
             }
         }
     };
