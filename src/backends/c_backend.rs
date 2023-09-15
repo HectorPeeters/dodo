@@ -361,7 +361,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             Expression::IntegerLiteral(int_lit) => Ok(format!("{}", int_lit.value)),
             Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
             Expression::VariableRef(var_ref) => Ok(format!("{}", var_ref.declaration_id)),
-            Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
+            Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.unescape())),
             Expression::StructLiteral(StructLiteralExpr { fields, range: _ }) => {
                 let type_id = self.ast.get_expression_type(expression_id);
                 let c_type = self.to_c_type(type_id)?;

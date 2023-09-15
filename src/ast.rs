@@ -9,14 +9,6 @@ use crate::lexer::{SourceRange, TokenType};
 use crate::sema::DeclarationId;
 use crate::types::TypeId;
 
-pub struct Ast<'a> {
-    expressions: Vec<Expression<'a>>,
-    expression_types: Vec<TypeId>,
-
-    statements: Vec<Statement>,
-    upper_statements: Vec<UpperStatement<'a>>,
-}
-
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ExpressionId(u32);
 id_impl!(ExpressionId);
@@ -28,6 +20,14 @@ id_impl!(StatementId);
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct UpperStatementId(u32);
 id_impl!(UpperStatementId);
+
+pub struct Ast<'a> {
+    expressions: Vec<Expression<'a>>,
+    expression_types: Vec<TypeId>,
+
+    statements: Vec<Statement>,
+    upper_statements: Vec<UpperStatement<'a>>,
+}
 
 impl<'a> Default for Ast<'a> {
     fn default() -> Self {
@@ -105,11 +105,10 @@ impl<'a> Annotations<'a> {
         self.0.get(name)
     }
 
-    pub fn get_string(&self, name: &str, ast: &Ast<'a>) -> Option<&'a str> {
+    pub fn get_string(&self, name: &str, ast: &Ast<'a>) -> Option<String> {
         match self.0.get(name) {
             Some(Some(expr_id)) => match ast.get_expression(*expr_id) {
-                // TODO: this doens't handle escaping
-                Expression::StringLiteral(value) => Some(value.value.inner()),
+                Expression::StringLiteral(value) => Some(value.value.unescape()),
                 _ => None,
             },
             _ => None,
@@ -303,8 +302,14 @@ impl<'a> EscapedString<'a> {
         Self { inner }
     }
 
-    pub fn inner(&self) -> &'a str {
+    pub fn unescape(&self) -> String {
         self.inner
+            .replace("\\\"", "\"")
+            .replace("\\t", "\t")
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\'", "'")
+            .replace("\\\"", "\"")
     }
 }
 
@@ -316,17 +321,7 @@ impl<'a> From<&'a str> for EscapedString<'a> {
 
 impl<'a> fmt::Display for EscapedString<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.inner
-                .replace("\\\"", "\"")
-                .replace("\\t", "\t")
-                .replace("\\n", "\n")
-                .replace("\\r", "\r")
-                .replace("\\'", "'")
-                .replace("\\\"", "\"")
-        )
+        write!(f, "{}", self.unescape())
     }
 }
 
