@@ -6,11 +6,11 @@ use std::{
 
 use crate::{
     ast::{
-        Annotations, AssignmentStatement, Ast, BinaryOperatorExpr, BinaryOperatorType,
-        BlockStatement, BooleanLiteralExpr, CastExpr, ConstDeclaration, DeclarationStatement,
-        Expression, ExpressionId, ExpressionStatement, ExternDeclaration, FieldAccessorExpr,
-        FunctionCallExpr, FunctionDeclaration, IfStatement, IntegerLiteralExpr, ReturnStatement,
-        Statement, StatementId, StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr,
+        AssignmentStatement, Ast, BinaryOperatorExpr, BinaryOperatorType, BlockStatement,
+        BooleanLiteralExpr, CastExpr, ConstDeclaration, DeclarationStatement, Expression,
+        ExpressionId, ExpressionStatement, ExternDeclaration, FieldAccessorExpr, FunctionCallExpr,
+        FunctionDeclaration, IfStatement, IntegerLiteralExpr, ReturnStatement, Statement,
+        StatementId, StringLiteralExpr, StructDeclaration, StructLiteralExpr, TypeExpr,
         UnaryOperatorExpr, UnaryOperatorType, UpperStatement, UpperStatementId, VariableRefExpr,
         WhileStatement, WidenExpr,
     },
@@ -966,16 +966,16 @@ impl<'a> Sema<'a> {
 
                 self.scope.pop();
 
-                let _checked_annotations = annotations
+                let checked_annotations = annotations
                     .iter()
                     .map(|(name, value)| {
                         if let Some(value) = value {
                             match self.check_expression(*value) {
-                                Ok(value) => Ok((name, Some(value))),
+                                Ok(value) => Ok((*name, Some(value))),
                                 Err(error) => Err(error),
                             }
                         } else {
-                            Ok((name, None))
+                            Ok((*name, None))
                         }
                     })
                     .collect::<Result<HashMap<_, _>>>()?;
@@ -985,8 +985,7 @@ impl<'a> Sema<'a> {
                     params,
                     return_type: function_declaration.return_type,
                     body: checked_body,
-                    // TODO: add support for annotations back in
-                    annotations: Annotations::empty(),
+                    annotations: checked_annotations.into(),
                     range: *range,
                 });
                 Ok(self.ast.add_upper_statement(statement))

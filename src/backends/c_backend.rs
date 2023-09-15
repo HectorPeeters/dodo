@@ -121,7 +121,7 @@ impl<'a> CBackend<'a> {
         name: &str,
         params: &[DeclarationId],
         return_type: TypeId,
-        _annotations: &Annotations<'a>,
+        annotations: &Annotations<'a>,
     ) -> Result<()> {
         let params = params
             .iter()
@@ -139,13 +139,12 @@ impl<'a> CBackend<'a> {
             self.to_c_type(return_type)?
         };
 
-        // let section_annotation = annotations.get_string("section");
+        let section_annotation = annotations.get_string("section", self.ast);
 
-        // let section_attribute = match section_annotation {
-        //     Some(name) => format!("__attribute__((section(\"{name}\")))"),
-        //     None => String::new(),
-        // };
-        let section_attribute = String::new();
+        let section_attribute = match section_annotation {
+            Some(name) => format!("__attribute__((section(\"{name}\")))"),
+            None => String::new(),
+        };
 
         self.buffer.push_str(&format!(
             "{return_type} {name}({params}) {section_attribute}"
@@ -197,7 +196,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             }
             UpperStatement::ConstDeclaration(ConstDeclaration {
                 value,
-                annotations: _,
+                annotations,
                 declaration_id,
                 range: _,
             }) => {
@@ -206,14 +205,12 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
 
                 let c_value = self.visit_expression(*value)?;
 
-                // let section_annotation = annotations.get_string("section");
+                let section_annotation = annotations.get_string("section", self.ast);
 
-                // let section_attribute = match section_annotation {
-                //     Some(name) => format!("__attribute__((section(\"{name}\")))"),
-                //     None => String::new(),
-                // };
-
-                let section_attribute = String::new();
+                let section_attribute = match section_annotation {
+                    Some(name) => format!("__attribute__((section(\"{name}\")))"),
+                    None => String::new(),
+                };
 
                 self.buffer.push_str(&format!(
                     "const {c_type} {} {section_attribute} = {c_value};\n",

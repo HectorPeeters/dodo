@@ -80,8 +80,20 @@ impl<'a> Annotations<'a> {
     pub fn empty() -> Self {
         Self(HashMap::new())
     }
+
     pub fn get(&self, name: &str) -> Option<&Option<ExpressionId>> {
         self.0.get(name)
+    }
+
+    pub fn get_string(&self, name: &str, ast: &Ast<'a>) -> Option<&'a str> {
+        match self.0.get(name) {
+            Some(Some(expr_id)) => match ast.get_expression(*expr_id) {
+                // TODO: this doens't handle escaping
+                Expression::StringLiteral(value) => Some(value.value.inner()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     pub fn has_flag(&self, name: &str) -> bool {

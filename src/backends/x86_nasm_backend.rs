@@ -197,8 +197,7 @@ impl<'a> X86NasmBackend<'a> {
         let mut queued_instructions = vec![];
 
         for global in &self.global_consts {
-            // let section_annotation = global.annotations.get_string("section");
-            let section_annotation: Option<String> = None;
+            let section_annotation = global.annotations.get_string("section", self.ast);
 
             if let Some(section_name) = section_annotation {
                 queued_instructions.push(Section(section_name.to_string()));
@@ -400,8 +399,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 self.current_function_end_label = self.get_new_label();
 
                 let no_return = annotations.has_flag("noreturn");
-                // let section_annotation = annotations.get_string("section");
-                let section_annotation: Option<String> = None;
+                let section_annotation = annotations.get_string("section", self.ast);
 
                 if let Some(section_name) = section_annotation {
                     self.instr(Section(section_name.to_string()));
