@@ -20,16 +20,12 @@ use crate::{
         ParsedType, ParsedUpperStatement, ParsedUpperStatementId,
     },
     scope::Scope,
-    types::{FunctionType, StructType, Type, TypeId},
+    types::{
+        FunctionType, StructType, Type, TypeId, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16,
+        BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
+        BUILTIN_TYPE_VOID,
+    },
 };
-
-pub const BUILTIN_TYPE_UNKNOWN: TypeId = 999999;
-pub const BUILTIN_TYPE_VOID: TypeId = 0;
-pub const BUILTIN_TYPE_U8: TypeId = 1;
-pub const BUILTIN_TYPE_U16: TypeId = 2;
-pub const BUILTIN_TYPE_U32: TypeId = 3;
-pub const BUILTIN_TYPE_U64: TypeId = 4;
-pub const BUILTIN_TYPE_BOOL: TypeId = 5;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct DeclarationId(usize);
@@ -102,7 +98,7 @@ impl<'a> Sema<'a> {
 
     fn register_type(&mut self, t: Type) -> TypeId {
         self.types.push(t);
-        self.types.len() - 1
+        (self.types.len() as u32 - 1).into()
     }
 
     fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
@@ -117,6 +113,7 @@ impl<'a> Sema<'a> {
                 .types
                 .iter()
                 .position(|x| matches!(x, Type::Struct(s) if s.name == name))
+                .map(|p| (p as u32).into())
                 .ok_or_else(|| {
                     Error::new(ErrorType::TypeCheck, format!("Could not find type {name}"))
                 }),
@@ -124,17 +121,17 @@ impl<'a> Sema<'a> {
     }
 
     pub fn get_type_info(&self, id: TypeId) -> Result<&Type> {
-        self.types.get(id).ok_or_else(|| {
+        self.types.get(*id as usize).ok_or_else(|| {
             Error::new(
                 ErrorType::TypeCheck,
-                format!("Could not find type with id {id}"),
+                format!("Could not find type with id {}", *id),
             )
         })
     }
 
     fn find_or_add_type(&mut self, t: Type) -> TypeId {
         match self.types.iter().position(|x| x == &t) {
-            Some(t) => t,
+            Some(t) => (t as u32).into(),
             None => self.register_type(t),
         }
     }
@@ -182,7 +179,7 @@ impl<'a> Sema<'a> {
             Type::Struct(s) => Ok(s),
             _ => Err(Error::new(
                 ErrorType::TypeCheck,
-                format!("Type with id {id} is not a struct"),
+                format!("Type with id {} is not a struct", *id),
             )),
         }
     }
@@ -350,7 +347,7 @@ impl<'a> Sema<'a> {
                         Error::new_with_range(
                             ErrorType::TypeCheck,
                             format!(
-                                "Cannot widen from type {:?} to {:?}",
+                                "Cannot widen from type {} to {}",
                                 self.get_type(right_id),
                                 self.get_type(left_id)
                             ),
@@ -397,7 +394,7 @@ impl<'a> Sema<'a> {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
-                            "Condition of if statement should be a boolean but is {:?}",
+                            "Condition of if statement should be a boolean but is {}",
                             self.get_type(condition_id)
                         ),
                         *range,
@@ -430,7 +427,7 @@ impl<'a> Sema<'a> {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
-                            "Condition of while statement should be a boolean but is {:?}",
+                            "Condition of while statement should be a boolean but is {}",
                             self.get_type(condition_id)
                         ),
                         *range,
@@ -459,7 +456,7 @@ impl<'a> Sema<'a> {
                     None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
-                            "Cannot assign value to return type, expected '{:?}' but got '{:?}'",
+                            "Cannot assign value to return type, expected '{}' but got '{}'",
                             self.current_function_return_type, expr_type,
                         ),
                         *range,
@@ -809,7 +806,7 @@ impl<'a> Sema<'a> {
                             Error::new_with_range(
                                 ErrorType::TypeCheck,
                                 format!(
-                                    "Cannot widen from type {:?} to {:?}",
+                                    "Cannot widen from type {} to {}",
                                     checked_value_type, struct_field.1,
                                 ),
                                 *range,
@@ -871,7 +868,7 @@ impl<'a> Sema<'a> {
                     }
                     None => Err(Error::new_with_range(
                         ErrorType::TypeCheck,
-                        format!("No field '{name}' exists on type {}", child_type_id),
+                        format!("No field '{name}' exists on type {}", *child_type_id),
                         *range,
                     )),
                 }
@@ -1062,7 +1059,7 @@ impl<'a> Sema<'a> {
                 let new_type = self.widen_assignment(type_id, value_type)?.ok_or_else(|| {
                     Error::new_with_range(
                         ErrorType::TypeCheck,
-                        format!("Cannot widen const type {:?} to {:?}", value_type, type_id),
+                        format!("Cannot widen const type {} to {}", value_type, type_id),
                         *range,
                     )
                 })?;

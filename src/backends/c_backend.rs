@@ -7,11 +7,11 @@ use crate::ast::{
     UnaryOperatorType, UpperStatement, UpperStatementId, WhileStatement,
 };
 use crate::error::{Error, ErrorType, Result};
-use crate::sema::{
-    DeclarationId, Sema, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
+use crate::sema::{DeclarationId, Sema};
+use crate::types::{
+    TypeId, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
     BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
 };
-use crate::types::TypeId;
 use std::path::Path;
 use std::process::Command;
 

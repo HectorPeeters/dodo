@@ -10,7 +10,8 @@ use crate::ast::{
     UnaryOperatorExpr, UpperStatement, UpperStatementId, VariableRefExpr, WhileStatement,
     WidenExpr,
 };
-use crate::sema::{DeclarationId, Sema, BUILTIN_TYPE_VOID};
+use crate::sema::{DeclarationId, Sema};
+use crate::types::BUILTIN_TYPE_VOID;
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
