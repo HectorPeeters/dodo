@@ -20,11 +20,7 @@ use crate::{
         ParsedType, ParsedUpperStatement, ParsedUpperStatementId,
     },
     scope::Scope,
-    types::{
-        FunctionType, StructType, Type, TypeId, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16,
-        BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8, BUILTIN_TYPE_UNKNOWN,
-        BUILTIN_TYPE_VOID,
-    },
+    types::{builtin_types, FunctionType, StructType, Type, TypeId},
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -64,16 +60,9 @@ impl<'a> Sema<'a> {
             expression_types: Vec::new(),
             function_declarations: HashMap::new(),
             declarations: Vec::new(),
-            types: vec![
-                Type::Void(),
-                Type::UInt8(),
-                Type::UInt16(),
-                Type::UInt32(),
-                Type::UInt64(),
-                Type::Bool(),
-            ],
+            types: builtin_types::ALL_TYPES.to_vec(),
             scope: Scope::new(),
-            current_function_return_type: BUILTIN_TYPE_UNKNOWN,
+            current_function_return_type: builtin_types::UNKNOWN,
         }
     }
 
@@ -102,14 +91,9 @@ impl<'a> Sema<'a> {
     }
 
     fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
-        match name {
-            "void" => Ok(BUILTIN_TYPE_VOID),
-            "u8" => Ok(BUILTIN_TYPE_U8),
-            "u16" => Ok(BUILTIN_TYPE_U16),
-            "u32" => Ok(BUILTIN_TYPE_U32),
-            "u64" => Ok(BUILTIN_TYPE_U64),
-            "bool" => Ok(BUILTIN_TYPE_BOOL),
-            _ => self
+        match builtin_types::from_str(name) {
+            Some(builtin) => Ok(builtin),
+            None => self
                 .types
                 .iter()
                 .position(|x| matches!(x, Type::Struct(s) if s.name == name))
@@ -390,7 +374,7 @@ impl<'a> Sema<'a> {
             } => {
                 let condition_id = self.check_expression(*condition)?;
 
-                if self.get_type(condition_id) != BUILTIN_TYPE_BOOL {
+                if self.get_type(condition_id) != builtin_types::BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
@@ -423,7 +407,7 @@ impl<'a> Sema<'a> {
             } => {
                 let condition_id = self.check_expression(*condition)?;
 
-                if self.get_type(condition_id) != BUILTIN_TYPE_BOOL {
+                if self.get_type(condition_id) != builtin_types::BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
@@ -447,7 +431,7 @@ impl<'a> Sema<'a> {
                 let mut expr_id = self.check_expression(*value)?;
                 let expr_type = self.get_type(expr_id);
 
-                assert_ne!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
+                assert_ne!(self.current_function_return_type, builtin_types::UNKNOWN);
 
                 let actual_type =
                     self.widen_assignment(self.current_function_return_type, expr_type)?;
@@ -559,7 +543,7 @@ impl<'a> Sema<'a> {
                 assert_eq!(self.get_type(left_id), self.get_type(right_id));
 
                 let result_type = if op_type.is_comparison() {
-                    BUILTIN_TYPE_BOOL
+                    builtin_types::BOOL
                 } else {
                     result_type
                 };
@@ -629,8 +613,8 @@ impl<'a> Sema<'a> {
 
                 let return_type = function_type.return_type;
 
-                // NOTE: BUILTIN_TYPE_UNKNOWN is only used for extern functions
-                if return_type == BUILTIN_TYPE_UNKNOWN {
+                // NOTE: builtin_types::UNKNOWN is only used for extern functions
+                if return_type == builtin_types::UNKNOWN {
                     let expression = Expression::FunctionCall(FunctionCallExpr {
                         name,
                         arg_ids: args
@@ -639,7 +623,7 @@ impl<'a> Sema<'a> {
                             .collect::<Result<Vec<_>>>()?,
                         range: *range,
                     });
-                    return self.add_expression(expression, BUILTIN_TYPE_U64);
+                    return self.add_expression(expression, builtin_types::U64);
                 }
 
                 assert_eq!(args.len(), function_type.parameters.len());
@@ -724,10 +708,10 @@ impl<'a> Sema<'a> {
                 });
 
                 let type_id = match *value {
-                    x if x < 2_u64.pow(8) => BUILTIN_TYPE_U8,
-                    x if x < 2_u64.pow(16) => BUILTIN_TYPE_U16,
-                    x if x < 2_u64.pow(32) => BUILTIN_TYPE_U32,
-                    _ => BUILTIN_TYPE_U64,
+                    x if x < 2_u64.pow(8) => builtin_types::U8,
+                    x if x < 2_u64.pow(16) => builtin_types::U16,
+                    x if x < 2_u64.pow(32) => builtin_types::U32,
+                    _ => builtin_types::U64,
                 };
 
                 self.add_expression(expression, type_id)
@@ -737,7 +721,7 @@ impl<'a> Sema<'a> {
                     value: *value,
                     range: *range,
                 });
-                self.add_expression(expression, BUILTIN_TYPE_BOOL)
+                self.add_expression(expression, builtin_types::BOOL)
             }
             ParsedExpression::VariableRef { name, range } => {
                 let declaration_id = self.scope.find(name).map_err(|e| e.with_range(*range))?;
@@ -897,7 +881,7 @@ impl<'a> Sema<'a> {
 
                 let index_range = *index.range();
                 // TODO: on non-64-bit platforms this should be U32
-                let index_expression = self.add_expression(index, BUILTIN_TYPE_U64)?;
+                let index_expression = self.add_expression(index, builtin_types::U64)?;
 
                 let add_expression = self.add_expression(
                     Expression::BinaryOperator(BinaryOperatorExpr {
@@ -906,7 +890,7 @@ impl<'a> Sema<'a> {
                         right_id: index_expression,
                         range: index_range,
                     }),
-                    BUILTIN_TYPE_U64,
+                    builtin_types::U64,
                 )?;
 
                 let expression = Expression::UnaryOperator(UnaryOperatorExpr {
@@ -922,7 +906,7 @@ impl<'a> Sema<'a> {
                     value: *value,
                     range: *range,
                 });
-                let u8_ptr_type = self.find_or_add_type(Type::Ptr(BUILTIN_TYPE_U8));
+                let u8_ptr_type = self.find_or_add_type(Type::Ptr(builtin_types::U8));
                 self.add_expression(expression, u8_ptr_type)
             }
             ParsedExpression::Type { value, range } => {
@@ -960,7 +944,7 @@ impl<'a> Sema<'a> {
                         )
                     })?;
 
-                assert_eq!(self.current_function_return_type, BUILTIN_TYPE_UNKNOWN);
+                assert_eq!(self.current_function_return_type, builtin_types::UNKNOWN);
 
                 self.current_function_return_type = function_declaration.return_type;
 
@@ -982,7 +966,7 @@ impl<'a> Sema<'a> {
 
                 let checked_body = self.check_statement(*body)?;
 
-                self.current_function_return_type = BUILTIN_TYPE_UNKNOWN;
+                self.current_function_return_type = builtin_types::UNKNOWN;
 
                 self.scope.pop();
 
@@ -1104,7 +1088,7 @@ impl<'a> Sema<'a> {
                     name,
                     FunctionType {
                         parameters: vec![],
-                        return_type: BUILTIN_TYPE_UNKNOWN,
+                        return_type: builtin_types::UNKNOWN,
                     },
                 );
 

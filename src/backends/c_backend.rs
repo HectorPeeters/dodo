@@ -8,10 +8,7 @@ use crate::ast::{
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::sema::{DeclarationId, Sema};
-use crate::types::{
-    TypeId, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64,
-    BUILTIN_TYPE_U8, BUILTIN_TYPE_VOID,
-};
+use crate::types::{builtin_types, TypeId};
 use std::path::Path;
 use std::process::Command;
 
@@ -100,12 +97,12 @@ impl<'a> Backend<'a> for CBackend<'a> {
 impl<'a> CBackend<'a> {
     fn to_c_type(&self, id: TypeId) -> Result<String> {
         match id {
-            BUILTIN_TYPE_U8 => Ok("char".to_string()),
-            BUILTIN_TYPE_U16 => Ok("unsigned short".to_string()),
-            BUILTIN_TYPE_U32 => Ok("unsigned int".to_string()),
-            BUILTIN_TYPE_U64 => Ok("unsigned long".to_string()),
-            BUILTIN_TYPE_BOOL => Ok("bool".to_string()),
-            BUILTIN_TYPE_VOID => Ok("void".to_string()),
+            builtin_types::U8 => Ok("char".to_string()),
+            builtin_types::U16 => Ok("unsigned short".to_string()),
+            builtin_types::U32 => Ok("unsigned int".to_string()),
+            builtin_types::U64 => Ok("unsigned long".to_string()),
+            builtin_types::BOOL => Ok("bool".to_string()),
+            builtin_types::VOID => Ok("void".to_string()),
             _ if self.sema.get_type_info(id)?.is_ptr() => Ok(format!(
                 "{}*",
                 self.to_c_type(self.sema.get_type_info(id)?.get_deref()?)?

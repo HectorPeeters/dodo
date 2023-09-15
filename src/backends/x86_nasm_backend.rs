@@ -11,7 +11,7 @@ use crate::ast::{
     WidenExpr,
 };
 use crate::sema::{DeclarationId, Sema};
-use crate::types::BUILTIN_TYPE_VOID;
+use crate::types::builtin_types;
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
@@ -822,7 +822,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 let result_register = self.get_next_register();
 
                 let type_id = self.sema.get_type(expression_id);
-                if type_id != BUILTIN_TYPE_VOID {
+                if type_id != builtin_types::VOID {
                     let return_type_size = self.sema.get_type_size(type_id)?;
 
                     self.instr(Mov(
