@@ -302,6 +302,10 @@ impl<'a> EscapedString<'a> {
         Self { inner }
     }
 
+    pub fn inner(&self) -> &str {
+        self.inner
+    }
+
     pub fn unescape(&self) -> String {
         self.inner
             .replace("\\\"", "\"")

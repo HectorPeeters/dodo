@@ -159,7 +159,7 @@ impl<'a> X86NasmBackend<'a> {
                 instructions.push(instruction);
             }
             Expression::StringLiteral(str_lit) => {
-                let mut string_bytes = str_lit.value.to_string().as_bytes().to_vec();
+                let mut string_bytes = str_lit.value.unescape().as_bytes().to_vec();
                 string_bytes.push(0);
                 instructions.push(Db(string_bytes));
             }
