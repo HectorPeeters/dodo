@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::iter::Map;
+use std::ops::Range;
 
 use crate::error::Result;
 use crate::id_impl;
@@ -8,9 +10,11 @@ use crate::sema::DeclarationId;
 use crate::types::TypeId;
 
 pub struct Ast<'a> {
-    pub expressions: Vec<Expression<'a>>,
-    pub statements: Vec<Statement>,
-    pub upper_statements: Vec<UpperStatement<'a>>,
+    expressions: Vec<Expression<'a>>,
+    expression_types: Vec<TypeId>,
+
+    statements: Vec<Statement>,
+    upper_statements: Vec<UpperStatement<'a>>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -35,19 +39,41 @@ impl<'a> Ast<'a> {
     pub fn new() -> Self {
         Self {
             expressions: vec![],
+            expression_types: vec![],
             statements: vec![],
             upper_statements: vec![],
         }
     }
 
-    pub fn add_expression(&mut self, expression: Expression<'a>) -> ExpressionId {
+    pub fn get_expression(&self, expression_id: ExpressionId) -> &Expression<'a> {
+        &self.expressions[*expression_id as usize]
+    }
+
+    pub fn get_expression_type(&self, expression_id: ExpressionId) -> TypeId {
+        self.expression_types[*expression_id as usize]
+    }
+
+    pub fn add_expression(
+        &mut self,
+        expression: Expression<'a>,
+        expression_type: TypeId,
+    ) -> Result<ExpressionId> {
         self.expressions.push(expression);
-        ExpressionId(self.expressions.len() as u32 - 1)
+        self.expression_types.push(expression_type);
+        Ok(ExpressionId(self.expressions.len() as u32 - 1))
+    }
+
+    pub fn get_statement(&self, statement_id: StatementId) -> &Statement {
+        &self.statements[*statement_id as usize]
     }
 
     pub fn add_statement(&mut self, statements: Statement) -> StatementId {
         self.statements.push(statements);
         StatementId(self.statements.len() as u32 - 1)
+    }
+
+    pub fn get_upper_statement(&self, upper_statement_id: UpperStatementId) -> &UpperStatement<'a> {
+        &self.upper_statements[*upper_statement_id as usize]
     }
 
     pub fn add_upper_statement(
@@ -58,16 +84,12 @@ impl<'a> Ast<'a> {
         UpperStatementId(self.upper_statements.len() as u32 - 1)
     }
 
-    pub fn get_expression(&self, expression_id: ExpressionId) -> &Expression<'a> {
-        &self.expressions[*expression_id as usize]
+    pub fn upper_statements(&self) -> &[UpperStatement] {
+        &self.upper_statements
     }
 
-    pub fn get_statement(&self, statement_id: StatementId) -> &Statement {
-        &self.statements[*statement_id as usize]
-    }
-
-    pub fn get_upper_statement(&self, upper_statement_id: UpperStatementId) -> &UpperStatement<'a> {
-        &self.upper_statements[*upper_statement_id as usize]
+    pub fn upper_statement_ids(&self) -> Map<Range<u32>, fn(u32) -> UpperStatementId> {
+        (0..self.upper_statements.len() as u32).map(UpperStatementId::from)
     }
 }
 

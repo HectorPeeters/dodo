@@ -30,7 +30,7 @@ impl<'a> CBackend<'a> {
 
 impl<'a> Backend<'a> for CBackend<'a> {
     fn process(&mut self) -> Result<()> {
-        for statement in &self.ast.upper_statements {
+        for statement in self.ast.upper_statements() {
             if let UpperStatement::StructDeclaration(struct_decl) = statement {
                 self.buffer
                     .push_str(&format!("struct {};\n", struct_decl.name));
@@ -39,7 +39,7 @@ impl<'a> Backend<'a> for CBackend<'a> {
 
         self.buffer.push('\n');
 
-        for statement in &self.ast.upper_statements {
+        for statement in self.ast.upper_statements() {
             if let UpperStatement::Function(FunctionDeclaration {
                 name,
                 params,
@@ -56,8 +56,8 @@ impl<'a> Backend<'a> for CBackend<'a> {
 
         self.buffer.push('\n');
 
-        for upper_statement_id in 0..self.ast.upper_statements.len() {
-            self.visit_upper_statement((upper_statement_id as u32).into())?;
+        for upper_statement_id in self.ast.upper_statement_ids() {
+            self.visit_upper_statement(upper_statement_id)?;
         }
 
         Ok(())
@@ -363,7 +363,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             Expression::VariableRef(var_ref) => Ok(format!("{}", var_ref.declaration_id)),
             Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
             Expression::StructLiteral(StructLiteralExpr { fields, range: _ }) => {
-                let type_id = self.sema.get_type(expression_id);
+                let type_id = self.ast.get_expression_type(expression_id);
                 let c_type = self.to_c_type(type_id)?;
 
                 let formatted_fields = fields
@@ -383,7 +383,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                 range: _,
             }) => {
                 let child_source = self.visit_expression(*expr_id)?;
-                let expression_type = self.sema.get_type(*expr_id);
+                let expression_type = self.ast.get_expression_type(*expr_id);
 
                 if self.sema.get_type_info(expression_type)?.is_ptr() {
                     Ok(format!("{child_source}->{name}"))
@@ -393,7 +393,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             }
             Expression::Widen(widen) => self.visit_expression(widen.expr_id),
             Expression::Cast(CastExpr { expr_id, range: _ }) => {
-                let type_id = self.sema.get_type(expression_id);
+                let type_id = self.ast.get_expression_type(expression_id);
                 Ok(format!(
                     "({})({})",
                     self.to_c_type(type_id)?,
