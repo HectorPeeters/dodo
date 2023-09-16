@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashSet, fmt::Display};
 
 pub type IrString = usize;
 pub type IrBlockIndex = usize;
@@ -273,26 +273,22 @@ impl IrBuilder {
     }
 
     pub fn can_jump_blocks(&self, block_index: IrBlockIndex) -> Vec<IrBlockIndex> {
-        let mut result = vec![];
-
-        let mut add = |value| {
-            if !result.contains(value) {
-                result.push(*value);
-            }
-        };
+        let mut result = HashSet::new();
 
         for instr in &self.blocks[block_index].instructions {
             match instr {
-                IrInstruction::Jmp(target) => add(target),
+                IrInstruction::Jmp(target) => {
+                    result.insert(*target);
+                }
                 IrInstruction::CondJmp(true_target, false_target, _) => {
-                    add(true_target);
-                    add(false_target);
+                    result.insert(*true_target);
+                    result.insert(*false_target);
                 }
                 _ => {}
             }
         }
 
-        result
+        result.into_iter().collect()
     }
 
     pub fn get_dot_graph(&self) -> String {
