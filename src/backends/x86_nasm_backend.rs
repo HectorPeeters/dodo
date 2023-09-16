@@ -11,7 +11,7 @@ use crate::ast::{
     WidenExpr,
 };
 use crate::sema::{DeclarationId, Sema};
-use crate::types::builtin_types;
+use crate::types::{builtin_types, TypeStore};
 use crate::{
     ast::{BinaryOperatorType, Expression, Statement, UnaryOperatorType},
     error::{Error, ErrorType, Result},
@@ -55,6 +55,7 @@ struct GlobalConst<'a> {
 pub struct X86NasmBackend<'a> {
     ast: &'a Ast<'a>,
     sema: &'a Sema<'a>,
+    type_store: &'a TypeStore,
     data_locations: HashMap<DeclarationId, DataLocation>,
     data_stack_offset: Vec<usize>,
     instructions: Vec<X86Instruction>,
@@ -65,9 +66,10 @@ pub struct X86NasmBackend<'a> {
 }
 
 impl<'a> X86NasmBackend<'a> {
-    pub fn new(ast: &'a Ast, sema: &'a Sema) -> Self {
+    pub fn new(sema: &'a Sema) -> Self {
         let mut result = Self {
-            ast,
+            ast: sema.get_ast(),
+            type_store: sema.get_type_store(),
             sema,
             data_locations: HashMap::new(),
             data_stack_offset: vec![0],
@@ -170,15 +172,17 @@ impl<'a> X86NasmBackend<'a> {
                 for field in &struct_lit.fields {
                     let field_type = self.ast.get_expression_type(field.1);
 
-                    let mut field_instructions =
-                        self.get_data_instructions(field.1, self.sema.get_type_size(field_type)?)?;
+                    let mut field_instructions = self.get_data_instructions(
+                        field.1,
+                        self.type_store.get_type_size(field_type)?,
+                    )?;
 
                     instructions.append(&mut field_instructions);
                 }
             }
             Expression::Widen(WidenExpr { expr_id, range: _ }) => {
                 let expr_type = self.ast.get_expression_type(expression_id);
-                let expr_size = self.sema.get_type_size(expr_type)?;
+                let expr_size = self.type_store.get_type_size(expr_type)?;
                 let mut child_instructions = self.get_data_instructions(*expr_id, expr_size)?;
 
                 instructions.append(&mut child_instructions);
@@ -207,7 +211,7 @@ impl<'a> X86NasmBackend<'a> {
 
             let mut data_instructions = self.get_data_instructions(
                 global.expression,
-                self.sema.get_type_size(global_expression_type)?,
+                self.type_store.get_type_size(global_expression_type)?,
             )?;
 
             queued_instructions.append(&mut data_instructions);
@@ -239,7 +243,7 @@ impl<'a> X86NasmBackend<'a> {
             if field.0 == name {
                 break;
             }
-            offset += self.sema.get_type_size(field.1)?;
+            offset += self.type_store.get_type_size(field.1)?;
         }
 
         Ok(offset)
@@ -419,7 +423,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
 
                     self.instr(Mov(
                         RegIndirect(Rbp, offset * STACK_OFFSET, true),
-                        Reg(arg_reg, self.sema.get_type_size(arg_type)?),
+                        Reg(arg_reg, self.type_store.get_type_size(arg_type)?),
                     ));
                 }
 
@@ -479,9 +483,9 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             }) => {
                 let right_type = self.ast.get_expression_type(*right_id);
 
-                assert!(!self.sema.get_type_info(right_type)?.is_struct());
+                assert!(!self.type_store.get_type_info(right_type)?.is_struct());
 
-                let value_size = self.sema.get_type_size(right_type)?;
+                let value_size = self.type_store.get_type_size(right_type)?;
                 let value_reg = self.visit_expression(*right_id)?;
                 let value_operand = Reg(value_reg, value_size);
 
@@ -513,7 +517,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 self.instr(LabelDef(start_label));
 
                 let condition_type = self.ast.get_expression_type(*condition_id);
-                let condition_size = self.sema.get_type_size(condition_type)?;
+                let condition_size = self.type_store.get_type_size(condition_type)?;
                 let register = self.visit_expression(*condition_id)?;
 
                 self.instr(Cmp(Reg(register, condition_size), Constant(0)));
@@ -536,7 +540,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 let else_label = self.get_new_label();
 
                 let condition_type = self.ast.get_expression_type(*condition_id);
-                let condition_size = self.sema.get_type_size(condition_type)?;
+                let condition_size = self.type_store.get_type_size(condition_type)?;
                 let condition_register = self.visit_expression(*condition_id)?;
 
                 self.instr(Cmp(Reg(condition_register, condition_size), Constant(0)));
@@ -562,7 +566,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             }
             Statement::Return(ReturnStatement { expr_id, range: _ }) => {
                 let value_type = self.ast.get_expression_type(*expr_id);
-                let expr_size = self.sema.get_type_size(value_type)?;
+                let expr_size = self.type_store.get_type_size(value_type)?;
                 let value_reg = self.visit_expression(*expr_id)?;
 
                 self.instr(Mov(Reg(Rax, expr_size), Reg(value_reg, expr_size)));
@@ -603,7 +607,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 let register = self.get_next_register();
 
                 let type_id = self.ast.get_expression_type(expression_id);
-                let value_size = self.sema.get_type_size(type_id)?;
+                let value_size = self.type_store.get_type_size(type_id)?;
                 self.instr(Mov(Reg(register, value_size), Constant(*value)));
 
                 Ok(register)
@@ -633,7 +637,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                         let location = self.data_locations[declaration_id];
 
                         let type_id = self.ast.get_expression_type(expression_id);
-                        let value_size = self.sema.get_type_size(type_id)?;
+                        let value_size = self.type_store.get_type_size(type_id)?;
 
                         match location {
                             DataLocation::Stack(offset) => self.instr(Lea(
@@ -651,7 +655,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             }
             Expression::UnaryOperator(unop) => {
                 let expr_type = self.ast.get_expression_type(unop.expr_id);
-                let expr_size = self.sema.get_type_size(expr_type)?;
+                let expr_size = self.type_store.get_type_size(expr_type)?;
 
                 let reg = self.visit_expression(unop.expr_id)?;
                 let result_reg = self.get_next_register();
@@ -670,8 +674,8 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 let left_type = self.ast.get_expression_type(binop.left_id);
                 let right_type = self.ast.get_expression_type(binop.right_id);
 
-                let left_size = self.sema.get_type_size(left_type)?;
-                let right_size = self.sema.get_type_size(right_type)?;
+                let left_size = self.type_store.get_type_size(left_type)?;
+                let right_size = self.type_store.get_type_size(right_type)?;
 
                 let left_reg = self.visit_expression(binop.left_id)?;
                 let right_reg = self.visit_expression(binop.right_id)?;
@@ -757,7 +761,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 let register = self.get_next_register();
 
                 let type_id = self.ast.get_expression_type(expression_id);
-                let value_size = self.sema.get_type_size(type_id)?;
+                let value_size = self.type_store.get_type_size(type_id)?;
 
                 match location {
                     DataLocation::Stack(offset) => self.instr(Mov(
@@ -765,7 +769,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                         RegIndirect(Rbp, offset * 16, true),
                     )),
                     DataLocation::Global(index) => {
-                        let value_type = self.sema.get_type_info(type_id)?;
+                        let value_type = self.type_store.get_type_info(type_id)?;
 
                         if value_type.is_ptr() || value_type.is_struct() {
                             self.instr(Mov(Reg(register, value_size), Label(index)))
@@ -788,7 +792,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
 
                 for (expr, dest_reg) in arg_ids.iter().zip(&ARGUMENT_REGISTERS) {
                     let expr_type = self.ast.get_expression_type(*expr);
-                    let arg_size = self.sema.get_type_size(expr_type)?;
+                    let arg_size = self.type_store.get_type_size(expr_type)?;
                     let arg_register = self.visit_expression(*expr)?;
 
                     if dest_reg.is_caller_saved() {
@@ -823,7 +827,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
 
                 let type_id = self.ast.get_expression_type(expression_id);
                 if type_id != builtin_types::VOID {
-                    let return_type_size = self.sema.get_type_size(type_id)?;
+                    let return_type_size = self.type_store.get_type_size(type_id)?;
 
                     self.instr(Mov(
                         Reg(result_register, return_type_size),
@@ -852,7 +856,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 range: _,
             }) => {
                 let type_id = self.ast.get_expression_type(expression_id);
-                let value_type_size = self.sema.get_type_size(type_id)?;
+                let value_type_size = self.type_store.get_type_size(type_id)?;
                 assert!(value_type_size <= 64);
 
                 let expr_type = self.ast.get_expression_type(*expr_id);
@@ -871,9 +875,9 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             }
             Expression::Widen(WidenExpr { expr_id, range: _ }) => {
                 let expr_type = self.ast.get_expression_type(*expr_id);
-                let expr_size = self.sema.get_type_size(expr_type)?;
+                let expr_size = self.type_store.get_type_size(expr_type)?;
                 let widen_type = self.ast.get_expression_type(expression_id);
-                let widen_size = self.sema.get_type_size(widen_type)?;
+                let widen_size = self.type_store.get_type_size(widen_type)?;
 
                 assert!(expr_size < widen_size);
                 let expr_reg = self.visit_expression(*expr_id)?;

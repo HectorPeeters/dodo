@@ -106,3 +106,77 @@ impl Display for Type {
         }
     }
 }
+
+pub struct TypeStore {
+    types: Vec<Type>,
+}
+
+impl Default for TypeStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TypeStore {
+    pub fn new() -> Self {
+        Self {
+            types: builtin_types::ALL_TYPES.to_vec(),
+        }
+    }
+
+    pub fn register_type(&mut self, t: Type) -> TypeId {
+        self.types.push(t);
+        (self.types.len() as u32 - 1).into()
+    }
+
+    pub fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
+        match builtin_types::from_str(name) {
+            Some(builtin) => Ok(builtin),
+            None => self
+                .types
+                .iter()
+                .position(|x| matches!(x, Type::Struct(s) if s.name == name))
+                .map(|p| (p as u32).into())
+                .ok_or_else(|| {
+                    Error::new(ErrorType::TypeCheck, format!("Could not find type {name}"))
+                }),
+        }
+    }
+
+    pub fn get_type_info(&self, id: TypeId) -> Result<&Type> {
+        self.types.get(*id as usize).ok_or_else(|| {
+            Error::new(
+                ErrorType::TypeCheck,
+                format!("Could not find type with id {}", *id),
+            )
+        })
+    }
+
+    pub fn find_or_add_type(&mut self, t: Type) -> TypeId {
+        match self.types.iter().position(|x| x == &t) {
+            Some(t) => (t as u32).into(),
+            None => self.register_type(t),
+        }
+    }
+
+    pub fn get_type_size(&self, id: TypeId) -> Result<usize> {
+        let value_type = self.get_type_info(id)?;
+
+        Ok(match value_type {
+            Type::UInt8() => 8,
+            Type::UInt16() => 16,
+            Type::UInt32() => 32,
+            Type::UInt64() => 64,
+            Type::Bool() => 8,
+            Type::Ptr(_) => 64,
+            Type::Void() => unreachable!(),
+            Type::Struct(s) => s
+                .fields
+                .iter()
+                .map(|(_, t)| self.get_type_size(*t))
+                .collect::<Result<Vec<_>>>()?
+                .iter()
+                .sum(),
+        })
+    }
+}

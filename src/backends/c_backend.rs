@@ -8,20 +8,22 @@ use crate::ast::{
 };
 use crate::error::{Error, ErrorType, Result};
 use crate::sema::{DeclarationId, Sema};
-use crate::types::{builtin_types, TypeId};
+use crate::types::{builtin_types, TypeId, TypeStore};
 use std::path::Path;
 use std::process::Command;
 
 pub struct CBackend<'a> {
     ast: &'a Ast<'a>,
+    type_store: &'a TypeStore,
     sema: &'a Sema<'a>,
     buffer: String,
 }
 
 impl<'a> CBackend<'a> {
-    pub fn new(ast: &'a Ast<'a>, sema: &'a Sema<'a>) -> Self {
+    pub fn new(sema: &'a Sema<'a>) -> Self {
         Self {
-            ast,
+            ast: sema.get_ast(),
+            type_store: sema.get_type_store(),
             sema,
             buffer: "#include <stdio.h>\n#include<stdlib.h>\n#include<stdbool.h>\n\n".to_string(),
         }
@@ -103,11 +105,11 @@ impl<'a> CBackend<'a> {
             builtin_types::U64 => Ok("unsigned long".to_string()),
             builtin_types::BOOL => Ok("bool".to_string()),
             builtin_types::VOID => Ok("void".to_string()),
-            _ if self.sema.get_type_info(id)?.is_ptr() => Ok(format!(
+            _ if self.type_store.get_type_info(id)?.is_ptr() => Ok(format!(
                 "{}*",
-                self.to_c_type(self.sema.get_type_info(id)?.get_deref()?)?
+                self.to_c_type(self.type_store.get_type_info(id)?.get_deref()?)?
             )),
-            _ if self.sema.get_type_info(id)?.is_struct() => {
+            _ if self.type_store.get_type_info(id)?.is_struct() => {
                 Ok(format!("struct {}", self.sema.get_struct(id)?.name))
             }
             _ => unreachable!(),
@@ -385,7 +387,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                 let child_source = self.visit_expression(*expr_id)?;
                 let expression_type = self.ast.get_expression_type(*expr_id);
 
-                if self.sema.get_type_info(expression_type)?.is_ptr() {
+                if self.type_store.get_type_info(expression_type)?.is_ptr() {
                     Ok(format!("{child_source}->{name}"))
                 } else {
                     Ok(format!("{child_source}.{name}"))

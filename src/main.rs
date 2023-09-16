@@ -100,13 +100,12 @@ fn main() -> Result<()> {
     }
 
     unwrap_or_error(sema.analyse(), source_file);
-    let ast = sema.get_ast();
 
     // Backend
 
     let mut backend: Box<dyn Backend> = match args.backend {
-        Some(BackendType::C) | None => Box::new(CBackend::new(ast, &sema)),
-        Some(BackendType::X86) => Box::new(X86NasmBackend::new(ast, &sema)),
+        Some(BackendType::C) | None => Box::new(CBackend::new(&sema)),
+        Some(BackendType::X86) => Box::new(X86NasmBackend::new(&sema)),
     };
 
     unwrap_or_error(backend.process(), source_file);

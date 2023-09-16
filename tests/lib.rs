@@ -87,11 +87,10 @@ fn run_test(
     let mut sema = Sema::new(&ast);
 
     sema.analyse()?;
-    let ast = sema.get_ast();
 
     let mut backend: Box<dyn Backend> = match backend_type {
-        BackendType::C => Box::new(CBackend::new(ast, &sema)),
-        BackendType::X86 => Box::new(X86NasmBackend::new(ast, &sema)),
+        BackendType::C => Box::new(CBackend::new(&sema)),
+        BackendType::X86 => Box::new(X86NasmBackend::new(&sema)),
         // BackendType::Ir => Box::new(IrBackend::new(&mut project)),
     };
 

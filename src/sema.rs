@@ -20,7 +20,7 @@ use crate::{
         ParsedType, ParsedUpperStatement, ParsedUpperStatementId,
     },
     scope::Scope,
-    types::{builtin_types, FunctionType, StructType, Type, TypeId},
+    types::{builtin_types, FunctionType, StructType, Type, TypeId, TypeStore},
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -34,7 +34,6 @@ impl Display for DeclarationId {
 
 pub struct Declaration {
     pub type_id: TypeId,
-    pub is_constant: bool,
     pub value: Option<ExpressionId>,
 }
 
@@ -45,8 +44,8 @@ pub struct Sema<'a> {
     function_declarations: HashMap<&'a str, FunctionType>,
     declarations: Vec<Declaration>,
 
-    types: Vec<Type>,
     scope: Scope<DeclarationId>,
+    type_store: TypeStore,
 
     current_function_return_type: TypeId,
 }
@@ -58,8 +57,8 @@ impl<'a> Sema<'a> {
             ast: Ast::new(),
             function_declarations: HashMap::new(),
             declarations: Vec::new(),
-            types: builtin_types::ALL_TYPES.to_vec(),
             scope: Scope::new(),
+            type_store: TypeStore::new(),
             current_function_return_type: builtin_types::UNKNOWN,
         }
     }
@@ -68,66 +67,13 @@ impl<'a> Sema<'a> {
         &self.ast
     }
 
-    fn register_type(&mut self, t: Type) -> TypeId {
-        self.types.push(t);
-        (self.types.len() as u32 - 1).into()
+    pub fn get_type_store(&self) -> &TypeStore {
+        &self.type_store
     }
 
-    fn get_type_id(&mut self, name: &str) -> Result<TypeId> {
-        match builtin_types::from_str(name) {
-            Some(builtin) => Ok(builtin),
-            None => self
-                .types
-                .iter()
-                .position(|x| matches!(x, Type::Struct(s) if s.name == name))
-                .map(|p| (p as u32).into())
-                .ok_or_else(|| {
-                    Error::new(ErrorType::TypeCheck, format!("Could not find type {name}"))
-                }),
-        }
-    }
-
-    pub fn get_type_info(&self, id: TypeId) -> Result<&Type> {
-        self.types.get(*id as usize).ok_or_else(|| {
-            Error::new(
-                ErrorType::TypeCheck,
-                format!("Could not find type with id {}", *id),
-            )
-        })
-    }
-
-    fn find_or_add_type(&mut self, t: Type) -> TypeId {
-        match self.types.iter().position(|x| x == &t) {
-            Some(t) => (t as u32).into(),
-            None => self.register_type(t),
-        }
-    }
-
-    pub fn get_type_size(&self, id: TypeId) -> Result<usize> {
-        let value_type = self.get_type_info(id)?;
-
-        Ok(match value_type {
-            Type::UInt8() => 8,
-            Type::UInt16() => 16,
-            Type::UInt32() => 32,
-            Type::UInt64() => 64,
-            Type::Bool() => 8,
-            Type::Ptr(_) => 64,
-            Type::Void() => unreachable!(),
-            Type::Struct(s) => s
-                .fields
-                .iter()
-                .map(|(_, t)| self.get_type_size(*t))
-                .collect::<Result<Vec<_>>>()?
-                .iter()
-                .sum(),
-        })
-    }
-
-    pub fn add_declaration(&mut self, type_id: TypeId, is_constant: bool) -> DeclarationId {
+    pub fn add_declaration(&mut self, type_id: TypeId) -> DeclarationId {
         self.declarations.push(Declaration {
             type_id,
-            is_constant,
             value: None,
         });
         DeclarationId(self.declarations.len() - 1)
@@ -142,7 +88,7 @@ impl<'a> Sema<'a> {
     }
 
     pub fn get_struct(&self, id: TypeId) -> Result<&StructType> {
-        match self.get_type_info(id)? {
+        match self.type_store.get_type_info(id)? {
             Type::Struct(s) => Ok(s),
             _ => Err(Error::new(
                 ErrorType::TypeCheck,
@@ -153,12 +99,13 @@ impl<'a> Sema<'a> {
 
     fn check_type(&mut self, parsed_type: &ParsedType) -> Result<TypeId> {
         match parsed_type {
-            ParsedType::Named(name, range) => {
-                self.get_type_id(name).map_err(|e| e.with_range(*range))
-            }
+            ParsedType::Named(name, range) => self
+                .type_store
+                .get_type_id(name)
+                .map_err(|e| e.with_range(*range)),
             ParsedType::Ptr(inner, range) => {
                 let inner = self.check_type(inner).map_err(|e| e.with_range(*range))?;
-                Ok(self.find_or_add_type(Type::Ptr(inner)))
+                Ok(self.type_store.find_or_add_type(Type::Ptr(inner)))
             }
         }
     }
@@ -205,7 +152,7 @@ impl<'a> Sema<'a> {
                     .collect::<Result<Vec<_>>>()
                     .map_err(|x| x.with_range(*range))?;
 
-                self.register_type(Type::Struct(StructType {
+                self.type_store.register_type(Type::Struct(StructType {
                     name: name.to_string(),
                     fields: checked_fields
                         .iter()
@@ -237,8 +184,8 @@ impl<'a> Sema<'a> {
     }
 
     fn widen_assignment(&self, left: TypeId, right: TypeId) -> Result<Option<TypeId>> {
-        let left_size = self.get_type_size(left)?;
-        let right_size = self.get_type_size(right)?;
+        let left_size = self.type_store.get_type_size(left)?;
+        let right_size = self.type_store.get_type_size(right)?;
 
         if left_size < right_size {
             Ok(None)
@@ -282,7 +229,7 @@ impl<'a> Sema<'a> {
             } => {
                 let type_id = self.check_type(value_type)?;
 
-                let declaration_id = self.add_declaration(type_id, false);
+                let declaration_id = self.add_declaration(type_id);
 
                 self.scope
                     .insert(name, declaration_id)
@@ -464,11 +411,11 @@ impl<'a> Sema<'a> {
                 // TODO: add support for logic operators
                 let mut left_id = self.check_expression(*left)?;
                 let left_type = self.ast.get_expression_type(left_id);
-                let left_size = self.get_type_size(left_type)?;
+                let left_size = self.type_store.get_type_size(left_type)?;
 
                 let mut right_id = self.check_expression(*right)?;
                 let right_type = self.ast.get_expression_type(right_id);
-                let right_size = self.get_type_size(right_type)?;
+                let right_size = self.type_store.get_type_size(right_type)?;
 
                 // NOTE: We currently don't support this operation as for the eight bit variant,
                 // the remainder gets stored in the ah register instead of dl. When we can output
@@ -483,7 +430,7 @@ impl<'a> Sema<'a> {
                 }
 
                 // TODO: this needs a thorough rework, comparing references won't work
-                if self.get_type_info(left_type)?.is_ptr() && !op_type.is_comparison() {
+                if self.type_store.get_type_info(left_type)?.is_ptr() && !op_type.is_comparison() {
                     // TODO: limit this to only addition and subtraction
                     let right_id = self.ast.add_expression(
                         Expression::Widen(WidenExpr {
@@ -569,7 +516,7 @@ impl<'a> Sema<'a> {
                             expr_id,
                             range: *range,
                         }),
-                        self.find_or_add_type(Type::Ptr(expr_type)),
+                        self.type_store.find_or_add_type(Type::Ptr(expr_type)),
                     ),
                     UnaryOperatorType::Deref => (
                         Expression::UnaryOperator(UnaryOperatorExpr {
@@ -577,7 +524,7 @@ impl<'a> Sema<'a> {
                             expr_id,
                             range: *range,
                         }),
-                        self.get_type_info(expr_type)?.get_deref()?,
+                        self.type_store.get_type_info(expr_type)?.get_deref()?,
                     ),
                 };
 
@@ -811,7 +758,7 @@ impl<'a> Sema<'a> {
             ParsedExpression::FieldAccessor { child, name, range } => {
                 let child_id = self.check_expression(*child)?;
                 let child_type_id = self.ast.get_expression_type(child_id);
-                let child_type = self.get_type_info(child_type_id)?;
+                let child_type = self.type_store.get_type_info(child_type_id)?;
 
                 if !child_type.is_struct() && !child_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -853,7 +800,7 @@ impl<'a> Sema<'a> {
                 let expr_id = self.check_expression(*expr)?;
                 let expr_type_id = self.ast.get_expression_type(expr_id);
 
-                let expr_type = self.get_type_info(expr_type_id)?;
+                let expr_type = self.type_store.get_type_info(expr_type_id)?;
 
                 if !expr_type.is_ptr() {
                     return Err(Error::new_with_range(
@@ -898,7 +845,9 @@ impl<'a> Sema<'a> {
                     value: *value,
                     range: *range,
                 });
-                let u8_ptr_type = self.find_or_add_type(Type::Ptr(builtin_types::U8));
+                let u8_ptr_type = self
+                    .type_store
+                    .find_or_add_type(Type::Ptr(builtin_types::U8));
                 self.ast.add_expression(expression, u8_ptr_type)
             }
             ParsedExpression::Type { value, range } => {
@@ -947,7 +896,7 @@ impl<'a> Sema<'a> {
                     .iter()
                     .zip(function_declaration.parameters.iter())
                 {
-                    let declaration_id = self.add_declaration(*param_type, false);
+                    let declaration_id = self.add_declaration(*param_type);
 
                     self.scope
                         .insert(name, declaration_id)
@@ -1007,9 +956,9 @@ impl<'a> Sema<'a> {
                         .map(|(x, y)| (x.to_string(), *y))
                         .collect::<Vec<_>>(),
                 });
-                let type_id = self.find_or_add_type(complete_type);
+                let type_id = self.type_store.find_or_add_type(complete_type);
 
-                let declaration_id = self.add_declaration(type_id, false);
+                let declaration_id = self.add_declaration(type_id);
 
                 let statement = UpperStatement::StructDeclaration(StructDeclaration {
                     name,
@@ -1048,7 +997,7 @@ impl<'a> Sema<'a> {
                     value_id = self.ast.add_expression(expression, new_type)?;
                 }
 
-                let declaration_id = self.add_declaration(type_id, true);
+                let declaration_id = self.add_declaration(type_id);
                 self.add_declaration_value(declaration_id, value_id);
 
                 self.scope.insert(name, declaration_id)?;
