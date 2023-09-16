@@ -24,6 +24,7 @@ id_impl!(UpperStatementId);
 pub struct Ast<'a> {
     expressions: Vec<Expression<'a>>,
     expression_types: Vec<TypeId>,
+    expression_ranges: Vec<SourceRange>,
 
     statements: Vec<Statement>,
     upper_statements: Vec<UpperStatement<'a>>,
@@ -40,6 +41,7 @@ impl<'a> Ast<'a> {
         Self {
             expressions: vec![],
             expression_types: vec![],
+            expression_ranges: vec![],
             statements: vec![],
             upper_statements: vec![],
         }
@@ -53,13 +55,19 @@ impl<'a> Ast<'a> {
         self.expression_types[*expression_id as usize]
     }
 
+    pub fn get_expression_range(&self, expression_id: ExpressionId) -> SourceRange {
+        self.expression_ranges[*expression_id as usize]
+    }
+
     pub fn add_expression(
         &mut self,
         expression: Expression<'a>,
         expression_type: TypeId,
+        expression_range: SourceRange,
     ) -> Result<ExpressionId> {
         self.expressions.push(expression);
         self.expression_types.push(expression_type);
+        self.expression_ranges.push(expression_range);
         Ok(ExpressionId(self.expressions.len() as u32 - 1))
     }
 
@@ -334,77 +342,64 @@ pub struct BinaryOperatorExpr {
     pub op_type: BinaryOperatorType,
     pub left_id: ExpressionId,
     pub right_id: ExpressionId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryOperatorExpr {
     pub op_type: UnaryOperatorType,
     pub expr_id: ExpressionId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCallExpr<'a> {
     pub name: &'a str,
     pub arg_ids: Vec<ExpressionId>,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntegerLiteralExpr {
     pub value: u64,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BooleanLiteralExpr {
     pub value: bool,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableRefExpr<'a> {
     pub name: &'a str,
     pub declaration_id: DeclarationId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringLiteralExpr<'a> {
     pub value: EscapedString<'a>,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteralExpr<'a> {
     pub fields: Vec<(&'a str, ExpressionId)>,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccessorExpr<'a> {
     pub name: &'a str,
     pub expr_id: ExpressionId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WidenExpr {
     pub expr_id: ExpressionId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastExpr {
     pub expr_id: ExpressionId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeExpr {
-    pub range: SourceRange,
-}
+pub struct TypeExpr {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
@@ -420,27 +415,6 @@ pub enum Expression<'a> {
     Widen(WidenExpr),
     Cast(CastExpr),
     Type(TypeExpr),
-}
-
-impl<'a> Expression<'a> {
-    pub fn range(&self) -> &SourceRange {
-        use Expression::*;
-
-        match self {
-            BinaryOperator(x) => &x.range,
-            UnaryOperator(x) => &x.range,
-            FunctionCall(x) => &x.range,
-            IntegerLiteral(x) => &x.range,
-            BooleanLiteral(x) => &x.range,
-            VariableRef(x) => &x.range,
-            StringLiteral(x) => &x.range,
-            StructLiteral(x) => &x.range,
-            FieldAccessor(x) => &x.range,
-            Widen(x) => &x.range,
-            Cast(x) => &x.range,
-            Type(x) => &x.range,
-        }
-    }
 }
 
 pub trait AstVisitor<'a, U, S, E> {

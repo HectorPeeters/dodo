@@ -347,11 +347,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                     UnaryOperatorType::Deref => format!("(*{expr})"),
                 })
             }
-            Expression::FunctionCall(FunctionCallExpr {
-                name,
-                arg_ids,
-                range: _,
-            }) => {
+            Expression::FunctionCall(FunctionCallExpr { name, arg_ids }) => {
                 let args = arg_ids
                     .iter()
                     .map(|x| self.visit_expression(*x))
@@ -364,7 +360,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
             Expression::BooleanLiteral(bool_lit) => Ok(format!("{}", bool_lit.value)),
             Expression::VariableRef(var_ref) => Ok(format!("{}", var_ref.declaration_id)),
             Expression::StringLiteral(str_lit) => Ok(format!("\"{}\"", str_lit.value.inner())),
-            Expression::StructLiteral(StructLiteralExpr { fields, range: _ }) => {
+            Expression::StructLiteral(StructLiteralExpr { fields }) => {
                 let type_id = self.ast.get_expression_type(expression_id);
                 let c_type = self.to_c_type(type_id)?;
 
@@ -379,11 +375,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
 
                 Ok(format!("({c_type}){{\n{formatted_fields}\n}}"))
             }
-            Expression::FieldAccessor(FieldAccessorExpr {
-                name,
-                expr_id,
-                range: _,
-            }) => {
+            Expression::FieldAccessor(FieldAccessorExpr { name, expr_id }) => {
                 let child_source = self.visit_expression(*expr_id)?;
                 let expression_type = self.ast.get_expression_type(*expr_id);
 
@@ -394,7 +386,7 @@ impl<'a> AstVisitor<'a, (), (), String> for CBackend<'a> {
                 }
             }
             Expression::Widen(widen) => self.visit_expression(widen.expr_id),
-            Expression::Cast(CastExpr { expr_id, range: _ }) => {
+            Expression::Cast(CastExpr { expr_id }) => {
                 let type_id = self.ast.get_expression_type(expression_id);
                 Ok(format!(
                     "({})({})",

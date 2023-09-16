@@ -180,7 +180,7 @@ impl<'a> X86NasmBackend<'a> {
                     instructions.append(&mut field_instructions);
                 }
             }
-            Expression::Widen(WidenExpr { expr_id, range: _ }) => {
+            Expression::Widen(WidenExpr { expr_id }) => {
                 let expr_type = self.ast.get_expression_type(expression_id);
                 let expr_size = self.type_store.get_type_size(expr_type)?;
                 let mut child_instructions = self.get_data_instructions(*expr_id, expr_size)?;
@@ -269,17 +269,12 @@ impl<'a> X86NasmBackend<'a> {
             Expression::UnaryOperator(UnaryOperatorExpr {
                 op_type: UnaryOperatorType::Deref,
                 expr_id,
-                range: _,
             }) => {
                 let dest_reg = self.visit_expression(*expr_id)?;
 
                 Ok((LValueLocation::Register(dest_reg, 0), Some(dest_reg)))
             }
-            Expression::FieldAccessor(FieldAccessorExpr {
-                name,
-                expr_id,
-                range: _,
-            }) => {
+            Expression::FieldAccessor(FieldAccessorExpr { name, expr_id }) => {
                 let expression_type = self.ast.get_expression_type(*expr_id);
 
                 let offset = self.get_struct_field_offset(name, expression_type)?;
@@ -603,7 +598,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
         let expression = self.ast.get_expression(expression_id);
 
         match expression {
-            Expression::IntegerLiteral(IntegerLiteralExpr { value, range: _ }) => {
+            Expression::IntegerLiteral(IntegerLiteralExpr { value }) => {
                 let register = self.get_next_register();
 
                 let type_id = self.ast.get_expression_type(expression_id);
@@ -622,7 +617,6 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             Expression::UnaryOperator(UnaryOperatorExpr {
                 op_type: UnaryOperatorType::Ref,
                 expr_id,
-                range: _,
             }) => {
                 let result_reg = self.get_next_register();
 
@@ -632,7 +626,6 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                     Expression::VariableRef(VariableRefExpr {
                         name: _,
                         declaration_id,
-                        range: _,
                     }) => {
                         let location = self.data_locations[declaration_id];
 
@@ -755,7 +748,6 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
             Expression::VariableRef(VariableRefExpr {
                 name: _,
                 declaration_id,
-                range: _,
             }) => {
                 let location = self.data_locations[&declaration_id];
                 let register = self.get_next_register();
@@ -781,11 +773,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
 
                 Ok(register)
             }
-            Expression::FunctionCall(FunctionCallExpr {
-                name,
-                arg_ids,
-                range: _,
-            }) => {
+            Expression::FunctionCall(FunctionCallExpr { name, arg_ids }) => {
                 assert!(arg_ids.len() <= 6);
 
                 let arg_count = arg_ids.len();
@@ -850,11 +838,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
                 Ok(result_reg)
             }
             Expression::StructLiteral(_) => todo!(),
-            Expression::FieldAccessor(FieldAccessorExpr {
-                name,
-                expr_id,
-                range: _,
-            }) => {
+            Expression::FieldAccessor(FieldAccessorExpr { name, expr_id }) => {
                 let type_id = self.ast.get_expression_type(expression_id);
                 let value_type_size = self.type_store.get_type_size(type_id)?;
                 assert!(value_type_size <= 64);
@@ -873,7 +857,7 @@ impl<'a> AstVisitor<'a, (), (), X86Register> for X86NasmBackend<'a> {
 
                 Ok(result_reg)
             }
-            Expression::Widen(WidenExpr { expr_id, range: _ }) => {
+            Expression::Widen(WidenExpr { expr_id }) => {
                 let expr_type = self.ast.get_expression_type(*expr_id);
                 let expr_size = self.type_store.get_type_size(expr_type)?;
                 let widen_type = self.ast.get_expression_type(expression_id);
