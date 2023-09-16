@@ -1,27 +1,124 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::iter::Map;
+use std::ops::Range;
 
 use crate::error::Result;
+use crate::id_impl;
 use crate::lexer::{SourceRange, TokenType};
-use crate::sema::{
-    DeclarationId, BUILTIN_TYPE_U16, BUILTIN_TYPE_U32, BUILTIN_TYPE_U64, BUILTIN_TYPE_U8,
-};
+use crate::sema::DeclarationId;
 use crate::types::TypeId;
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ExpressionId(u32);
+id_impl!(ExpressionId);
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct StatementId(u32);
+id_impl!(StatementId);
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct UpperStatementId(u32);
+id_impl!(UpperStatementId);
+
+pub struct Ast<'a> {
+    expressions: Vec<Expression<'a>>,
+    expression_types: Vec<TypeId>,
+    expression_ranges: Vec<SourceRange>,
+
+    statements: Vec<Statement>,
+    upper_statements: Vec<UpperStatement<'a>>,
+}
+
+impl<'a> Default for Ast<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> Ast<'a> {
+    pub fn new() -> Self {
+        Self {
+            expressions: vec![],
+            expression_types: vec![],
+            expression_ranges: vec![],
+            statements: vec![],
+            upper_statements: vec![],
+        }
+    }
+
+    pub fn get_expression(&self, expression_id: ExpressionId) -> &Expression<'a> {
+        &self.expressions[*expression_id as usize]
+    }
+
+    pub fn get_expression_type(&self, expression_id: ExpressionId) -> TypeId {
+        self.expression_types[*expression_id as usize]
+    }
+
+    pub fn get_expression_range(&self, expression_id: ExpressionId) -> SourceRange {
+        self.expression_ranges[*expression_id as usize]
+    }
+
+    pub fn add_expression(
+        &mut self,
+        expression: Expression<'a>,
+        expression_type: TypeId,
+        expression_range: SourceRange,
+    ) -> Result<ExpressionId> {
+        self.expressions.push(expression);
+        self.expression_types.push(expression_type);
+        self.expression_ranges.push(expression_range);
+        Ok(ExpressionId(self.expressions.len() as u32 - 1))
+    }
+
+    pub fn get_statement(&self, statement_id: StatementId) -> &Statement {
+        &self.statements[*statement_id as usize]
+    }
+
+    pub fn add_statement(&mut self, statements: Statement) -> StatementId {
+        self.statements.push(statements);
+        StatementId(self.statements.len() as u32 - 1)
+    }
+
+    pub fn get_upper_statement(&self, upper_statement_id: UpperStatementId) -> &UpperStatement<'a> {
+        &self.upper_statements[*upper_statement_id as usize]
+    }
+
+    pub fn add_upper_statement(
+        &mut self,
+        upper_statements: UpperStatement<'a>,
+    ) -> UpperStatementId {
+        self.upper_statements.push(upper_statements);
+        UpperStatementId(self.upper_statements.len() as u32 - 1)
+    }
+
+    pub fn upper_statements(&self) -> &[UpperStatement] {
+        &self.upper_statements
+    }
+
+    pub fn upper_statement_ids(&self) -> Map<Range<u32>, fn(u32) -> UpperStatementId> {
+        (0..self.upper_statements.len() as u32).map(UpperStatementId::from)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct Annotations<'a>(HashMap<&'a str, Option<Expression<'a>>>);
+pub struct Annotations<'a>(HashMap<&'a str, Option<ExpressionId>>);
 
 impl<'a> Annotations<'a> {
     pub fn empty() -> Self {
         Self(HashMap::new())
     }
-    pub fn get(&self, name: &str) -> Option<&Option<Expression<'a>>> {
+
+    pub fn get(&self, name: &str) -> Option<&Option<ExpressionId>> {
         self.0.get(name)
     }
 
-    pub fn get_string(&self, name: &str) -> Option<&'a str> {
+    pub fn get_string(&self, name: &str, ast: &Ast<'a>) -> Option<String> {
         match self.0.get(name) {
-            Some(Some(Expression::StringLiteral(literal))) => Some(literal.value.inner()),
+            Some(Some(expr_id)) => match ast.get_expression(*expr_id) {
+                Expression::StringLiteral(value) => Some(value.value.unescape()),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -31,8 +128,8 @@ impl<'a> Annotations<'a> {
     }
 }
 
-impl<'a> From<HashMap<&'a str, Option<Expression<'a>>>> for Annotations<'a> {
-    fn from(value: HashMap<&'a str, Option<Expression<'a>>>) -> Self {
+impl<'a> From<HashMap<&'a str, Option<ExpressionId>>> for Annotations<'a> {
+    fn from(value: HashMap<&'a str, Option<ExpressionId>>) -> Self {
         Self(value)
     }
 }
@@ -42,7 +139,7 @@ pub struct FunctionDeclaration<'a> {
     pub name: &'a str,
     pub params: Vec<DeclarationId>,
     pub return_type: TypeId,
-    pub body: Statement<'a>,
+    pub body: StatementId,
     pub annotations: Annotations<'a>,
     pub range: SourceRange,
 }
@@ -58,7 +155,7 @@ pub struct StructDeclaration<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConstDeclaration<'a> {
     pub declaration_id: DeclarationId,
-    pub value: Expression<'a>,
+    pub value: ExpressionId,
     pub annotations: Annotations<'a>,
     pub range: SourceRange,
 }
@@ -78,8 +175,8 @@ pub enum UpperStatement<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BlockStatement<'a> {
-    pub children: Vec<Statement<'a>>,
+pub struct BlockStatement {
+    pub children_ids: Vec<StatementId>,
     pub scoped: bool,
     pub range: SourceRange,
 }
@@ -91,48 +188,48 @@ pub struct DeclarationStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AssignmentStatement<'a> {
-    pub left: Expression<'a>,
-    pub right: Expression<'a>,
+pub struct AssignmentStatement {
+    pub left_id: ExpressionId,
+    pub right_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExpressionStatement<'a> {
-    pub expr: Expression<'a>,
+pub struct ExpressionStatement {
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct WhileStatement<'a> {
-    pub condition: Expression<'a>,
-    pub body: Box<Statement<'a>>,
+pub struct WhileStatement {
+    pub condition_id: ExpressionId,
+    pub body_id: StatementId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct IfStatement<'a> {
-    pub condition: Expression<'a>,
-    pub if_body: Box<Statement<'a>>,
-    pub else_body: Option<Box<Statement<'a>>>,
+pub struct IfStatement {
+    pub condition_id: ExpressionId,
+    pub if_body_id: StatementId,
+    pub else_body_id: Option<StatementId>,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReturnStatement<'a> {
-    pub expr: Expression<'a>,
+pub struct ReturnStatement {
+    pub expr_id: ExpressionId,
     pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement<'a> {
-    Block(BlockStatement<'a>),
+pub enum Statement {
+    Block(BlockStatement),
     Declaration(DeclarationStatement),
-    Assignment(AssignmentStatement<'a>),
-    Expression(ExpressionStatement<'a>),
-    While(WhileStatement<'a>),
-    If(IfStatement<'a>),
-    Return(ReturnStatement<'a>),
+    Assignment(AssignmentStatement),
+    Expression(ExpressionStatement),
+    While(WhileStatement),
+    If(IfStatement),
+    Return(ReturnStatement),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -213,8 +310,18 @@ impl<'a> EscapedString<'a> {
         Self { inner }
     }
 
-    pub fn inner(&self) -> &'a str {
+    pub fn inner(&self) -> &str {
         self.inner
+    }
+
+    pub fn unescape(&self) -> String {
+        self.inner
+            .replace("\\\"", "\"")
+            .replace("\\t", "\t")
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\'", "'")
+            .replace("\\\"", "\"")
     }
 }
 
@@ -226,133 +333,78 @@ impl<'a> From<&'a str> for EscapedString<'a> {
 
 impl<'a> fmt::Display for EscapedString<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.inner
-                .replace("\\\"", "\"")
-                .replace("\\t", "\t")
-                .replace("\\n", "\n")
-                .replace("\\r", "\r")
-                .replace("\\'", "'")
-                .replace("\\\"", "\"")
-        )
+        write!(f, "{}", self.unescape())
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BinaryOperatorExpr<'a> {
+pub struct BinaryOperatorExpr {
     pub op_type: BinaryOperatorType,
-    pub left: Box<Expression<'a>>,
-    pub right: Box<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+    pub left_id: ExpressionId,
+    pub right_id: ExpressionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UnaryOperatorExpr<'a> {
+pub struct UnaryOperatorExpr {
     pub op_type: UnaryOperatorType,
-    pub expr: Box<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+    pub expr_id: ExpressionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCallExpr<'a> {
     pub name: &'a str,
-    pub args: Vec<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+    pub arg_ids: Vec<ExpressionId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntegerLiteralExpr {
     pub value: u64,
-    pub type_id: TypeId,
-    pub range: SourceRange,
-}
-
-impl IntegerLiteralExpr {
-    pub fn new(value: u64, range: SourceRange) -> Self {
-        let type_id = if value <= 255 {
-            BUILTIN_TYPE_U8
-        } else if value <= 65535 {
-            BUILTIN_TYPE_U16
-        } else if value <= 4294967295 {
-            BUILTIN_TYPE_U32
-        } else {
-            BUILTIN_TYPE_U64
-        };
-
-        Self {
-            value,
-            type_id,
-            range,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BooleanLiteralExpr {
     pub value: bool,
-    pub type_id: TypeId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableRefExpr<'a> {
     pub name: &'a str,
     pub declaration_id: DeclarationId,
-    pub type_id: TypeId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringLiteralExpr<'a> {
     pub value: EscapedString<'a>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLiteralExpr<'a> {
-    pub fields: Vec<(&'a str, Expression<'a>)>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+    pub fields: Vec<(&'a str, ExpressionId)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccessorExpr<'a> {
     pub name: &'a str,
-    pub expr: Box<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+    pub expr_id: ExpressionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct WidenExpr<'a> {
-    pub expr: Box<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+pub struct WidenExpr {
+    pub expr_id: ExpressionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CastExpr<'a> {
-    pub expr: Box<Expression<'a>>,
-    pub type_id: TypeId,
-    pub range: SourceRange,
+pub struct CastExpr {
+    pub expr_id: ExpressionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeExpr {
-    pub type_id: TypeId,
-    pub range: SourceRange,
-}
+pub struct TypeExpr {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'a> {
-    BinaryOperator(BinaryOperatorExpr<'a>),
-    UnaryOperator(UnaryOperatorExpr<'a>),
+    BinaryOperator(BinaryOperatorExpr),
+    UnaryOperator(UnaryOperatorExpr),
     FunctionCall(FunctionCallExpr<'a>),
     IntegerLiteral(IntegerLiteralExpr),
     BooleanLiteral(BooleanLiteralExpr),
@@ -360,55 +412,15 @@ pub enum Expression<'a> {
     StringLiteral(StringLiteralExpr<'a>),
     StructLiteral(StructLiteralExpr<'a>),
     FieldAccessor(FieldAccessorExpr<'a>),
-    Widen(WidenExpr<'a>),
-    Cast(CastExpr<'a>),
+    Widen(WidenExpr),
+    Cast(CastExpr),
     Type(TypeExpr),
 }
 
-impl<'a> Expression<'a> {
-    pub fn type_id(&self) -> TypeId {
-        use Expression::*;
+pub trait AstVisitor<'a, U, S, E> {
+    fn visit_upper_statement(&mut self, statement: UpperStatementId) -> Result<U>;
 
-        match self {
-            BinaryOperator(x) => x.type_id,
-            UnaryOperator(x) => x.type_id,
-            FunctionCall(x) => x.type_id,
-            IntegerLiteral(x) => x.type_id,
-            BooleanLiteral(x) => x.type_id,
-            VariableRef(x) => x.type_id,
-            StringLiteral(x) => x.type_id,
-            StructLiteral(x) => x.type_id,
-            FieldAccessor(x) => x.type_id,
-            Widen(x) => x.type_id,
-            Cast(x) => x.type_id,
-            Type(x) => x.type_id,
-        }
-    }
+    fn visit_statement(&mut self, statement: StatementId) -> Result<S>;
 
-    pub fn range(&self) -> &SourceRange {
-        use Expression::*;
-
-        match self {
-            BinaryOperator(x) => &x.range,
-            UnaryOperator(x) => &x.range,
-            FunctionCall(x) => &x.range,
-            IntegerLiteral(x) => &x.range,
-            BooleanLiteral(x) => &x.range,
-            VariableRef(x) => &x.range,
-            StringLiteral(x) => &x.range,
-            StructLiteral(x) => &x.range,
-            FieldAccessor(x) => &x.range,
-            Widen(x) => &x.range,
-            Cast(x) => &x.range,
-            Type(x) => &x.range,
-        }
-    }
-}
-
-pub trait AstTransformer<'a, U, S, E> {
-    fn visit_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<U>;
-
-    fn visit_statement(&mut self, statement: Statement<'a>) -> Result<S>;
-
-    fn visit_expression(&mut self, expression: Expression<'a>) -> Result<E>;
+    fn visit_expression(&mut self, expression: ExpressionId) -> Result<E>;
 }

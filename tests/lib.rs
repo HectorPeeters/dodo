@@ -2,7 +2,6 @@ use dodo::{
     backends::{c_backend::CBackend, x86_nasm_backend::X86NasmBackend, Backend, BackendType},
     error::Result,
     lexer::lex,
-    optimizations::optimise,
     parser::Parser,
     sema::Sema,
 };
@@ -83,15 +82,11 @@ fn run_test(
     let tokens = lex(source)?;
 
     let parser = Parser::new(&tokens);
-    let statements = parser.into_iter().collect::<Result<Vec<_>>>()?;
+    let ast = parser.parse()?;
 
-    let mut sema = Sema::new();
+    let mut sema = Sema::new(&ast);
 
-    let mut statements = sema.analyse(statements)?;
-
-    if enable_optimization {
-        statements = optimise(statements, &sema, true)?;
-    }
+    sema.analyse()?;
 
     let mut backend: Box<dyn Backend> = match backend_type {
         BackendType::C => Box::new(CBackend::new(&sema)),
@@ -99,12 +94,7 @@ fn run_test(
         // BackendType::Ir => Box::new(IrBackend::new(&mut project)),
     };
 
-    backend.prepare(&statements)?;
-
-    statements
-        .into_iter()
-        .map(|x| backend.process_upper_statement(x))
-        .collect::<Result<Vec<_>>>()?;
+    backend.process()?;
 
     let executable_path = format!("/tmp/output_{test_code}");
     let executable_path = Path::new(&executable_path);

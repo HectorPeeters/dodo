@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{BinaryOperatorType, EscapedString, UnaryOperatorType},
     error::{Error, ErrorType, Result},
+    id_impl,
     lexer::{SourceRange, Token, TokenType},
 };
 
@@ -12,7 +13,74 @@ pub enum ParsedType {
     Ptr(Box<ParsedType>, SourceRange),
 }
 
-pub type ParsedAnnotations<'a> = HashMap<&'a str, Option<ParsedExpression<'a>>>;
+pub struct ParsedAst<'a> {
+    pub expressions: Vec<ParsedExpression<'a>>,
+    pub statements: Vec<ParsedStatement<'a>>,
+    pub upper_statements: Vec<ParsedUpperStatement<'a>>,
+}
+
+impl<'a> Default for ParsedAst<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> ParsedAst<'a> {
+    pub fn new() -> Self {
+        Self {
+            expressions: vec![],
+            statements: vec![],
+            upper_statements: vec![],
+        }
+    }
+
+    fn add_expression(&mut self, expression: ParsedExpression<'a>) -> ParsedExpressionId {
+        self.expressions.push(expression);
+        ParsedExpressionId(self.expressions.len() as u32 - 1)
+    }
+
+    fn add_statement(&mut self, statement: ParsedStatement<'a>) -> ParsedStatementId {
+        self.statements.push(statement);
+        ParsedStatementId(self.statements.len() as u32 - 1)
+    }
+
+    fn add_upper_statement(
+        &mut self,
+        upper_statement: ParsedUpperStatement<'a>,
+    ) -> ParsedUpperStatementId {
+        self.upper_statements.push(upper_statement);
+        ParsedUpperStatementId(self.upper_statements.len() as u32 - 1)
+    }
+
+    pub fn get_expression(&self, expression_id: ParsedExpressionId) -> &'a ParsedExpression {
+        &self.expressions[*expression_id as usize]
+    }
+
+    pub fn get_statement(&self, statement_id: ParsedStatementId) -> &ParsedStatement {
+        &self.statements[*statement_id as usize]
+    }
+
+    pub fn get_upper_statement(
+        &self,
+        upper_statement_id: ParsedUpperStatementId,
+    ) -> &ParsedUpperStatement {
+        &self.upper_statements[*upper_statement_id as usize]
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ParsedExpressionId(u32);
+id_impl!(ParsedExpressionId);
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ParsedStatementId(u32);
+id_impl!(ParsedStatementId);
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ParsedUpperStatementId(u32);
+id_impl!(ParsedUpperStatementId);
+
+pub type ParsedAnnotations<'a> = HashMap<&'a str, Option<ParsedExpressionId>>;
 pub type NameTypePairs<'a> = Vec<(&'a str, ParsedType)>;
 
 #[derive(Debug, PartialEq)]
@@ -21,7 +89,7 @@ pub enum ParsedUpperStatement<'a> {
         name: &'a str,
         parameters: NameTypePairs<'a>,
         return_type: ParsedType,
-        body: ParsedStatement<'a>,
+        body: ParsedStatementId,
         annotations: ParsedAnnotations<'a>,
         range: SourceRange,
     },
@@ -33,7 +101,7 @@ pub enum ParsedUpperStatement<'a> {
     ConstDeclaration {
         name: &'a str,
         value_type: ParsedType,
-        value: ParsedExpression<'a>,
+        value: ParsedExpressionId,
         annotations: ParsedAnnotations<'a>,
         range: SourceRange,
     },
@@ -46,7 +114,7 @@ pub enum ParsedUpperStatement<'a> {
 #[derive(Debug, PartialEq)]
 pub enum ParsedStatement<'a> {
     Block {
-        children: Vec<ParsedStatement<'a>>,
+        children: Vec<ParsedStatementId>,
         scoped: bool,
         range: SourceRange,
     },
@@ -56,27 +124,27 @@ pub enum ParsedStatement<'a> {
         range: SourceRange,
     },
     Assignment {
-        left: ParsedExpression<'a>,
-        right: ParsedExpression<'a>,
+        left: ParsedExpressionId,
+        right: ParsedExpressionId,
         range: SourceRange,
     },
     Expression {
-        expr: ParsedExpression<'a>,
+        expr: ParsedExpressionId,
         range: SourceRange,
     },
     While {
-        condition: ParsedExpression<'a>,
-        body: Box<ParsedStatement<'a>>,
+        condition: ParsedExpressionId,
+        body: ParsedStatementId,
         range: SourceRange,
     },
     If {
-        condition: ParsedExpression<'a>,
-        body: Box<ParsedStatement<'a>>,
-        else_body: Option<Box<ParsedStatement<'a>>>,
+        condition: ParsedExpressionId,
+        body: ParsedStatementId,
+        else_body: Option<ParsedStatementId>,
         range: SourceRange,
     },
     Return {
-        value: ParsedExpression<'a>,
+        value: ParsedExpressionId,
         range: SourceRange,
     },
 }
@@ -85,23 +153,23 @@ pub enum ParsedStatement<'a> {
 pub enum ParsedExpression<'a> {
     BinaryOperator {
         op_type: BinaryOperatorType,
-        left: Box<ParsedExpression<'a>>,
-        right: Box<ParsedExpression<'a>>,
+        left: ParsedExpressionId,
+        right: ParsedExpressionId,
         range: SourceRange,
     },
     UnaryOperator {
         op_type: UnaryOperatorType,
-        expr: Box<ParsedExpression<'a>>,
+        expr: ParsedExpressionId,
         range: SourceRange,
     },
     FunctionCall {
         name: &'a str,
-        arguments: Vec<ParsedExpression<'a>>,
+        arguments: Vec<ParsedExpressionId>,
         range: SourceRange,
     },
     IntrinsicCall {
         name: &'a str,
-        arguments: Vec<ParsedExpression<'a>>,
+        arguments: Vec<ParsedExpressionId>,
         range: SourceRange,
     },
     IntegerLiteral {
@@ -114,7 +182,7 @@ pub enum ParsedExpression<'a> {
     },
     StructLiteral {
         struct_type: ParsedType,
-        fields: Vec<(&'a str, ParsedExpression<'a>)>,
+        fields: Vec<(&'a str, ParsedExpressionId)>,
         range: SourceRange,
     },
     VariableRef {
@@ -123,12 +191,12 @@ pub enum ParsedExpression<'a> {
     },
     FieldAccessor {
         name: &'a str,
-        child: Box<ParsedExpression<'a>>,
+        child: ParsedExpressionId,
         range: SourceRange,
     },
     ArrayAccessor {
-        expr: Box<ParsedExpression<'a>>,
-        index: Box<ParsedExpression<'a>>,
+        expr: ParsedExpressionId,
+        index: ParsedExpressionId,
         range: SourceRange,
     },
     StringLiteral {
@@ -141,20 +209,21 @@ pub enum ParsedExpression<'a> {
     },
 }
 
-type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpression<'a>>;
+type PrefixParseFn<'a> = fn(&mut Parser<'a>) -> Result<ParsedExpressionId>;
 
 type InfixParseFn<'a> = fn(
     &mut Parser<'a>,
     start_index: usize,
-    left: ParsedExpression<'a>,
+    left: ParsedExpressionId,
     precedence: usize,
-) -> Result<ParsedExpression<'a>>;
+) -> Result<ParsedExpressionId>;
 
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
     index: usize,
     prefix_fns: HashMap<TokenType, PrefixParseFn<'a>>,
     infix_fns: HashMap<TokenType, (InfixParseFn<'a>, usize)>,
+    ast: ParsedAst<'a>,
 }
 
 impl<'a> Parser<'a> {
@@ -214,14 +283,21 @@ impl<'a> Parser<'a> {
             index: 0,
             prefix_fns,
             infix_fns,
+            ast: ParsedAst::new(),
         }
+    }
+
+    pub fn parse(mut self) -> Result<ParsedAst<'a>> {
+        while !self.eof() {
+            self.parse_upper_statement()?;
+        }
+        Ok(self.ast)
     }
 
     fn current_index(&self, end: bool) -> usize {
         if self.eof() {
-            return self.tokens.last().unwrap().range.end;
-        }
-        if end {
+            self.tokens.last().map(|t| t.range.end).unwrap_or(0)
+        } else if end {
             self.tokens[self.index - 1].range.end
         } else {
             self.tokens[self.index].range.start
@@ -237,7 +313,10 @@ impl<'a> Parser<'a> {
             Err(Error::new_with_range(
                 ErrorType::Parser,
                 "Token stream out of bounds".to_string(),
-                self.tokens.last().unwrap().range,
+                self.tokens
+                    .last()
+                    .map(|t| t.range)
+                    .unwrap_or(SourceRange::empty()),
             ))
         } else {
             Ok(&self.tokens[self.index])
@@ -249,7 +328,10 @@ impl<'a> Parser<'a> {
             Err(Error::new_with_range(
                 ErrorType::Parser,
                 "Token stream out of bounds".to_string(),
-                self.tokens.last().unwrap().range,
+                self.tokens
+                    .last()
+                    .map(|t| t.range)
+                    .unwrap_or(SourceRange::empty()),
             ))
         } else {
             Ok(&self.tokens[self.index + i])
@@ -290,7 +372,7 @@ impl<'a> Parser<'a> {
         Ok(result)
     }
 
-    fn parse_function_call(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_function_call(&mut self) -> Result<ParsedExpressionId> {
         let function_start = self.current_index(false);
         let name = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::LeftParen)?;
@@ -311,14 +393,17 @@ impl<'a> Parser<'a> {
         }
 
         self.consume_assert(TokenType::RightParen)?;
-        Ok(ParsedExpression::FunctionCall {
+
+        let expression = ParsedExpression::FunctionCall {
             name,
             arguments,
             range: (function_start..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(expression))
     }
 
-    fn parse_intrinsic_call(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_intrinsic_call(&mut self) -> Result<ParsedExpressionId> {
         let function_start = self.current_index(false);
 
         self.consume_assert(TokenType::At)?;
@@ -341,47 +426,52 @@ impl<'a> Parser<'a> {
         }
 
         self.consume_assert(TokenType::RightParen)?;
-        Ok(ParsedExpression::IntrinsicCall {
+        let expression = ParsedExpression::IntrinsicCall {
             name,
             arguments,
             range: (function_start..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(expression))
     }
 
     fn parse_field_accessor(
         &mut self,
         start_index: usize,
-        left: ParsedExpression<'a>,
+        left: ParsedExpressionId,
         _precedence: usize,
-    ) -> Result<ParsedExpression<'a>> {
+    ) -> Result<ParsedExpressionId> {
         self.consume_assert(TokenType::Dot)?;
         let name = self.consume_assert(TokenType::Identifier)?.value;
 
-        Ok(ParsedExpression::FieldAccessor {
+        let expression = ParsedExpression::FieldAccessor {
             name,
-            child: Box::new(left),
+            child: left,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_expression(expression))
     }
 
     fn parse_array_accessor(
         &mut self,
         start_index: usize,
-        left: ParsedExpression<'a>,
+        left: ParsedExpressionId,
         _precedence: usize,
-    ) -> Result<ParsedExpression<'a>> {
+    ) -> Result<ParsedExpressionId> {
         self.consume_assert(TokenType::LeftSquareParen)?;
         let index = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightSquareParen)?;
 
-        Ok(ParsedExpression::ArrayAccessor {
-            expr: Box::new(left),
-            index: Box::new(index),
+        let expression = ParsedExpression::ArrayAccessor {
+            expr: left,
+            index,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(expression))
     }
 
-    fn parse_identifier_or_function_call(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_identifier_or_function_call(&mut self) -> Result<ParsedExpressionId> {
         let identifier_start = self.current_index(false);
         let next_token = self.peeks(1)?.token_type;
 
@@ -390,77 +480,90 @@ impl<'a> Parser<'a> {
             _ => {
                 let name = self.consume_assert(TokenType::Identifier)?.value;
 
-                Ok(ParsedExpression::VariableRef {
+                let expression = ParsedExpression::VariableRef {
                     name,
                     range: (identifier_start..self.current_index(true)).into(),
-                })
+                };
+                Ok(self.ast.add_expression(expression))
             }
         }
     }
 
-    fn parse_unary_expression(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_unary_expression(&mut self) -> Result<ParsedExpressionId> {
         let unary_start = self.current_index(false);
         let token = self.consume()?;
         let op_type = UnaryOperatorType::from_token_type(token.token_type);
-        let expression = self.parse_expression(0)?;
+        let expr = self.parse_expression(0)?;
 
-        Ok(ParsedExpression::UnaryOperator {
+        let unary_expression = ParsedExpression::UnaryOperator {
             op_type,
-            expr: Box::new(expression),
+            expr,
             range: (unary_start..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(unary_expression))
     }
 
     fn parse_integer_literal(
+        &mut self,
         value: &str,
         prefix: &str,
         radix: u32,
         range: SourceRange,
-    ) -> Result<ParsedExpression<'a>> {
-        match u64::from_str_radix(
+    ) -> Result<ParsedExpressionId> {
+        let Ok(value) = u64::from_str_radix(
             value
                 .trim_start_matches(prefix)
                 .trim_start_matches(&prefix.to_uppercase()),
             radix,
-        ) {
-            Ok(value) => Ok(ParsedExpression::IntegerLiteral { value, range }),
-            Err(_) => Err(Error::new_with_range(
+        ) else {
+            return Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Failed to parse '{value}' to int"),
                 range,
-            )),
-        }
+            ));
+        };
+
+        Ok(self
+            .ast
+            .add_expression(ParsedExpression::IntegerLiteral { value, range }))
     }
 
-    fn parse_constant(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_constant(&mut self) -> Result<ParsedExpressionId> {
         let constant_start = self.current_index(false);
         let token = self.consume()?;
         let range = (constant_start..self.current_index(true)).into();
         match token.token_type {
-            TokenType::True => Ok(ParsedExpression::BooleanLiteral { value: true, range }),
-            TokenType::False => Ok(ParsedExpression::BooleanLiteral {
+            TokenType::True => Ok(self
+                .ast
+                .add_expression(ParsedExpression::BooleanLiteral { value: true, range })),
+            TokenType::False => Ok(self.ast.add_expression(ParsedExpression::BooleanLiteral {
                 value: false,
                 range,
-            }),
-            TokenType::IntegerLiteral => Self::parse_integer_literal(token.value, "", 10, range),
-            TokenType::CharLiteral => Ok(ParsedExpression::IntegerLiteral {
-                // TODO: character escaping
-                value: token.value.as_bytes()[1] as u64,
-                range,
-            }),
+            })),
+            TokenType::IntegerLiteral => self.parse_integer_literal(token.value, "", 10, range),
+            TokenType::CharLiteral => {
+                Ok(self.ast.add_expression(ParsedExpression::IntegerLiteral {
+                    // TODO: character escaping
+                    value: token.value.as_bytes()[1] as u64,
+                    range,
+                }))
+            }
             TokenType::BinaryIntegerLiteral => {
-                Self::parse_integer_literal(token.value, "0b", 2, range)
+                self.parse_integer_literal(token.value, "0b", 2, range)
             }
             TokenType::OctalIntegerLiteral => {
-                Self::parse_integer_literal(token.value, "0o", 8, range)
+                self.parse_integer_literal(token.value, "0o", 8, range)
             }
             TokenType::HexIntegerLiteral => {
-                Self::parse_integer_literal(token.value, "0x", 16, range)
+                self.parse_integer_literal(token.value, "0x", 16, range)
             }
-            TokenType::StringLiteral => Ok(ParsedExpression::StringLiteral {
-                value: token.value[1..token.value.len() - 1].into(),
-                range,
-            }),
+            TokenType::StringLiteral => {
+                Ok(self.ast.add_expression(ParsedExpression::StringLiteral {
+                    value: token.value[1..token.value.len() - 1].into(),
+                    range,
+                }))
+            }
             _ => Err(Error::new_with_range(
                 ErrorType::Parser,
                 format!("Parsing constant but got token {:?}", token.token_type),
@@ -469,7 +572,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_type_value(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_type_value(&mut self) -> Result<ParsedExpressionId> {
         let start_index = self.current_index(false);
 
         // NOTE: colon before a type is required to not get an ambiguous syntax. Otherwise the
@@ -479,13 +582,15 @@ impl<'a> Parser<'a> {
 
         let value = self.parse_type()?;
 
-        Ok(ParsedExpression::Type {
+        let expression = ParsedExpression::Type {
             value,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(expression))
     }
 
-    fn parse_struct_constant(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_struct_constant(&mut self) -> Result<ParsedExpressionId> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Struct)?;
@@ -509,14 +614,16 @@ impl<'a> Parser<'a> {
         }
 
         self.consume_assert(TokenType::RightBrace)?;
-        Ok(ParsedExpression::StructLiteral {
+
+        let expression = ParsedExpression::StructLiteral {
             struct_type,
             fields,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_expression(expression))
     }
 
-    fn parse_parenthesized(&mut self) -> Result<ParsedExpression<'a>> {
+    fn parse_parenthesized(&mut self) -> Result<ParsedExpressionId> {
         self.consume_assert(TokenType::LeftParen)?;
         let expr = self.parse_expression(0)?;
         self.consume_assert(TokenType::RightParen)?;
@@ -526,22 +633,24 @@ impl<'a> Parser<'a> {
     fn parse_binary_operator(
         &mut self,
         start_index: usize,
-        left: ParsedExpression<'a>,
+        left: ParsedExpressionId,
         precedence: usize,
-    ) -> Result<ParsedExpression<'a>> {
+    ) -> Result<ParsedExpressionId> {
         let operator = self.consume()?;
 
         let op_type = BinaryOperatorType::from_token_type(operator.token_type);
         let right = self.parse_expression(precedence)?;
-        Ok(ParsedExpression::BinaryOperator {
+        let expression = ParsedExpression::BinaryOperator {
             op_type,
-            left: Box::new(left),
-            right: Box::new(right),
+            left,
+            right,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+
+        Ok(self.ast.add_expression(expression))
     }
 
-    fn parse_expression(&mut self, precedence: usize) -> Result<ParsedExpression<'a>> {
+    fn parse_expression(&mut self, precedence: usize) -> Result<ParsedExpressionId> {
         let exit_tokens = [
             TokenType::SemiColon,
             TokenType::RightParen,
@@ -597,20 +706,21 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_return_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_return_statement(&mut self) -> Result<ParsedStatementId> {
         let return_start = self.current_index(false);
         self.consume_assert(TokenType::Return)?;
 
         let value = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(ParsedStatement::Return {
+        let statement = ParsedStatement::Return {
             value,
             range: (return_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_statement(statement))
     }
 
-    fn parse_let_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_let_statement(&mut self) -> Result<ParsedStatementId> {
         let let_start = self.current_index(false);
         self.consume_assert(TokenType::Let)?;
         let (name, value_type) = self.parse_identifier_type()?;
@@ -622,37 +732,46 @@ impl<'a> Parser<'a> {
             let expr = self.parse_expression(0)?;
             self.consume_assert(TokenType::SemiColon)?;
 
-            return Ok(ParsedStatement::Block {
-                children: vec![
-                    ParsedStatement::Declaration {
-                        name,
-                        value_type,
-                        range: (let_start..decl_start).into(),
-                    },
-                    ParsedStatement::Assignment {
-                        left: ParsedExpression::VariableRef {
-                            name,
-                            range: (decl_start..self.current_index(true)).into(),
-                        },
-                        right: expr,
-                        range: (decl_start..self.current_index(true)).into(),
-                    },
-                ],
+            let variable_ref_expr = self.ast.add_expression(ParsedExpression::VariableRef {
+                name,
+                range: (decl_start..self.current_index(true)).into(),
+            });
+
+            let children = vec![
+                ParsedStatement::Declaration {
+                    name,
+                    value_type,
+                    range: (let_start..decl_start).into(),
+                },
+                ParsedStatement::Assignment {
+                    left: variable_ref_expr,
+                    right: expr,
+                    range: (decl_start..self.current_index(true)).into(),
+                },
+            ]
+            .into_iter()
+            .map(|s| self.ast.add_statement(s))
+            .collect();
+
+            let statement = ParsedStatement::Block {
+                children,
                 scoped: false,
                 range: (let_start..self.current_index(true)).into(),
-            });
+            };
+            return Ok(self.ast.add_statement(statement));
         }
 
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(ParsedStatement::Declaration {
+        let statement = ParsedStatement::Declaration {
             name,
             value_type,
             range: (let_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_statement(statement))
     }
 
-    fn parse_assignment_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_assignment_statement(&mut self) -> Result<ParsedStatementId> {
         let assignment_start = self.current_index(false);
         let left = self.parse_expression(0)?;
         self.consume_assert(TokenType::Equals)?;
@@ -660,47 +779,50 @@ impl<'a> Parser<'a> {
         let right = self.parse_expression(0)?;
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(ParsedStatement::Assignment {
+        let statement = ParsedStatement::Assignment {
             left,
             right,
             range: (assignment_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_statement(statement))
     }
 
-    fn parse_while_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_while_statement(&mut self) -> Result<ParsedStatementId> {
         let while_start = self.current_index(false);
         self.consume_assert(TokenType::While)?;
 
         let condition = self.parse_expression(0)?;
-        let statement = self.parse_statement()?;
+        let body = self.parse_statement()?;
 
-        Ok(ParsedStatement::While {
+        let statement = ParsedStatement::While {
             condition,
-            body: Box::new(statement),
+            body,
             range: (while_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_statement(statement))
     }
 
-    fn parse_if_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_if_statement(&mut self) -> Result<ParsedStatementId> {
         let if_start = self.current_index(false);
         self.consume_assert(TokenType::If)?;
 
         let condition = self.parse_expression(0)?;
-        let statement = self.parse_statement()?;
+        let body = self.parse_statement()?;
 
         let else_body = if self.peek()?.token_type == TokenType::Else {
             self.consume_assert(TokenType::Else)?;
-            Some(Box::new(self.parse_statement()?))
+            Some(self.parse_statement()?)
         } else {
             None
         };
 
-        Ok(ParsedStatement::If {
+        let statement = ParsedStatement::If {
             condition,
-            body: Box::new(statement),
+            body,
             else_body,
             range: (if_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_statement(statement))
     }
 
     fn parse_identifier_type(&mut self) -> Result<(&'a str, ParsedType)> {
@@ -715,7 +837,7 @@ impl<'a> Parser<'a> {
     fn parse_function(
         &mut self,
         annotations: ParsedAnnotations<'a>,
-    ) -> Result<ParsedUpperStatement<'a>> {
+    ) -> Result<ParsedUpperStatementId> {
         let function_start = self.current_index(false);
         self.consume_assert(TokenType::Fn)?;
 
@@ -749,49 +871,55 @@ impl<'a> Parser<'a> {
         };
 
         let body = self.parse_statement()?;
-        Ok(ParsedUpperStatement::Function {
+        let statement = ParsedUpperStatement::Function {
             name,
             parameters,
             return_type,
             body,
             annotations,
             range: (function_start..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_upper_statement(statement))
     }
 
-    fn parse_statement(&mut self) -> Result<ParsedStatement<'a>> {
+    fn parse_block(&mut self) -> Result<ParsedStatementId> {
+        let block_start = self.current_index(false);
+        self.consume_assert(TokenType::LeftBrace)?;
+        let mut children = vec![];
+        while self.peek()?.token_type != TokenType::RightBrace {
+            children.push(self.parse_statement()?);
+        }
+
+        self.consume_assert(TokenType::RightBrace)?;
+
+        let statement = ParsedStatement::Block {
+            children,
+            scoped: true,
+            range: (block_start..self.current_index(true)).into(),
+        };
+
+        Ok(self.ast.add_statement(statement))
+    }
+
+    fn parse_statement(&mut self) -> Result<ParsedStatementId> {
         let token = self.peek()?;
 
         match token.token_type {
             TokenType::Return => self.parse_return_statement(),
-            TokenType::LeftBrace => {
-                let block_start = self.current_index(false);
-                self.consume_assert(TokenType::LeftBrace)?;
-                let mut children = vec![];
-                while self.peek()?.token_type != TokenType::RightBrace {
-                    children.push(self.parse_statement()?);
-                }
-
-                self.consume_assert(TokenType::RightBrace)?;
-
-                Ok(ParsedStatement::Block {
-                    children,
-                    scoped: true,
-                    range: (block_start..self.current_index(true)).into(),
-                })
-            }
+            TokenType::LeftBrace => self.parse_block(),
             TokenType::Let => self.parse_let_statement(),
             TokenType::While => self.parse_while_statement(),
             TokenType::If => self.parse_if_statement(),
             TokenType::Identifier => match self.peeks(1)?.token_type {
                 TokenType::LeftParen => {
                     let expr_start = self.current_index(false);
-                    let result = ParsedStatement::Expression {
+                    let statement = ParsedStatement::Expression {
                         expr: self.parse_expression(0)?,
                         range: (expr_start..self.current_index(true) + 1).into(),
                     };
                     self.consume_assert(TokenType::SemiColon)?;
-                    Ok(result)
+
+                    Ok(self.ast.add_statement(statement))
                 }
                 _ => self.parse_assignment_statement(),
             },
@@ -802,7 +930,7 @@ impl<'a> Parser<'a> {
     fn parse_const_declaration(
         &mut self,
         annotations: ParsedAnnotations<'a>,
-    ) -> Result<ParsedUpperStatement<'a>> {
+    ) -> Result<ParsedUpperStatementId> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Const)?;
@@ -816,29 +944,31 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(ParsedUpperStatement::ConstDeclaration {
+        let statement = ParsedUpperStatement::ConstDeclaration {
             name,
             value_type,
             value,
             annotations,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_upper_statement(statement))
     }
 
-    fn parse_extern(&mut self) -> Result<ParsedUpperStatement<'a>> {
+    fn parse_extern(&mut self) -> Result<ParsedUpperStatementId> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Extern)?;
         let symbol = self.consume_assert(TokenType::Identifier)?.value;
         self.consume_assert(TokenType::SemiColon)?;
 
-        Ok(ParsedUpperStatement::ExternDeclaration {
+        let statement = ParsedUpperStatement::ExternDeclaration {
             name: symbol,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_upper_statement(statement))
     }
 
-    fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatement<'a>> {
+    fn parse_struct_declaration(&mut self) -> Result<ParsedUpperStatementId> {
         let start_index = self.current_index(false);
 
         self.consume_assert(TokenType::Struct)?;
@@ -862,11 +992,12 @@ impl<'a> Parser<'a> {
 
         self.consume_assert(TokenType::RightBrace)?;
 
-        Ok(ParsedUpperStatement::StructDeclaration {
+        let statement = ParsedUpperStatement::StructDeclaration {
             name,
             fields,
             range: (start_index..self.current_index(true)).into(),
-        })
+        };
+        Ok(self.ast.add_upper_statement(statement))
     }
 
     fn parse_annotations(&mut self) -> Result<ParsedAnnotations<'a>> {
@@ -891,7 +1022,7 @@ impl<'a> Parser<'a> {
         Ok(annotations)
     }
 
-    pub fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatement<'a>> {
+    fn parse_upper_statement(&mut self) -> Result<ParsedUpperStatementId> {
         let annotations = self.parse_annotations()?;
 
         let token = self.peek()?;
@@ -910,377 +1041,5 @@ impl<'a> Parser<'a> {
                 token.range,
             )),
         }
-    }
-}
-
-impl<'a> Iterator for Parser<'a> {
-    type Item = Result<ParsedUpperStatement<'a>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.eof() {
-            true => None,
-            false => Some(self.parse_upper_statement()),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{ast::BinaryOperatorType, lexer::lex};
-
-    fn parse_statements<'a>(tokens: &'a [Token<'a>]) -> Result<Vec<ParsedStatement<'a>>> {
-        let mut parser = Parser::new(tokens);
-        let mut result = vec![];
-        while !parser.eof() {
-            result.push(parser.parse_statement()?);
-        }
-
-        Ok(result)
-    }
-
-    fn parse_expressions<'a>(tokens: &'a [Token<'a>]) -> Result<Vec<ParsedExpression<'a>>> {
-        let mut parser = Parser::new(tokens);
-        let mut result = vec![];
-        while !parser.eof() {
-            result.push(parser.parse_expression(0)?);
-        }
-
-        Ok(result)
-    }
-
-    fn parse_function<'a>(tokens: &'a [Token<'a>]) -> Result<ParsedUpperStatement<'a>> {
-        let mut parser = Parser::new(tokens);
-        parser.parse_function(HashMap::new())
-    }
-
-    #[test]
-    fn parse_constant() -> Result<()> {
-        let tokens = lex("123")?;
-        let exprs = parse_expressions(&tokens)?;
-
-        assert_eq!(
-            exprs[0],
-            ParsedExpression::IntegerLiteral {
-                value: 123,
-                range: (0..3).into()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_unary_op() -> Result<()> {
-        let tokens = lex("-123")?;
-        let exprs = parse_expressions(&tokens)?;
-
-        assert_eq!(
-            exprs[0],
-            ParsedExpression::UnaryOperator {
-                op_type: UnaryOperatorType::Negate,
-                expr: Box::new(ParsedExpression::IntegerLiteral {
-                    value: 123,
-                    range: (1..4).into()
-                }),
-                range: (0..4).into()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_binary_op() -> Result<()> {
-        let tokens = lex("456 - 123")?;
-        let exprs = parse_expressions(&tokens)?;
-
-        assert_eq!(
-            exprs[0],
-            ParsedExpression::BinaryOperator {
-                op_type: BinaryOperatorType::Subtract,
-                left: Box::new(ParsedExpression::IntegerLiteral {
-                    value: 456,
-                    range: (0..3).into()
-                }),
-                right: Box::new(ParsedExpression::IntegerLiteral {
-                    value: 123,
-                    range: (6..9).into()
-                }),
-                range: (0..9).into()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_binop_precedence_1() -> Result<()> {
-        let tokens = lex("456 - 123 * 789")?;
-        let exprs = parse_expressions(&tokens)?;
-
-        assert_eq!(
-            exprs[0],
-            ParsedExpression::BinaryOperator {
-                op_type: BinaryOperatorType::Subtract,
-                left: Box::new(ParsedExpression::IntegerLiteral {
-                    value: 456,
-                    range: (0..3).into()
-                }),
-                right: Box::new(ParsedExpression::BinaryOperator {
-                    op_type: BinaryOperatorType::Multiply,
-                    left: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 123,
-                        range: (6..9).into()
-                    }),
-                    right: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 789,
-                        range: (12..15).into()
-                    }),
-                    range: (6..15).into()
-                }),
-                range: (0..15).into(),
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_binop_precedence_2() -> Result<()> {
-        let tokens = lex("456 * 123 - 789")?;
-        let exprs = parse_expressions(&tokens)?;
-
-        assert_eq!(
-            exprs[0],
-            ParsedExpression::BinaryOperator {
-                op_type: BinaryOperatorType::Subtract,
-                left: Box::new(ParsedExpression::BinaryOperator {
-                    op_type: BinaryOperatorType::Multiply,
-                    left: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 456,
-                        range: (0..3).into()
-                    }),
-                    right: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 123,
-                        range: (6..9).into()
-                    }),
-                    range: (0..9).into()
-                }),
-                right: Box::new(ParsedExpression::IntegerLiteral {
-                    value: 789,
-                    range: (12..15).into()
-                }),
-                range: (0..15).into(),
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_return_statement() -> Result<()> {
-        let tokens = lex("return 456 - 123;")?;
-        let stmts = parse_statements(&tokens)?;
-
-        assert_eq!(
-            stmts[0],
-            ParsedStatement::Return {
-                value: ParsedExpression::BinaryOperator {
-                    op_type: BinaryOperatorType::Subtract,
-                    left: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 456,
-                        range: (7..10).into()
-                    }),
-                    right: Box::new(ParsedExpression::IntegerLiteral {
-                        value: 123,
-                        range: (13..16).into()
-                    }),
-                    range: (7..16).into()
-                },
-                range: (0..17).into()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_empty_block() -> Result<()> {
-        let tokens = lex("{}")?;
-        let stmts = parse_statements(&tokens)?;
-        assert_eq!(stmts.len(), 1);
-        assert_eq!(
-            stmts[0],
-            ParsedStatement::Block {
-                children: vec![],
-                scoped: true,
-                range: (0..2).into()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_nested_block() -> Result<()> {
-        let tokens = lex("{{{}}}")?;
-        let stmts = parse_statements(&tokens)?;
-        assert_eq!(stmts.len(), 1);
-        assert_eq!(
-            stmts[0],
-            ParsedStatement::Block {
-                children: vec![ParsedStatement::Block {
-                    children: vec![ParsedStatement::Block {
-                        children: vec![],
-                        scoped: true,
-                        range: (2..4).into()
-                    }],
-                    scoped: true,
-                    range: (1..5).into()
-                }],
-                scoped: true,
-                range: (0..6).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_simple_function() -> Result<()> {
-        let tokens = lex("fn test() { return 12; }")?;
-        let func = parse_function(&tokens)?;
-        assert_eq!(
-            func,
-            ParsedUpperStatement::Function {
-                name: "test",
-                parameters: vec![],
-                return_type: ParsedType::Named("void".to_string(), (10..11).into()),
-                body: ParsedStatement::Block {
-                    children: vec![ParsedStatement::Return {
-                        value: ParsedExpression::IntegerLiteral {
-                            value: 12,
-                            range: (19..21).into()
-                        },
-                        range: (12..22).into()
-                    }],
-                    scoped: true,
-                    range: (10..24).into()
-                },
-                annotations: HashMap::new(),
-                range: (0..24).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_function_return_type() -> Result<()> {
-        let tokens = lex("fn test() u8 { return 12; }")?;
-        let func = parse_function(&tokens)?;
-        assert_eq!(
-            func,
-            ParsedUpperStatement::Function {
-                name: "test",
-                parameters: vec![],
-                return_type: ParsedType::Named("u8".to_string(), (10..12).into()),
-                body: ParsedStatement::Block {
-                    children: vec![ParsedStatement::Return {
-                        value: ParsedExpression::IntegerLiteral {
-                            value: 12,
-                            range: (22..24).into()
-                        },
-                        range: (15..25).into()
-                    }],
-                    scoped: true,
-                    range: (13..27).into()
-                },
-                annotations: HashMap::new(),
-                range: (0..27).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_function_call_expr() -> Result<()> {
-        let tokens = lex("test()")?;
-        let call = parse_expressions(&tokens)?;
-        assert_eq!(
-            call[0],
-            ParsedExpression::FunctionCall {
-                name: "test",
-                arguments: vec![],
-                range: (0..6).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_string_constant_expr() -> Result<()> {
-        let tokens = lex("\"test\"")?;
-        let string = parse_expressions(&tokens)?;
-        assert_eq!(
-            string[0],
-            ParsedExpression::StringLiteral {
-                value: "test".into(),
-                range: (0..6).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_string_constant_escaped_expr() -> Result<()> {
-        let tokens = lex("\"test\\t\\'test\\'\\n\"")?;
-        let string = parse_expressions(&tokens)?;
-        assert_eq!(
-            string[0],
-            ParsedExpression::StringLiteral {
-                value: "test\\t\\'test\\'\\n".into(),
-                range: (0..18).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_function_call_stmt() -> Result<()> {
-        let tokens = lex("test();")?;
-        let call = parse_statements(&tokens)?;
-        assert_eq!(
-            call[0],
-            ParsedStatement::Expression {
-                expr: ParsedExpression::FunctionCall {
-                    name: "test",
-                    arguments: vec![],
-                    range: (0..6).into()
-                },
-                range: (0..7).into()
-            }
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_function_call_stmt_with_arg() -> Result<()> {
-        let tokens = lex("test(x);")?;
-        let call = parse_statements(&tokens)?;
-        assert_eq!(
-            call[0],
-            ParsedStatement::Expression {
-                expr: ParsedExpression::FunctionCall {
-                    name: "test",
-                    arguments: vec![ParsedExpression::VariableRef {
-                        name: "x",
-                        range: (5..6).into()
-                    }],
-                    range: (0..7).into(),
-                },
-                range: (0..8).into()
-            }
-        );
-        Ok(())
     }
 }
