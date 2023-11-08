@@ -92,7 +92,10 @@ impl<'a> Sema<'a> {
             Type::Struct(s) => Ok(s),
             _ => Err(Error::new(
                 ErrorType::TypeCheck,
-                format!("Type with id {} is not a struct", *id),
+                format!(
+                    "Type {} is not a struct",
+                    self.type_store.get_type_name(id)?
+                ),
             )),
         }
     }
@@ -305,12 +308,13 @@ impl<'a> Sema<'a> {
             } => {
                 let condition_id = self.check_expression(*condition)?;
 
-                if self.ast.get_expression_type(condition_id) != builtin_types::BOOL {
+                let expression_type = self.ast.get_expression_type(condition_id);
+                if expression_type != builtin_types::BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of if statement should be a boolean but is {}",
-                            self.ast.get_expression_type(condition_id)
+                            self.type_store.get_type_name(expression_type)?,
                         ),
                         *range,
                     ));
@@ -338,12 +342,13 @@ impl<'a> Sema<'a> {
             } => {
                 let condition_id = self.check_expression(*condition)?;
 
-                if self.ast.get_expression_type(condition_id) != builtin_types::BOOL {
+                let expression_type = self.ast.get_expression_type(condition_id);
+                if expression_type != builtin_types::BOOL {
                     return Err(Error::new_with_range(
                         ErrorType::TypeCheck,
                         format!(
                             "Condition of while statement should be a boolean but is {}",
-                            self.ast.get_expression_type(condition_id)
+                            self.type_store.get_type_name(expression_type)?,
                         ),
                         *range,
                     ));
@@ -372,7 +377,9 @@ impl<'a> Sema<'a> {
                         ErrorType::TypeCheck,
                         format!(
                             "Cannot assign value to return type, expected '{}' but got '{}'",
-                            self.current_function_return_type, expr_type,
+                            self.type_store
+                                .get_type_name(self.current_function_return_type)?,
+                            self.type_store.get_type_name(expr_type)?,
                         ),
                         *range,
                     )),
@@ -950,10 +957,16 @@ impl<'a> Sema<'a> {
                 let mut value_id = self.check_expression(*value)?;
                 let value_type = self.ast.get_expression_type(value_id);
 
+                let value_type_name = self.type_store.get_type_name(value_type)?;
+                let type_id_type_name = self.type_store.get_type_name(type_id)?;
+
                 let new_type = self.widen_assignment(type_id, value_type)?.ok_or_else(|| {
                     Error::new_with_range(
                         ErrorType::TypeCheck,
-                        format!("Cannot widen const type {} to {}", value_type, type_id),
+                        format!(
+                            "Cannot widen const type {} to {}",
+                            value_type_name, type_id_type_name,
+                        ),
                         *range,
                     )
                 })?;

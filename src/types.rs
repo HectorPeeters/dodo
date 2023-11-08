@@ -179,4 +179,18 @@ impl TypeStore {
                 .sum(),
         })
     }
+
+    pub fn get_type_name(&self, id: TypeId) -> Result<String> {
+        let type_info = self.get_type_info(id)?;
+        Ok(match type_info {
+            Type::UInt8() => "u8".to_owned(),
+            Type::UInt16() => "u16".to_owned(),
+            Type::UInt32() => "u32".to_owned(),
+            Type::UInt64() => "u64".to_owned(),
+            Type::Bool() => "bool".to_owned(),
+            Type::Ptr(_) => format!("*{}", self.get_type_name(type_info.get_deref()?)?),
+            Type::Void() => "void".to_owned(),
+            Type::Struct(s) => s.name.clone(),
+        })
+    }
 }
