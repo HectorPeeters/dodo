@@ -126,13 +126,7 @@ fn main() -> Result<()> {
         Some(BackendType::Cranelift) => Box::new(CraneliftBackend::new(&mut project)),
     };
 
-    unwrap_or_error(
-        statements
-            .into_iter()
-            .map(|x| backend.process_upper_statement(x))
-            .collect::<Result<Vec<_>>>(),
-        source_file,
-    );
+    unwrap_or_error(backend.process_upper_statements(statements), source_file);
 
     let output_executable = args.output.unwrap_or_else(|| PathBuf::from("a.out"));
     backend.finalize(&output_executable, args.dont_compile)?;

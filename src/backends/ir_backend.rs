@@ -422,66 +422,66 @@ impl<'a, 'b> IrBackend<'a> {
 }
 
 impl<'a, 'b> Backend<'b> for IrBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
-        match statement {
-            UpperStatement::Function(FunctionDeclaration {
-                name,
-                params,
-                return_type,
-                body,
-                annotations: _,
-                range,
-            }) => {
-                let function_block = self.builder.add_block(name);
+    fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'b>>) -> Result<()> {
+        for statement in statements {
+            match statement {
+                UpperStatement::Function(FunctionDeclaration {
+                    name,
+                    params,
+                    return_type,
+                    body,
+                    annotations: _,
+                    range,
+                }) => {
+                    let function_block = self.builder.add_block(name);
 
-                if name == "main" {
-                    self.main_block = Some(function_block);
+                    if name == "main" {
+                        self.main_block = Some(function_block);
+                    }
+
+                    self.builder.push_block(function_block);
+                    self.scope.push();
+
+                    for (param_name, param_type) in params.into_iter().rev() {
+                        let param_reg = self
+                            .builder
+                            .new_register(self.project.get_type_size(param_type).into());
+                        self.builder.add_instruction(IrInstruction::Pop(param_reg));
+
+                        self.scope
+                            .insert(param_name, IrScopeLocation::Reg(param_reg))
+                            .map_err(|e| e.with_range(range))?;
+                    }
+
+                    self.gen_statement(body)?;
+
+                    if return_type == BUILTIN_TYPE_VOID {
+                        self.builder.add_instruction(IrInstruction::Ret());
+                    }
+
+                    self.scope.pop();
+                    self.builder.pop_block();
                 }
+                UpperStatement::StructDeclaration(_) => todo!(),
+                UpperStatement::ConstDeclaration(ConstDeclaration {
+                    name,
+                    value,
+                    annotations: _,
+                    type_id,
+                    range: _,
+                }) => {
+                    let const_value = self.gen_constant(value, type_id)?;
 
-                self.builder.push_block(function_block);
-                self.scope.push();
+                    self.global_consts.push(const_value);
+                    let index = self.global_consts.len() - 1;
 
-                for (param_name, param_type) in params.into_iter().rev() {
-                    let param_reg = self
-                        .builder
-                        .new_register(self.project.get_type_size(param_type).into());
-                    self.builder.add_instruction(IrInstruction::Pop(param_reg));
-
-                    self.scope
-                        .insert(param_name, IrScopeLocation::Reg(param_reg))
-                        .map_err(|e| e.with_range(range))?;
+                    self.scope.insert(name, IrScopeLocation::Global(index))?;
                 }
-
-                self.gen_statement(body)?;
-
-                if return_type == BUILTIN_TYPE_VOID {
-                    self.builder.add_instruction(IrInstruction::Ret());
-                }
-
-                self.scope.pop();
-                self.builder.pop_block();
-
-                Ok(())
+                UpperStatement::ExternDeclaration(_) => {}
             }
-            UpperStatement::StructDeclaration(_) => todo!(),
-            UpperStatement::ConstDeclaration(ConstDeclaration {
-                name,
-                value,
-                annotations: _,
-                type_id,
-                range: _,
-            }) => {
-                let const_value = self.gen_constant(value, type_id)?;
-
-                self.global_consts.push(const_value);
-                let index = self.global_consts.len() - 1;
-
-                self.scope.insert(name, IrScopeLocation::Global(index))?;
-
-                Ok(())
-            }
-            UpperStatement::ExternDeclaration(_) => Ok(()),
         }
+
+        Ok(())
     }
 
     fn finalize(&mut self, _output: &Path, _dont_compile: bool) -> Result<()> {

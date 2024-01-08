@@ -239,16 +239,19 @@ impl<'a, 'b> CraneliftBackend<'a> {
 }
 
 impl<'a, 'b> Backend<'b> for CraneliftBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
-        match statement {
-            UpperStatement::Function(function_decl) => {
-                self.process_function_decl(function_decl)?;
-                Ok(())
+    fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'b>>) -> Result<()> {
+        for statement in statements {
+            match statement {
+                UpperStatement::Function(function_decl) => {
+                    self.process_function_decl(function_decl)?;
+                }
+                UpperStatement::StructDeclaration(_) => todo!(),
+                UpperStatement::ConstDeclaration(_) => todo!(),
+                UpperStatement::ExternDeclaration(_) => todo!(),
             }
-            UpperStatement::StructDeclaration(_) => todo!(),
-            UpperStatement::ConstDeclaration(_) => todo!(),
-            UpperStatement::ExternDeclaration(_) => todo!(),
         }
+
+        Ok(())
     }
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {

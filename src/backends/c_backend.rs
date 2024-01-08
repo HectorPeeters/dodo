@@ -29,8 +29,11 @@ impl<'a> CBackend<'a> {
 }
 
 impl<'a> Backend<'a> for CBackend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()> {
-        self.visit_upper_statement(statement)
+    fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'a>>) -> Result<()> {
+        for statement in statements {
+            self.visit_upper_statement(statement)?;
+        }
+        Ok(())
     }
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {

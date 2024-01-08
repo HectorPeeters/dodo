@@ -123,10 +123,7 @@ fn run_test(
         BackendType::Cranelift => Box::new(CraneliftBackend::new(&mut project)),
     };
 
-    statements
-        .into_iter()
-        .map(|x| backend.process_upper_statement(x))
-        .collect::<Result<Vec<_>>>()?;
+    backend.process_upper_statements(statements)?;
 
     let executable_path = format!("/tmp/output_{test_code}");
     let executable_path = Path::new(&executable_path);

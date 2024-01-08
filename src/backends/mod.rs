@@ -17,7 +17,7 @@ pub enum BackendType {
 }
 
 pub trait Backend<'a> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'a>) -> Result<()>;
+    fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'a>>) -> Result<()>;
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()>;
 

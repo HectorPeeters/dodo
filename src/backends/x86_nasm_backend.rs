@@ -281,8 +281,12 @@ impl<'a, 'b> X86NasmBackend<'a, 'b> {
 }
 
 impl<'a, 'b> Backend<'b> for X86NasmBackend<'a, 'b> {
-    fn process_upper_statement(&mut self, statement: UpperStatement<'b>) -> Result<()> {
-        self.visit_upper_statement(statement)
+    fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'b>>) -> Result<()> {
+        for statement in statements {
+            self.visit_upper_statement(statement)?;
+        }
+
+        Ok(())
     }
 
     fn finalize(&mut self, output: &Path, dont_compile: bool) -> Result<()> {
