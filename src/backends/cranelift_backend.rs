@@ -25,7 +25,6 @@ pub struct CraneliftBackend<'a> {
     pointer_type: Type,
     variables: HashMap<String, Variable>,
     functions: HashMap<String, (FuncId, TypeId)>,
-    putchar_id: Option<FuncId>,
 }
 
 impl<'a, 'b> CraneliftBackend<'a> {
@@ -33,9 +32,12 @@ impl<'a, 'b> CraneliftBackend<'a> {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
+        flag_builder.set("opt_level", "speed").unwrap();
+
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
             panic!("host machine is not supported: {}", msg);
         });
+
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
@@ -52,7 +54,6 @@ impl<'a, 'b> CraneliftBackend<'a> {
             pointer_type,
             variables: HashMap::new(),
             functions: HashMap::new(),
-            putchar_id: None,
         }
     }
 
@@ -119,11 +120,7 @@ impl<'a, 'b> CraneliftBackend<'a> {
                 }
             }
             Expression::FunctionCall(call) => {
-                let (func_id, return_type) = if call.name == "putchar" {
-                    (self.putchar_id.unwrap(), BUILTIN_TYPE_VOID)
-                } else {
-                    *self.functions.get(call.name).unwrap()
-                };
+                let (func_id, return_type) = *self.functions.get(call.name).unwrap();
 
                 let func = self.module().declare_func_in_func(func_id, builder.func);
 
@@ -335,8 +332,6 @@ impl<'a, 'b> CraneliftBackend<'a> {
             panic!("{}", errors);
         }
 
-        println!("{}", func.display());
-
         self.module().define_function(id, context).unwrap();
 
         self.module().clear_context(context);
@@ -349,16 +344,6 @@ impl<'a, 'b> Backend<'b> for CraneliftBackend<'a> {
     fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'b>>) -> Result<()> {
         let mut context = self.module().make_context();
 
-        let mut printf_signature = Signature::new(CallConv::SystemV);
-        printf_signature.params.push(AbiParam::new(types::I8));
-
-        let printf_id = self
-            .module()
-            .declare_function("putchar", Linkage::Export, &printf_signature)
-            .unwrap();
-
-        self.putchar_id = Some(printf_id);
-
         for statement in statements {
             match statement {
                 UpperStatement::Function(function_decl) => {
@@ -366,7 +351,26 @@ impl<'a, 'b> Backend<'b> for CraneliftBackend<'a> {
                 }
                 UpperStatement::StructDeclaration(_) => todo!(),
                 UpperStatement::ConstDeclaration(_) => todo!(),
-                UpperStatement::ExternDeclaration(_) => {}
+                UpperStatement::ExternDeclaration(extern_decl) => {
+                    let mut signature = Signature::new(CallConv::SystemV);
+
+                    match extern_decl.name {
+                        "putchar" => signature.params.push(AbiParam::new(types::I8)),
+                        _ => Err(Error::new(
+                            ErrorType::Codegen,
+                            format!("Unknown extern function {}", extern_decl.name),
+                        )
+                        .with_range(extern_decl.range))?,
+                    }
+
+                    let id = self
+                        .module()
+                        .declare_function(extern_decl.name, Linkage::Import, &signature)
+                        .unwrap();
+
+                    self.functions
+                        .insert(extern_decl.name.to_owned(), (id, BUILTIN_TYPE_VOID));
+                }
             }
         }
 

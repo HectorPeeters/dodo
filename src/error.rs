@@ -10,6 +10,7 @@ pub enum ErrorType {
     Parser,
     Scope,
     TypeCheck,
+    Codegen,
     Postprocess,
 }
 
