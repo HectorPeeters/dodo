@@ -1,7 +1,7 @@
 use dodo::{
     backends::{
-        c_backend::CBackend, ir_backend::IrBackend, x86_nasm_backend::X86NasmBackend, Backend,
-        BackendType,
+        c_backend::CBackend, cranelift_backend::CraneliftBackend, ir_backend::IrBackend,
+        x86_nasm_backend::X86NasmBackend, Backend, BackendType,
     },
     error::Result,
     optimisations::optimise,
@@ -37,6 +37,16 @@ fn test_x86_optimised(path: &str) {
     run_passing_test(path, BackendType::X86, true);
 }
 
+#[test_resources("tests/data/*.dodo")]
+fn test_cranelift(path: &str) {
+    run_passing_test(path, BackendType::Cranelift, false);
+}
+
+#[test_resources("tests/data/*.dodo")]
+fn test_cranelift_optimised(path: &str) {
+    run_passing_test(path, BackendType::Cranelift, true);
+}
+
 #[test_resources("tests/failing/*.dodo")]
 fn test_c_failing(path: &str) {
     run_failing_test(path, BackendType::C);
@@ -45,6 +55,11 @@ fn test_c_failing(path: &str) {
 #[test_resources("tests/failing/*.dodo")]
 fn test_x86_failing(path: &str) {
     run_failing_test(path, BackendType::X86);
+}
+
+#[test_resources("tests/failing/*.dodo")]
+fn test_cranelift_failing(path: &str) {
+    run_failing_test(path, BackendType::Cranelift);
 }
 
 pub fn run_passing_test(file: &str, backend_type: BackendType, enable_optimization: bool) {
@@ -105,6 +120,7 @@ fn run_test(
         BackendType::C => Box::new(CBackend::new(&mut project)),
         BackendType::X86 => Box::new(X86NasmBackend::new(&mut project)),
         BackendType::Ir => Box::new(IrBackend::new(&mut project)),
+        BackendType::Cranelift => Box::new(CraneliftBackend::new(&mut project)),
     };
 
     statements
