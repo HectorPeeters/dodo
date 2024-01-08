@@ -251,7 +251,35 @@ impl<'a, 'b> CraneliftBackend<'a> {
 
                 Ok(())
             }
-            Statement::If(_) => todo!(),
+            Statement::If(if_stmt) => {
+                let then_block = builder.create_block();
+                let else_block = builder.create_block();
+                let exit_block = builder.create_block();
+
+                let condition = self.process_expression(builder, if_stmt.condition)?;
+                builder
+                    .ins()
+                    .brif(condition, then_block, &[], else_block, &[]);
+
+                builder.seal_block(then_block);
+                builder.seal_block(else_block);
+
+                builder.switch_to_block(then_block);
+                self.process_statement(builder, *if_stmt.if_body)?;
+                builder.ins().jump(exit_block, &[]);
+
+                builder.switch_to_block(else_block);
+                if let Some(else_body) = if_stmt.else_body {
+                    self.process_statement(builder, *else_body)?;
+                }
+                builder.ins().jump(exit_block, &[]);
+
+                builder.seal_block(exit_block);
+
+                builder.switch_to_block(exit_block);
+
+                Ok(())
+            }
             Statement::Return(ret) => {
                 let value = self.process_expression(builder, ret.expr)?;
                 builder.ins().return_(&[value]);
