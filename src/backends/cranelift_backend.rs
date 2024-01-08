@@ -1,7 +1,10 @@
 use std::{collections::HashMap, path::Path, process::Command};
 
-use cranelift::{codegen::verify_function, prelude::*};
-use cranelift_module::{DataDescription, FuncId, Linkage, Module};
+use cranelift::{
+    codegen::{verify_function, Context},
+    prelude::{isa::CallConv, *},
+};
+use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::{
@@ -10,7 +13,7 @@ use crate::{
         UnaryOperatorType, UpperStatement,
     },
     error::{Error, ErrorType, Result},
-    project::Project,
+    project::{Project, BUILTIN_TYPE_VOID},
     types::TypeId,
 };
 
@@ -18,11 +21,12 @@ use super::Backend;
 
 pub struct CraneliftBackend<'a> {
     project: &'a mut Project,
-    builder_context: FunctionBuilderContext,
-    data_description: DataDescription,
     module: Option<ObjectModule>,
     pointer_type: Type,
     variables: HashMap<String, Variable>,
+    functions: HashMap<String, (FuncId, TypeId)>,
+    putchar_id: Option<FuncId>,
+    emitted_return: bool,
 }
 
 impl<'a, 'b> CraneliftBackend<'a> {
@@ -45,11 +49,12 @@ impl<'a, 'b> CraneliftBackend<'a> {
 
         Self {
             project,
-            builder_context: FunctionBuilderContext::new(),
-            data_description: DataDescription::new(),
             module: Some(module),
             pointer_type,
             variables: HashMap::new(),
+            functions: HashMap::new(),
+            putchar_id: None,
+            emitted_return: false,
         }
     }
 
@@ -108,7 +113,28 @@ impl<'a, 'b> CraneliftBackend<'a> {
                     UnaryOperatorType::Deref => todo!(),
                 }
             }
-            Expression::FunctionCall(_) => todo!(),
+            Expression::FunctionCall(call) => {
+                let (func_id, return_type) = if call.name == "putchar" {
+                    (self.putchar_id.unwrap(), BUILTIN_TYPE_VOID)
+                } else {
+                    *self.functions.get(call.name).unwrap()
+                };
+
+                let func = self.module().declare_func_in_func(func_id, builder.func);
+
+                let converted_args = call
+                    .args
+                    .into_iter()
+                    .map(|arg| self.process_expression(builder, arg))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let call = builder.ins().call(func, &converted_args);
+                if return_type != BUILTIN_TYPE_VOID {
+                    Ok(builder.inst_results(call)[0])
+                } else {
+                    Ok(builder.ins().iconst(types::I8, 0))
+                }
+            }
             Expression::IntegerLiteral(IntegerLiteralExpr {
                 value,
                 type_id,
@@ -191,24 +217,47 @@ impl<'a, 'b> CraneliftBackend<'a> {
             Statement::Return(ret) => {
                 let value = self.process_expression(builder, ret.expr)?;
                 builder.ins().return_(&[value]);
+                self.emitted_return = true;
                 Ok(())
             }
         }
     }
 
-    fn process_function_decl(&mut self, function_decl: FunctionDeclaration<'b>) -> Result<FuncId> {
-        let mut context = self.module().make_context();
+    fn process_function_decl(
+        &mut self,
+        function_decl: FunctionDeclaration<'b>,
+        context: &mut Context,
+    ) -> Result<FuncId> {
+        // Set parameter types
+        for param in function_decl.params {
+            let param_type = self.convert_type(param.1)?;
+            context
+                .func
+                .signature
+                .params
+                .push(AbiParam::new(param_type));
+        }
 
-        context
-            .func
-            .signature
-            .returns
-            .push(AbiParam::new(types::I32));
+        // Set return type
+        if function_decl.return_type != BUILTIN_TYPE_VOID {
+            let return_type = self.convert_type(function_decl.return_type)?;
+            context
+                .func
+                .signature
+                .returns
+                .push(AbiParam::new(return_type));
+        }
 
+        // Create function declaration
         let id = self
             .module()
             .declare_function(function_decl.name, Linkage::Export, &context.func.signature)
             .unwrap();
+
+        self.functions.insert(
+            function_decl.name.to_owned(),
+            (id, function_decl.return_type),
+        );
 
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
@@ -217,7 +266,12 @@ impl<'a, 'b> CraneliftBackend<'a> {
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block);
 
+        self.emitted_return = false;
         self.process_statement(&mut builder, function_decl.body)?;
+
+        if !self.emitted_return {
+            builder.ins().return_(&[]);
+        }
 
         builder.finalize();
 
@@ -230,9 +284,9 @@ impl<'a, 'b> CraneliftBackend<'a> {
 
         println!("{}", func.display());
 
-        self.module().define_function(id, &mut context).unwrap();
+        self.module().define_function(id, context).unwrap();
 
-        self.module().clear_context(&mut context);
+        self.module().clear_context(context);
 
         Ok(id)
     }
@@ -240,14 +294,26 @@ impl<'a, 'b> CraneliftBackend<'a> {
 
 impl<'a, 'b> Backend<'b> for CraneliftBackend<'a> {
     fn process_upper_statements(&mut self, statements: Vec<UpperStatement<'b>>) -> Result<()> {
+        let mut context = self.module().make_context();
+
+        let mut printf_signature = Signature::new(CallConv::SystemV);
+        printf_signature.params.push(AbiParam::new(types::I8));
+
+        let printf_id = self
+            .module()
+            .declare_function("putchar", Linkage::Export, &printf_signature)
+            .unwrap();
+
+        self.putchar_id = Some(printf_id);
+
         for statement in statements {
             match statement {
                 UpperStatement::Function(function_decl) => {
-                    self.process_function_decl(function_decl)?;
+                    self.process_function_decl(function_decl, &mut context)?;
                 }
                 UpperStatement::StructDeclaration(_) => todo!(),
                 UpperStatement::ConstDeclaration(_) => todo!(),
-                UpperStatement::ExternDeclaration(_) => todo!(),
+                UpperStatement::ExternDeclaration(_) => {}
             }
         }
 
