@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, process::Command, sync::Arc};
+use std::{collections::HashMap, path::Path, process::Command};
 
 use cranelift::{codegen::verify_function, prelude::*};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
@@ -123,7 +123,7 @@ impl<'a, 'b> CraneliftBackend<'a> {
                 Ok(result)
             }
             Expression::VariableRef(var_ref) => {
-                let variable = self.variables.get(var_ref.name).unwrap().clone();
+                let variable = *self.variables.get(var_ref.name).unwrap();
                 let result = builder.use_var(variable);
                 Ok(result)
             }
@@ -177,7 +177,7 @@ impl<'a, 'b> CraneliftBackend<'a> {
             }
             Statement::Assignment(assign) => {
                 let variable = match assign.left {
-                    Expression::VariableRef(var) => self.variables.get(var.name).unwrap().clone(),
+                    Expression::VariableRef(var) => *self.variables.get(var.name).unwrap(),
                     _ => todo!(),
                 };
 

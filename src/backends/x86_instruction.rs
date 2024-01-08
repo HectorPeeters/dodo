@@ -266,7 +266,6 @@ mod tests {
     #[test]
     fn register_names() {
         let regs: Vec<String> = (0..=15)
-            .into_iter()
             .map(|i| {
                 let register: X86Register = i.into();
                 format!("{register}")

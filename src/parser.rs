@@ -542,14 +542,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self, precedence: usize) -> Result<ParsedExpression<'a>> {
-        let exit_tokens = vec![
-            TokenType::SemiColon,
+        let exit_tokens = [TokenType::SemiColon,
             TokenType::RightParen,
             TokenType::LeftBrace,
             TokenType::Comma,
             TokenType::Equals,
-            TokenType::RightSquareParen,
-        ];
+            TokenType::RightSquareParen];
 
         let token_type = self.peek()?.token_type;
         let start_index = self.current_index(false);
