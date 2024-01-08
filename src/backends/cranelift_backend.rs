@@ -85,6 +85,18 @@ impl<'a, 'b> CraneliftBackend<'a> {
                 let left = self.process_expression(builder, *binop.left)?;
                 let right = self.process_expression(builder, *binop.right)?;
 
+                let convert_compare = |x: BinaryOperatorType| -> IntCC {
+                    match x {
+                        BinaryOperatorType::Equal => IntCC::Equal,
+                        BinaryOperatorType::NotEqual => IntCC::NotEqual,
+                        BinaryOperatorType::LessThan => IntCC::UnsignedLessThan,
+                        BinaryOperatorType::LessThanEqual => IntCC::UnsignedLessThanOrEqual,
+                        BinaryOperatorType::GreaterThan => IntCC::UnsignedGreaterThan,
+                        BinaryOperatorType::GreaterThanEqual => IntCC::UnsignedGreaterThanOrEqual,
+                        _ => unreachable!(),
+                    }
+                };
+
                 match binop.op_type {
                     BinaryOperatorType::Add => Ok(builder.ins().iadd(left, right)),
                     BinaryOperatorType::Subtract => Ok(builder.ins().isub(left, right)),
@@ -93,28 +105,9 @@ impl<'a, 'b> CraneliftBackend<'a> {
                     BinaryOperatorType::Modulo => Ok(builder.ins().urem(left, right)),
                     BinaryOperatorType::ShiftLeft => Ok(builder.ins().ishl(left, right)),
                     BinaryOperatorType::ShiftRight => Ok(builder.ins().ushr(left, right)),
-                    BinaryOperatorType::Equal => Ok(builder.ins().icmp(IntCC::Equal, left, right)),
-                    BinaryOperatorType::NotEqual => {
-                        Ok(builder.ins().icmp(IntCC::NotEqual, left, right))
-                    }
-                    BinaryOperatorType::LessThan => {
-                        Ok(builder.ins().icmp(IntCC::UnsignedLessThan, left, right))
-                    }
-                    BinaryOperatorType::LessThanEqual => {
-                        Ok(builder
-                            .ins()
-                            .icmp(IntCC::UnsignedLessThanOrEqual, left, right))
-                    }
-                    BinaryOperatorType::GreaterThan => {
-                        Ok(builder.ins().icmp(IntCC::UnsignedGreaterThan, left, right))
-                    }
-                    BinaryOperatorType::GreaterThanEqual => {
-                        Ok(builder
-                            .ins()
-                            .icmp(IntCC::UnsignedGreaterThanOrEqual, left, right))
-                    }
                     BinaryOperatorType::LogicalOr => todo!(),
                     BinaryOperatorType::LogicalAnd => todo!(),
+                    x => Ok(builder.ins().icmp(convert_compare(x), left, right)),
                 }
             }
             Expression::UnaryOperator(unop) => {
