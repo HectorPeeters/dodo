@@ -26,7 +26,6 @@ pub struct CraneliftBackend<'a> {
     variables: HashMap<String, Variable>,
     functions: HashMap<String, (FuncId, TypeId)>,
     putchar_id: Option<FuncId>,
-    emitted_return: bool,
 }
 
 impl<'a, 'b> CraneliftBackend<'a> {
@@ -54,7 +53,6 @@ impl<'a, 'b> CraneliftBackend<'a> {
             variables: HashMap::new(),
             functions: HashMap::new(),
             putchar_id: None,
-            emitted_return: false,
         }
     }
 
@@ -95,12 +93,26 @@ impl<'a, 'b> CraneliftBackend<'a> {
                     BinaryOperatorType::Modulo => Ok(builder.ins().urem(left, right)),
                     BinaryOperatorType::ShiftLeft => Ok(builder.ins().ishl(left, right)),
                     BinaryOperatorType::ShiftRight => Ok(builder.ins().ushr(left, right)),
-                    BinaryOperatorType::Equal => todo!(),
-                    BinaryOperatorType::NotEqual => todo!(),
-                    BinaryOperatorType::LessThan => todo!(),
-                    BinaryOperatorType::LessThanEqual => todo!(),
-                    BinaryOperatorType::GreaterThan => todo!(),
-                    BinaryOperatorType::GreaterThanEqual => todo!(),
+                    BinaryOperatorType::Equal => Ok(builder.ins().icmp(IntCC::Equal, left, right)),
+                    BinaryOperatorType::NotEqual => {
+                        Ok(builder.ins().icmp(IntCC::NotEqual, left, right))
+                    }
+                    BinaryOperatorType::LessThan => {
+                        Ok(builder.ins().icmp(IntCC::UnsignedLessThan, left, right))
+                    }
+                    BinaryOperatorType::LessThanEqual => {
+                        Ok(builder
+                            .ins()
+                            .icmp(IntCC::UnsignedLessThanOrEqual, left, right))
+                    }
+                    BinaryOperatorType::GreaterThan => {
+                        Ok(builder.ins().icmp(IntCC::UnsignedGreaterThan, left, right))
+                    }
+                    BinaryOperatorType::GreaterThanEqual => {
+                        Ok(builder
+                            .ins()
+                            .icmp(IntCC::UnsignedGreaterThanOrEqual, left, right))
+                    }
                     BinaryOperatorType::LogicalOr => todo!(),
                     BinaryOperatorType::LogicalAnd => todo!(),
                 }
@@ -212,12 +224,37 @@ impl<'a, 'b> CraneliftBackend<'a> {
 
                 Ok(())
             }
-            Statement::While(_) => todo!(),
+            Statement::While(while_stmt) => {
+                let header_block = builder.create_block();
+                let body_block = builder.create_block();
+                let exit_block = builder.create_block();
+
+                builder.ins().jump(header_block, &[]);
+                builder.switch_to_block(header_block);
+
+                let condition = self.process_expression(builder, while_stmt.condition)?;
+                builder
+                    .ins()
+                    .brif(condition, body_block, &[], exit_block, &[]);
+
+                builder.switch_to_block(body_block);
+                builder.seal_block(body_block);
+
+                self.process_statement(builder, *while_stmt.body)?;
+
+                builder.ins().jump(header_block, &[]);
+
+                builder.switch_to_block(exit_block);
+
+                builder.seal_block(header_block);
+                builder.seal_block(exit_block);
+
+                Ok(())
+            }
             Statement::If(_) => todo!(),
             Statement::Return(ret) => {
                 let value = self.process_expression(builder, ret.expr)?;
                 builder.ins().return_(&[value]);
-                self.emitted_return = true;
                 Ok(())
             }
         }
@@ -266,12 +303,7 @@ impl<'a, 'b> CraneliftBackend<'a> {
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block);
 
-        self.emitted_return = false;
         self.process_statement(&mut builder, function_decl.body)?;
-
-        if !self.emitted_return {
-            builder.ins().return_(&[]);
-        }
 
         builder.finalize();
 
